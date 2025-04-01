@@ -1,0 +1,5 @@
+[
+  "test.py::test_construct_unitary",
+  "test.py::test_contract_and_decimate",
+  "test.py::test_statevector_sim"
+]

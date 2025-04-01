@@ -1,6 +1,6 @@
 # Qaravan
 
-**Qaravan** is a Python library for quantum computing with and without noise using a variety of classical simulation techniques. 
+**Qaravan** is a Python library for simulating quantum circuits with and without noise using a variety of classical simulation techniques. 
 
 ## Overview
 

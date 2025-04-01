@@ -8,7 +8,7 @@ setup(
     version="0.1.0", 
     author="Faisal Alam",
     author_email="mfalam2@illinois.edu",
-    description="Unified classical simulation of quantum circuits",
+    description="Unified classical simulation of noiseless and noisy quantum circuits",
     install_requires=[
     "numpy>=2.2.4",
     "scipy>=1.15.2",

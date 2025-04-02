@@ -75,8 +75,8 @@ def op_action(op, indices, sv, local_dim=2):
     if op.ndim != 2*len(indices): 
         op = op.reshape(*[local_dim]*2*len(indices))
     
-    n = int(np.log(sv.shape[0])/np.log(local_dim))
     state = copy.deepcopy(sv).reshape(*[local_dim]*n) if sv.ndim == 1 else copy.deepcopy(sv)
+    n = sv.ndim if sv.ndim > 1 else int(np.log(len(sv)) / np.log(local_dim))
     
     # locs_to_indices assumes ascending order for indices, so sort them first and transpose the operator accordingly
     sorted_indices = sorted(indices)

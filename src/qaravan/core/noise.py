@@ -160,7 +160,7 @@ class PauliNoise(Noise):
 def gate_time(gate, nm):   
     if gate.name[0:4] == "CNOT": 
         return nm.two_site_time
-    elif gate.name[0:2] == "RZ" or gate.name[0:2] == "CU":
+    elif gate.name[0:2] in ["RZ", "CU", "SW"]:
         return 0.0
     else: 
         return nm.one_site_time

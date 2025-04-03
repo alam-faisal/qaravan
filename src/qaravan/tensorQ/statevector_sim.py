@@ -75,13 +75,13 @@ def op_action(op, indices, sv, local_dim=2):
     if op.ndim != 2*len(indices): 
         op = op.reshape(*[local_dim]*2*len(indices))
     
-    state = copy.deepcopy(sv).reshape(*[local_dim]*n) if sv.ndim == 1 else copy.deepcopy(sv)
     n = sv.ndim if sv.ndim > 1 else int(np.log(len(sv)) / np.log(local_dim))
+    state = copy.deepcopy(sv).reshape(*[local_dim]*n) if sv.ndim == 1 else copy.deepcopy(sv)
     
     # locs_to_indices assumes ascending order for indices, so sort them first and transpose the operator accordingly
     sorted_indices = sorted(indices)
     sort_order = [indices.index(i) for i in sorted_indices]
-    perm = sort_order + [i + len(indices) for i in sort_order]
+    perm = sort_order + [i + len(indices) for i in sort_order]  
     op = op.transpose(perm)
 
     gate_indices, state_indices = locs_to_indices(sorted_indices, n)

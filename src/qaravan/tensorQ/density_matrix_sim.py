@@ -132,3 +132,21 @@ def vN_entropy(dm):
 
 def expectation(dm, op): 
     return np.trace(dm @ op).real
+
+def top_entropy(gstate, regions): 
+    rdm_A = rdm_from_sv(gstate, regions[0])
+    rdm_B = rdm_from_sv(gstate, regions[1])
+    rdm_C = rdm_from_sv(gstate, regions[2])
+    rdm_AB = rdm_from_sv(gstate, regions[0]+regions[1])
+    rdm_BC = rdm_from_sv(gstate, regions[1]+regions[2])
+    rdm_AC = rdm_from_sv(gstate, regions[0]+regions[2])
+    rdm_ABC = rdm_from_sv(gstate, regions[0]+regions[1]+regions[2])
+
+    sA = vN_entropy(rdm_A)
+    sB = vN_entropy(rdm_B)
+    sC = vN_entropy(rdm_C)
+    sAB = vN_entropy(rdm_AB)
+    sBC = vN_entropy(rdm_BC)
+    sAC = vN_entropy(rdm_AC)
+    sABC = vN_entropy(rdm_ABC)
+    return np.real(sA + sB + sC - sAB - sBC - sAC + sABC)

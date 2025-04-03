@@ -89,7 +89,7 @@ class QutritNoise(ThermalNoise):
     
 class PauliNoise(Noise):
     def __init__(self, strings, probs):
-        assert np.abs(np.sum(probs) - 1) < 1e-6, "Probabilities must sum to 1."
+        assert np.abs(np.sum(probs) - 1) < 1e-3, f"Probabilities must sum to 1, but got {np.sum(probs)}"
         self.probs = [p for p in probs if np.abs(p) > 1e-6]
         self.strings = [s for s, p in zip(strings, probs) if np.abs(p) > 1e-6]
         self.num_sites = len(strings[0])

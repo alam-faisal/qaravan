@@ -56,6 +56,11 @@ class DensityMatrixSim(BaseSim):
         dm = self.state.reshape(self.local_dim**self.num_sites, self.local_dim**self.num_sites)
         return np.trace(dm).real
     
+    def global_expectation(self, global_op):
+        self.run(progress_bar=False)
+        dm = self.state.reshape(self.local_dim**self.num_sites, self.local_dim**self.num_sites)
+        return np.trace(dm @ global_op).real
+    
     def __str__(self):
         dm = self.state.reshape(self.local_dim**self.num_sites, self.local_dim**self.num_sites)
         return pretty_print_dm(dm, self.local_dim)

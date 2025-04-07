@@ -57,7 +57,8 @@ class DensityMatrixSim(BaseSim):
         return np.trace(dm).real
     
     def global_expectation(self, global_op):
-        self.run(progress_bar=False)
+        if not self.ran: 
+            self.run(progress_bar=False)
         dm = self.state.reshape(self.local_dim**self.num_sites, self.local_dim**self.num_sites)
         return np.trace(dm @ global_op).real
     
@@ -90,6 +91,11 @@ def random_dm(n):
     a = np.random.rand(2**n,2**n) + 1.j * np.random.rand(2**n,2**n)
     a = a@a.conj().T
     return a/np.trace(a)
+
+def all_zero_dm(n, local_dim=2): 
+    dm = np.zeros((local_dim**n, local_dim**n))
+    dm[0,0] = 1.0
+    return dm 
 
 def partial_trace(dm, sites, local_dim=2): 
     system_size = int(np.log(dm.shape[0]) / np.log(local_dim))

@@ -14,6 +14,7 @@ class BaseSim:
         self.nm = nm
         self.init_state = init_state
         self.state = None
+        self.ran = False
 
     def initialize_state(self):
         raise NotImplementedError("must be implemented by child classes.")
@@ -43,6 +44,7 @@ class BaseSim:
         if circ.meas_sites is not None:
             self.measure(circ.meas_sites)
 
+        self.ran = True
         return self.state
     
     def measure(self, meas_sites):

@@ -119,3 +119,7 @@ def two_norm_fidelity(rho1, rho2):
         return (rho1.conj() @ rho2).trace(scaled=False).real
     else: 
         raise TypeError(f"provided density operator is not of valid type; must be {np.ndarray} or {MPO} not {type(rho1)}")
+    
+def vN_entropy(dm): 
+    evals = np.linalg.eigvals(dm)
+    return sum([-e*np.log(e) for e in evals if e > 0])

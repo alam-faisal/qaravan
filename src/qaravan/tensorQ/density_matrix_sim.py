@@ -121,32 +121,11 @@ def partial_trace(dm, sites, local_dim=2):
             counter -= 1
 
         return ncon([dm], contraction).reshape(local_dim**len(sites), local_dim**len(sites))
-    
-def rdm_from_sv(sv, sites, local_dim=2): 
-    dm = np.outer(sv, sv.conj())
-    return partial_trace(dm, sites, local_dim=local_dim)
-
-def vN_entropy(dm): 
-    evals = np.linalg.eigvals(dm)
-    return sum([-e*np.log(e) for e in evals if e > 0])
 
 def expectation(dm, op): 
     return np.trace(dm @ op).real
 
-def top_entropy(gstate, regions): 
-    rdm_A = rdm_from_sv(gstate, regions[0])
-    rdm_B = rdm_from_sv(gstate, regions[1])
-    rdm_C = rdm_from_sv(gstate, regions[2])
-    rdm_AB = rdm_from_sv(gstate, regions[0]+regions[1])
-    rdm_BC = rdm_from_sv(gstate, regions[1]+regions[2])
-    rdm_AC = rdm_from_sv(gstate, regions[0]+regions[2])
-    rdm_ABC = rdm_from_sv(gstate, regions[0]+regions[1]+regions[2])
-
-    sA = vN_entropy(rdm_A)
-    sB = vN_entropy(rdm_B)
-    sC = vN_entropy(rdm_C)
-    sAB = vN_entropy(rdm_AB)
-    sBC = vN_entropy(rdm_BC)
-    sAC = vN_entropy(rdm_AC)
-    sABC = vN_entropy(rdm_ABC)
-    return np.real(sA + sB + sC - sAB - sBC - sAC + sABC)
+def rdm_from_sv_full(sv, sites, local_dim=2): 
+    """ Deprecated version of rdm_from_sv that uses the full state vector."""
+    dm = np.outer(sv, sv.conj())
+    return partial_trace(dm, sites, local_dim=local_dim)

@@ -96,7 +96,34 @@ def all_zero_sv(num_sites, local_dim=2, dense=False):
         sv = csc_matrix(([1], ([0], [0])), shape=(local_dim**num_sites, 1))
     return sv
 
-def rand_sv(num_sites, local_dim=2):
+def random_sv(num_sites, local_dim=2):
     sv = np.random.rand(local_dim**num_sites) + 1j*np.random.rand(local_dim**num_sites)
     sv /= np.linalg.norm(sv)
     return sv
+
+def rdm_from_sv(sv, sites, local_dim=2):
+    system_size = int(np.log(len(sv)) / np.log(local_dim))
+    sites = sorted(sites)
+    
+    psi = sv.reshape([local_dim] * system_size)
+    psi_conj = np.conj(psi)
+
+    psi_labels = [0] * system_size
+    psi_conj_labels = [0] * system_size
+
+    next_contract_label = 1
+    next_free_label = -1
+
+    for i in range(system_size):
+        if i in sites:
+            psi_labels[i] = next_free_label
+            psi_conj_labels[i] = next_free_label - len(sites)
+            next_free_label -= 1
+        else:
+            psi_labels[i] = next_contract_label
+            psi_conj_labels[i] = next_contract_label
+            next_contract_label += 1
+    
+    rdm = ncon([psi, psi_conj], [psi_labels, psi_conj_labels])
+    kept_dim = local_dim ** len(sites)
+    return rdm.reshape((kept_dim, kept_dim))

@@ -1,4 +1,4 @@
-from .gates import ID, SuperOp, random_unitary, Gate
+from .gates import ID, SuperOp, random_unitary, kak_unitary, Gate
 from .noise import gate_time, ThermalNoise
 import numpy as np
 import copy
@@ -125,6 +125,9 @@ class Circuit:
         
     def __len__(self):
         return len(self.gate_list)
+    
+    def __add__(self, other):
+        return compose_circuits([self, other])
         
     def draw(self): # TODO 
         """ use svgwrite to visualize the circuit """
@@ -164,9 +167,9 @@ def shift_gate_list(circ, start_site):
         for gate in circ.gate_list
     ]
 
-def two_local_circ(skeleton):
+def two_local_circ(skeleton, mag=None):
     gate_list = []
     for indices in skeleton:
-        mat = random_unitary(4)
+        mat = random_unitary(4) if mag is None else kak_unitary(np.random.rand(15) * mag)
         gate_list.append(Gate("rand_U", indices, mat))
     return Circuit(gate_list)

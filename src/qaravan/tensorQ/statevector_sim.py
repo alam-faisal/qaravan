@@ -146,10 +146,12 @@ def sv_environment(circ, left_sv, gate_idx):
 
     return partial_overlap(sv1, sv2, skip=indices), mat
 
-def environment_state_prep(skeleton, target_sv, progress_interval=10, max_iter=100, stop_ratio=1e-6):
-    circ = two_local_circ(skeleton)
+def environment_state_prep(target_sv, circ=None, skeleton=None, progress_interval=10, max_iter=100, stop_ratio=1e-6):
+    """ either circ or skeleton must be provided """
+    if circ is None:
+        circ = two_local_circ(skeleton)
+    
     sim = StatevectorSim(circ)
-
     ansatz = sim.run(progress_bar=False).reshape(2**circ.num_sites)
     init_cost = np.abs(target_sv.conj().T @ ansatz)
     cost_list = [init_cost]
@@ -160,14 +162,14 @@ def environment_state_prep(skeleton, target_sv, progress_interval=10, max_iter=1
             new_mat = yh.conj().T @ x.conj().T
             circ.update_gate(idx, new_mat)
         
-        new_cost = np.abs(np.trace(new_mat @ env))
+        new_cost = 1-np.abs(np.trace(new_mat @ env))
         cost_list.append(new_cost)
 
         if np.abs(cost_list[-1] - cost_list[-2]) < stop_ratio * cost_list[-2]:
             print(f"Plateau with cost {cost_list[-1]} at step {step}")
             break
         
-        if step % progress_interval == 0: 
+        if progress_interval is not None and step % progress_interval == 0: 
             print(f"Step {step}: cost = {cost_list[-1]}")
 
     if step == max_iter - 1: 

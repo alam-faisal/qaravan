@@ -411,5 +411,15 @@ def random_unitary(size):
     _, u = np.linalg.eigh(h)
     return u
 
+def kak_unitary(params): 
+    left_mat = np.kron(U(0, *params[0:3]).matrix, U(0, *params[3:6]).matrix)
+    right_mat = np.kron(U(0, *params[9:12]).matrix, U(0, *params[12:15]).matrix)
+    
+    xx, yy, zz = np.kron(pauli_X, pauli_X), np.kron(pauli_Y, pauli_Y), np.kron(pauli_Z, pauli_Z)
+    arg = sum([p*P for p,P in zip(params[6:], [xx, yy, zz])])
+    center_mat = expm(1.j* arg)
+    
+    return left_mat @ center_mat @ right_mat
+
 def is_unitary(u):
     return np.allclose(u @ u.conj().T, np.eye(u.shape[0]), atol=1e-10) and np.allclose(u.conj().T @ u, np.eye(u.shape[0]), atol=1e-10)

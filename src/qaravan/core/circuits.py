@@ -107,6 +107,14 @@ class Circuit:
         
         else: 
             return " \n".join([str(gate) for gate in self.gate_list])  
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self.gate_list[key]
+        elif isinstance(key, slice):
+            return Circuit(self.gate_list[key], n=self.num_sites)
+        else:
+            raise TypeError("Invalid index type.")
         
     def draw(self): # TODO 
         """ use svgwrite to visualize the circuit """

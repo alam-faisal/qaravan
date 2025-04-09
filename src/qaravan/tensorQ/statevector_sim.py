@@ -101,15 +101,15 @@ def random_sv(num_sites, local_dim=2):
     sv /= np.linalg.norm(sv)
     return sv
 
-def rdm_from_sv(sv, sites, local_dim=2):
-    system_size = int(np.log(len(sv)) / np.log(local_dim))
-    sites = sorted(sites)
+def partial_overlap(sv1, sv2, local_dim=2, skip=None): 
+    system_size = int(np.log(len(sv1)) / np.log(local_dim))
+    sites = sorted(skip) if skip is not None else []
     
-    psi = sv.reshape([local_dim] * system_size)
-    psi_conj = np.conj(psi)
+    psi = sv1.reshape([local_dim] * system_size)
+    phi_conj = np.conj(sv2).reshape([local_dim] * system_size)
 
     psi_labels = [0] * system_size
-    psi_conj_labels = [0] * system_size
+    phi_conj_labels = [0] * system_size
 
     next_contract_label = 1
     next_free_label = -1
@@ -117,13 +117,30 @@ def rdm_from_sv(sv, sites, local_dim=2):
     for i in range(system_size):
         if i in sites:
             psi_labels[i] = next_free_label
-            psi_conj_labels[i] = next_free_label - len(sites)
+            phi_conj_labels[i] = next_free_label - len(sites)
             next_free_label -= 1
         else:
             psi_labels[i] = next_contract_label
-            psi_conj_labels[i] = next_contract_label
+            phi_conj_labels[i] = next_contract_label
             next_contract_label += 1
     
-    rdm = ncon([psi, psi_conj], [psi_labels, psi_conj_labels])
+    contraction = ncon([psi, phi_conj], [psi_labels, phi_conj_labels])
     kept_dim = local_dim ** len(sites)
-    return rdm.reshape((kept_dim, kept_dim))
+    return contraction.reshape((kept_dim, kept_dim))   
+
+def rdm_from_sv(sv, sites, local_dim=2):
+    return partial_overlap(sv, sv, local_dim=local_dim, skip=sites) 
+
+def sv_environment(circ, left_sv, gate_idx): 
+    mat, indices = circ[gate_idx].matrix, circ[gate_idx].indices
+
+    circ1 = circ[:gate_idx]
+    circ2 = circ[gate_idx+1:]
+
+    sim1 = StatevectorSim(circ1, init_state=None)
+    sim2 = StatevectorSim(circ2.dag(), init_state=left_sv)
+
+    sv1 = sim1.run(progress_bar=None).reshape(2**circ.num_sites)
+    sv2 = sim2.run(progress_bar=None).reshape(2**circ.num_sites)
+
+    return partial_overlap(sv1, sv2, skip=indices), mat

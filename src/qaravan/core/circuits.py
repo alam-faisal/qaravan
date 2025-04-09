@@ -1,15 +1,22 @@
-from .gates import ID, SuperOp
+from .gates import ID, SuperOp, random_unitary, Gate
 from .noise import gate_time, ThermalNoise
 import numpy as np
 import copy
 from functools import reduce 
 
 class Circuit:
-    def __init__(self, gate_list, n=None, meas_sites=None):
+    def __init__(self, gate_list, n=None, local_dim=None, meas_sites=None):
         self.gate_list = gate_list
-        sites = np.concatenate([gate.indices for gate in gate_list])
-        self.num_sites = int(max(sites) + 1) if n is None else n
-        self.local_dim = gate_list[0].get_local_dim()
+
+        if len(gate_list) != 0: 
+            sites = np.concatenate([gate.indices for gate in gate_list])
+            self.num_sites = int(max(sites) + 1) if n is None else n
+            self.local_dim = gate_list[0].get_local_dim()
+
+        else: 
+            self.num_sites = n 
+            self.local_dim = local_dim
+
         self.layers = None
         self.built = False
         self.meas_sites = meas_sites
@@ -91,7 +98,7 @@ class Circuit:
         
     def dag(self): 
         gate_list = [g.dag() for g in self.gate_list[::-1]]
-        return Circuit(gate_list, self.num_sites)
+        return Circuit(gate_list, n=self.num_sites, local_dim=self.local_dim)
         
     def to_matrix(self): 
         return circ_to_mat(self)
@@ -112,9 +119,12 @@ class Circuit:
         if isinstance(key, int):
             return self.gate_list[key]
         elif isinstance(key, slice):
-            return Circuit(self.gate_list[key], n=self.num_sites)
+            return Circuit(self.gate_list[key], n=self.num_sites, local_dim=self.local_dim)
         else:
             raise TypeError("Invalid index type.")
+        
+    def __len__(self):
+        return len(self.gate_list)
         
     def draw(self): # TODO 
         """ use svgwrite to visualize the circuit """
@@ -153,3 +163,10 @@ def shift_gate_list(circ, start_site):
         _shifted_gate(gate, start_site)
         for gate in circ.gate_list
     ]
+
+def two_local_circ(skeleton):
+    gate_list = []
+    for indices in skeleton:
+        mat = random_unitary(4)
+        gate_list.append(Gate("rand_U", indices, mat))
+    return Circuit(gate_list)

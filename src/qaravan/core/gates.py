@@ -404,3 +404,12 @@ class U01(ParamGate):
             ]))
         else: 
             raise NotImplementedError(f"{basis} basis decomposition has not been implemented")
+
+def random_unitary(size):
+    a = np.random.rand(size, size) + 1.j * np.random.rand(size, size)
+    h = a @ a.conj().T
+    _, u = np.linalg.eigh(h)
+    return u
+
+def is_unitary(u):
+    return np.allclose(u @ u.conj().T, np.eye(u.shape[0]), atol=1e-10) and np.allclose(u.conj().T @ u, np.eye(u.shape[0]), atol=1e-10)

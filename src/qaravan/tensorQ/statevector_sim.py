@@ -1,5 +1,6 @@
 from qaravan.core.base_sim import BaseSim
 from qaravan.core.utils import string_to_sv, pretty_print_sv
+from qaravan.core.circuits import two_local_circ
 import numpy as np
 from ncon import ncon
 from scipy.sparse import csc_matrix
@@ -144,3 +145,21 @@ def sv_environment(circ, left_sv, gate_idx):
     sv2 = sim2.run(progress_bar=None).reshape(2**circ.num_sites)
 
     return partial_overlap(sv1, sv2, skip=indices), mat
+
+def environment_state_prep(skeleton, target_sv, num_steps=10):
+    circ = two_local_circ(skeleton)
+    sim = StatevectorSim(circ)
+
+    ansatz = sim.run(progress_bar=False).reshape(2**circ.num_sites)
+    init_cost = np.abs(target_sv.conj().T @ ansatz)
+    cost_list = [init_cost]
+    for _ in range(num_steps):
+        for idx in range(len(circ)):
+            env, _ = sv_environment(circ, target_sv, idx)
+            x,s,yh = np.linalg.svd(env)
+            new_mat = yh.conj().T @ x.conj().T
+            circ.update_gate(idx, new_mat)
+            new_cost = np.abs(np.trace(new_mat @ env))
+            print(new_cost)
+            cost_list.append(new_cost)
+    return circ

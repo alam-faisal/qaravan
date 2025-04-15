@@ -126,17 +126,22 @@ def vN_entropy(dm):
 
 #=========== optimizer metadata ===========#
 
-from dataclasses import dataclass
 import sys, os, pickle, datetime
-
-@dataclass
 class RunContext:
-    progress_interval: int = 10
-    max_iter: int = 1000
-    stop_ratio: float = 1e-6
-    checkpoint_file: str = None
-    checkpoint_interval: int = 50
-    resume_state: dict = None
+    def __init__(self,
+                 progress_interval=10,
+                 max_iter=1000,
+                 stop_ratio=1e-6,
+                 checkpoint_file=None,
+                 checkpoint_interval=50,
+                 resume=False):
+        
+        self.progress_interval = progress_interval
+        self.max_iter = max_iter
+        self.stop_ratio = stop_ratio
+        self.checkpoint_file = checkpoint_file
+        self.checkpoint_interval = checkpoint_interval
+        self.resume_state = self.load_checkpoint() if resume and checkpoint_file else None
 
     def log(self, msg):
         print(msg)
@@ -152,6 +157,14 @@ class RunContext:
         if self.checkpoint_file and os.path.exists(self.checkpoint_file):
             with open(self.checkpoint_file, 'rb') as f:
                 return pickle.load(f)
+        return None
+    
+    def load_checkpoint(self):
+        if os.path.exists(self.checkpoint_file):
+            with open(self.checkpoint_file, 'rb') as f:
+                step, circ, cost_list = pickle.load(f)
+            self.log(f"[Resuming from checkpoint: step {step}]")
+            return {"step": step, "circ": circ, "cost_list": cost_list}
         return None
     
     def step_update(self, step, circ, cost_list):

@@ -1,10 +1,12 @@
 from qaravan.core.base_sim import BaseSim
-from qaravan.core.utils import string_to_sv, pretty_print_sv
+from qaravan.core.utils import string_to_sv, pretty_print_sv, RunContext
 from qaravan.core.circuits import two_local_circ
 import numpy as np
 from ncon import ncon
 from scipy.sparse import csc_matrix
 import copy
+import sys
+import time
 
 class StatevectorSim(BaseSim):
     def __init__(self, circ, init_state=None):
@@ -146,8 +148,45 @@ def sv_environment(circ, left_sv, gate_idx):
 
     return partial_overlap(sv1, sv2, skip=indices), mat
 
-def environment_state_prep(target_sv, circ=None, skeleton=None, progress_interval=10, max_iter=100, stop_ratio=1e-6):
-    """ either circ or skeleton must be provided """
+def environment_state_prep(target_sv, circ=None, skeleton=None, context=None):
+    """ uses environment tensors to optimize a circuit to prepare target_sv 
+    either circ, skeleton or context.resume_state must be provided """
+    context = RunContext() if context is None else context
+    
+    if context.resume_state: 
+        start_step = context.resume_state['step']
+        circ = context.resume_state['circ']
+        cost_list = context.resume_state['cost_list']
+    else:
+        start_step = 0
+        if circ is None:
+            circ = two_local_circ(skeleton)
+        
+        sim = StatevectorSim(circ)
+        ansatz = sim.run(progress_bar=False).reshape(2**circ.num_sites)
+        init_cost = np.abs(target_sv.conj().T @ ansatz)
+        cost_list = [init_cost]
+
+    for step in range(start_step, context.max_iter):
+        for idx in range(len(circ)):
+            env, _ = sv_environment(circ, target_sv, idx)
+            x,s,yh = np.linalg.svd(env)
+            new_mat = yh.conj().T @ x.conj().T
+            circ.update_gate(idx, new_mat)
+        
+        new_cost = 1 - np.abs(np.trace(new_mat @ env))
+        cost_list.append(new_cost)
+
+        if context.step_update(step, circ, cost_list):
+            break
+
+    return circ, cost_list
+
+def environment_state_prep_old(target_sv, circ=None, skeleton=None, progress_interval=10, max_iter=100, stop_ratio=1e-6):
+    """ DEPRECATED: either circ or skeleton must be provided """
+    import warnings
+    warnings.warn("deprecated", DeprecationWarning)
+
     if circ is None:
         circ = two_local_circ(skeleton)
     
@@ -167,12 +206,15 @@ def environment_state_prep(target_sv, circ=None, skeleton=None, progress_interva
 
         if np.abs(cost_list[-1] - cost_list[-2]) < stop_ratio * cost_list[-2]:
             print(f"Plateau with cost {cost_list[-1]} at step {step}")
+            sys.stdout.flush()
             break
         
         if progress_interval is not None and step % progress_interval == 0: 
             print(f"Step {step}: cost = {cost_list[-1]}")
+            sys.stdout.flush()
 
     if step == max_iter - 1: 
         print(f"Max iterations reached with cost {cost_list[-1]}")
+        sys.stdout.flush()
         
     return circ, cost_list

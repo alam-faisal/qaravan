@@ -123,3 +123,53 @@ def two_norm_fidelity(rho1, rho2):
 def vN_entropy(dm): 
     evals = np.linalg.eigvals(dm)
     return sum([-e*np.log(e) for e in evals if e > 0])
+
+#=========== optimizer metadata ===========#
+
+from dataclasses import dataclass
+import sys, os, pickle, datetime
+
+@dataclass
+class RunContext:
+    progress_interval: int = 10
+    max_iter: int = 1000
+    stop_ratio: float = 1e-6
+    checkpoint_file: str = None
+    checkpoint_interval: int = 50
+    resume_state: dict = None
+
+    def log(self, msg):
+        print(msg)
+        sys.stdout.flush()
+
+    def save_checkpoint(self, step, circ, cost_list):
+        if self.checkpoint_file and step % self.checkpoint_interval == 0:
+            with open(self.checkpoint_file, 'wb') as f:
+                pickle.dump((step, circ, cost_list), f)
+            self.log(f"[Checkpoint saved at step {step}]")
+
+    def load_checkpoint(self):
+        if self.checkpoint_file and os.path.exists(self.checkpoint_file):
+            with open(self.checkpoint_file, 'rb') as f:
+                return pickle.load(f)
+        return None
+    
+    def step_update(self, step, circ, cost_list):
+        """ handles logging, checkpointing, convergence. returns True if the run should break."""
+
+        timestamp = datetime.datetime.now().isoformat(timespec='seconds')
+        if step % self.progress_interval == 0:
+            self.log(f"Step {step} at time {timestamp}: cost = {cost_list[-1]}")
+
+        if self.checkpoint_file:
+            self.save_checkpoint(step, circ, cost_list)
+        
+        if np.abs(cost_list[-1] - cost_list[-2]) < self.stop_ratio * cost_list[-2]:
+            self.log(f"Plateau with cost {cost_list[-1]} at step {step}")
+            return True
+
+        if step == self.max_iter - 1:
+            self.log(f"Max iterations reached with cost {cost_list[-1]}")
+            return True
+
+        return False

@@ -1,3 +1,4 @@
+from matplotlib.pyplot import step
 import numpy as np
 
 def endian_transform(arr):
@@ -141,48 +142,52 @@ class RunContext:
         self.stop_ratio = stop_ratio
         self.checkpoint_file = checkpoint_file
         self.checkpoint_interval = checkpoint_interval
-        self.resume_state = self.load_checkpoint() if resume and checkpoint_file else None
+        self.resume = resume
+
+        self.opt_state, self.step, self.cost_list = None, 0, []
+        if resume and checkpoint_file: 
+            self.load_checkpoint()            
 
     def log(self, msg):
         print(msg)
         sys.stdout.flush()
 
-    def save_checkpoint(self, step, circ, cost_list):
-        if self.checkpoint_file and step % self.checkpoint_interval == 0:
+    def save_checkpoint(self):
+        if self.checkpoint_file:
             with open(self.checkpoint_file, 'wb') as f:
-                pickle.dump((step, circ, cost_list), f)
-            self.log(f"[Checkpoint saved at step {step}]")
+                pickle.dump(self.opt_state, f)
+            
+            self.log(f"[Checkpoint saved at step {self.step}]")
 
-    def load_checkpoint(self):
-        if self.checkpoint_file and os.path.exists(self.checkpoint_file):
-            with open(self.checkpoint_file, 'rb') as f:
-                return pickle.load(f)
-        return None
-    
     def load_checkpoint(self):
         if os.path.exists(self.checkpoint_file):
             with open(self.checkpoint_file, 'rb') as f:
-                step, circ, cost_list = pickle.load(f)
-            self.log(f"[Resuming from checkpoint: step {step}]")
-            return {"step": step, "circ": circ, "cost_list": cost_list}
+                self.opt_state = pickle.load(f)
+                self.step = self.opt_state['step']
+                self.cost_list = self.opt_state['cost_list']
+
+            self.log(f"[Resuming from checkpoint: step {self.step}]")
+            return self.opt_state
         return None
     
-    def step_update(self, step, circ, cost_list):
+    def step_update(self, opt_state):
         """ handles logging, checkpointing, convergence. returns True if the run should break."""
-
+        self.opt_state = opt_state
+        self.step, self.cost_list = opt_state['step'], opt_state['cost_list']
         timestamp = datetime.datetime.now().isoformat(timespec='seconds')
-        if step % self.progress_interval == 0:
-            self.log(f"Step {step} at time {timestamp}: cost = {cost_list[-1]}")
 
-        if self.checkpoint_file:
-            self.save_checkpoint(step, circ, cost_list)
+        if self.step % self.progress_interval == 0:
+            self.log(f"Step {self.step} at time {timestamp}: cost = {self.cost_list[-1]}")
+
+        if self.checkpoint_file and self.step % self.checkpoint_interval == 0:
+            self.save_checkpoint()
         
-        if np.abs(cost_list[-1] - cost_list[-2]) < self.stop_ratio * cost_list[-2]:
-            self.log(f"Plateau with cost {cost_list[-1]} at step {step}")
+        if np.abs(self.cost_list[-1] - self.cost_list[-2]) < self.stop_ratio * self.cost_list[-2]:
+            self.log(f"Plateau with cost {self.cost_list[-1]} at step {self.step}")
             return True
 
-        if step == self.max_iter - 1:
-            self.log(f"Max iterations reached with cost {cost_list[-1]}")
+        if self.step == self.max_iter - 1:
+            self.log(f"Max iterations reached with cost {self.cost_list[-1]}")
             return True
 
         return False

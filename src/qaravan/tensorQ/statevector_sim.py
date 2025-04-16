@@ -1,12 +1,9 @@
 from qaravan.core.base_sim import BaseSim
-from qaravan.core.utils import string_to_sv, pretty_print_sv, RunContext
-from qaravan.core.circuits import two_local_circ
+from qaravan.core.utils import string_to_sv, pretty_print_sv
 import numpy as np
 from ncon import ncon
 from scipy.sparse import csc_matrix
 import copy
-import sys
-import time
 
 class StatevectorSim(BaseSim):
     def __init__(self, circ, init_state=None):
@@ -133,122 +130,3 @@ def partial_overlap(sv1, sv2, local_dim=2, skip=None):
 
 def rdm_from_sv(sv, sites, local_dim=2):
     return partial_overlap(sv, sv, local_dim=local_dim, skip=sites) 
-
-def sv_environment(circ, left_sv, gate_idx): 
-    mat, indices = circ[gate_idx].matrix, circ[gate_idx].indices
-
-    circ1 = circ[:gate_idx]
-    circ2 = circ[gate_idx+1:]
-
-    sim1 = StatevectorSim(circ1, init_state=None)
-    sim2 = StatevectorSim(circ2.dag(), init_state=left_sv)
-
-    sv1 = sim1.run(progress_bar=None).reshape(2**circ.num_sites)
-    sv2 = sim2.run(progress_bar=None).reshape(2**circ.num_sites)
-
-    return partial_overlap(sv1, sv2, skip=indices), mat
-
-def cache_states(circ, left_sv): 
-    pre_states = []
-    post_states = []
-
-    for gate_idx in range(len(circ)):
-        circ1 = circ[:gate_idx]
-        circ2 = circ[gate_idx+1:]
-
-        sim1 = StatevectorSim(circ1, init_state=None)
-        sim2 = StatevectorSim(circ2.dag(), init_state=left_sv)
-
-        sv1 = sim1.run(progress_bar=None).reshape(2**circ.num_sites)
-        sv2 = sim2.run(progress_bar=None).reshape(2**circ.num_sites)
-
-        pre_states.append(sv1)
-        post_states.append(sv2)
-
-    return pre_states, post_states
-
-def environment_update(circ, gate_idx, pre_states, post_states, direction='right'):
-    indices = circ[gate_idx].indices
-    env = partial_overlap(pre_states[gate_idx], post_states[gate_idx], skip=indices)
-    x,s,yh = np.linalg.svd(env)
-    new_mat = yh.conj().T @ x.conj().T
-    circ.update_gate(gate_idx, new_mat)
-
-    if direction == 'right' and gate_idx + 1 < len(circ):
-        pre_states[gate_idx+1] = op_action(new_mat, indices, pre_states[gate_idx])
-    if direction == 'left' and gate_idx - 1 >= 0:
-        post_states[gate_idx-1] = op_action(new_mat.conj().T, indices, post_states[gate_idx])
-
-    return 1 - np.abs(np.trace(new_mat @ env)) 
-
-def environment_state_prep(target_sv, circ=None, skeleton=None, context=None):
-    """ uses environment tensors to optimize a circuit to prepare target_sv 
-    either circ, skeleton or context.resume_state must be provided """
-    context = RunContext() if context is None else context
-    
-    if context.resume: 
-        circ = context.opt_state['circ']
-        cost_list = context.opt_state['cost_list']
-        pre_states = context.opt_state['pre_states']
-        post_states = context.opt_state['post_states']
-    else:
-        if circ is None:
-            circ = two_local_circ(skeleton)
-        
-        sim = StatevectorSim(circ)
-        ansatz = sim.run(progress_bar=False).reshape(2**circ.num_sites)
-        cost_list = [1-np.abs(target_sv.conj().T @ ansatz)]
-        pre_states, post_states = cache_states(circ, target_sv)
-
-    for step in range(context.step, context.max_iter):
-        cost_list += [environment_update(circ, idx, pre_states, post_states, direction='right') for idx in range(len(circ)-1)]
-        cost_list += [environment_update(circ, idx, pre_states, post_states, direction='left') for idx in reversed(range(1,len(circ)))]
-        
-        opt_state = {'step': step, 'circ': circ, 'cost_list': cost_list, 'pre_states': pre_states, 'post_states': post_states}
-        if context.step_update(opt_state):
-            break
-
-    return circ, cost_list
-
-def environment_state_prep_simple(target_sv, circ=None, skeleton=None, context=None):
-    """Uses environment tensors to optimize a circuit to prepare target_sv.
-    Either `circ`, `skeleton`, or a checkpointed `context` must be provided."""
-    import warnings 
-    warnings.warn("This function is deprecated. Use `environment_state_prep` instead.")
-    context = RunContext() if context is None else context
-
-    if context.resume:
-        state = context.opt_state
-        circ = state['circ']
-        cost_list = state['cost_list']
-    else:
-        if circ is None:
-            if skeleton is None:
-                raise ValueError("Must provide either `circ`, `skeleton`, or use `resume=True` with a checkpoint.")
-            circ = two_local_circ(skeleton)
-
-        sim = StatevectorSim(circ)
-        ansatz = sim.run(progress_bar=False).reshape(2**circ.num_sites)
-        init_cost = np.abs(target_sv.conj().T @ ansatz)
-        cost_list = [init_cost]
-
-    for step in range(context.step, context.max_iter):
-        for idx in range(len(circ)):
-            env, _ = sv_environment(circ, target_sv, idx)
-            x, s, yh = np.linalg.svd(env)
-            new_mat = yh.conj().T @ x.conj().T
-            circ.update_gate(idx, new_mat)
-
-        new_cost = 1 - np.abs(np.trace(new_mat @ env))
-        cost_list.append(new_cost)
-
-        opt_state = {
-            'step': step,
-            'circ': circ,
-            'cost_list': cost_list
-        }
-
-        if context.step_update(opt_state):
-            break
-
-    return circ, cost_list

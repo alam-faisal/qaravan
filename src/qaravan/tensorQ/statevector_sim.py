@@ -76,7 +76,8 @@ def op_action(op, indices, sv, local_dim=2):
         op = op.reshape(*[local_dim]*2*len(indices))
     
     n = sv.ndim if sv.ndim > 1 else int(np.log(len(sv)) / np.log(local_dim))
-    state = copy.deepcopy(sv).reshape(*[local_dim]*n) if sv.ndim == 1 else copy.deepcopy(sv)
+    state = sv.reshape(*[local_dim]*n) if sv.ndim == 1 else sv
+    #state = copy.deepcopy(sv).reshape(*[local_dim]*n) if sv.ndim == 1 else copy.deepcopy(sv)
     
     # locs_to_indices assumes ascending order for indices, so sort them first and transpose the operator accordingly
     sorted_indices = sorted(indices)
@@ -106,7 +107,7 @@ def partial_overlap(sv1, sv2, local_dim=2, skip=None):
     sites = sorted(skip) if skip is not None else []
     
     psi = sv1.reshape([local_dim] * system_size)
-    phi_conj = np.conj(sv2).reshape([local_dim] * system_size)
+    phi_conj = sv2.reshape([local_dim] * system_size).conj()
 
     psi_labels = [0] * system_size
     phi_conj_labels = [0] * system_size

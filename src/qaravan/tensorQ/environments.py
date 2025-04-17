@@ -18,34 +18,28 @@ def sv_environment(circ, left_sv, gate_idx):
 
     return partial_overlap(sv1, sv2, skip=indices), mat
 
-def cache_states(circ, left_sv):
-    pre_states = [all_zero_sv(circ.num_sites, dense=True)]  
-    state = pre_states[0]
-    for gate in tqdm(circ.gate_list, desc='Pre states'):
-        state = op_action(gate.matrix, gate.indices, state)
-        pre_states.append(state)
-
-    post_states = [left_sv]
-    state = left_sv
-    for gate in tqdm(reversed(circ.gate_list), desc='Post states'):
-        state = op_action(gate.matrix.conj().T, gate.indices, state)
-        post_states.append(state)
-    post_states = list(reversed(post_states))
-    return pre_states[:-1], post_states[1:]
-
-def environment_update(circ, gate_idx, pre_states, post_states, direction='right'):
+def environment_update(circ, gate_idx, pre_state, post_state, target_sv, init_sv, direction='decreasing'): 
     indices = circ[gate_idx].indices
-    env = partial_overlap(pre_states[gate_idx], post_states[gate_idx], skip=indices)
+    env = partial_overlap(pre_state, post_state, skip=indices)
     x,s,yh = np.linalg.svd(env)
     new_mat = yh.conj().T @ x.conj().T
     circ.update_gate(gate_idx, new_mat)
 
-    if direction == 'right' and gate_idx + 1 < len(circ):
-        pre_states[gate_idx+1] = op_action(new_mat, indices, pre_states[gate_idx])
-    if direction == 'left' and gate_idx - 1 >= 0:
-        post_states[gate_idx-1] = op_action(new_mat.conj().T, indices, post_states[gate_idx])
+    if direction == 'decreasing': 
+        if gate_idx == 1: 
+            pre_state = init_sv 
+        else:
+            pre_state = op_action(circ[gate_idx-1].matrix.conj().T, circ[gate_idx-1].indices, pre_state)   # undo the next gate        
+        post_state = op_action(new_mat.conj().T, indices, post_state)
 
-    return 1 - np.abs(np.trace(new_mat @ env)) 
+    else: 
+        pre_state = op_action(new_mat, indices, pre_state)        
+        if gate_idx == len(circ)-2: 
+            post_state = target_sv
+        else:
+            post_state = op_action(circ[gate_idx+1].matrix, circ[gate_idx+1].indices, post_state)   # undo the next gate
+
+    return 1 - np.abs(np.trace(new_mat @ env)), pre_state, post_state
 
 def environment_state_prep(target_sv, circ=None, skeleton=None, context=None, quiet=True):
     """ uses environment tensors to optimize a circuit to prepare target_sv 
@@ -55,8 +49,8 @@ def environment_state_prep(target_sv, circ=None, skeleton=None, context=None, qu
     if context.resume: 
         circ = context.opt_state['circ']
         cost_list = context.opt_state['cost_list']
-        pre_states = context.opt_state['pre_states']
-        post_states = context.opt_state['post_states']
+        pre_state = context.opt_state['pre_state']
+        post_state = context.opt_state['post_state']
     else:
         if circ is None:
             circ = two_local_circ(skeleton)
@@ -64,15 +58,24 @@ def environment_state_prep(target_sv, circ=None, skeleton=None, context=None, qu
         sim = StatevectorSim(circ)
         ansatz = sim.run(progress_bar=False).reshape(2**circ.num_sites)
         cost_list = [1-np.abs(target_sv.conj().T @ ansatz)]
-        pre_states, post_states = cache_states(circ, target_sv)
 
+        pre_state = op_action(circ[-1].matrix.conj().T, circ[-1].indices, ansatz)   # undo the last gate 
+        post_state = target_sv
+
+    init_sv = all_zero_sv(circ.num_sites, dense=True)
     for step in range(context.step, context.max_iter):
-        right_sweep = tqdm(range(len(circ)-1), disable=quiet)
-        left_sweep = tqdm(reversed(range(1,len(circ))), disable=quiet)
-        cost_list += [environment_update(circ, idx, pre_states, post_states, direction='right') for idx in right_sweep]
-        cost_list += [environment_update(circ, idx, pre_states, post_states, direction='left') for idx in left_sweep]
+        left_sweep = tqdm(reversed(range(1,len(circ))), disable=quiet, desc='Left sweep')
+        right_sweep = tqdm(range(len(circ)-1), disable=quiet, desc='Right sweep')
+
+        for i in left_sweep: 
+            cost, pre_state, post_state = environment_update(circ, i, pre_state, post_state, target_sv, init_sv, direction='decreasing')
+            cost_list.append(cost)
+
+        for i in right_sweep:
+            cost, pre_state, post_state = environment_update(circ, i, pre_state, post_state, target_sv, init_sv, direction='increasing')
+            cost_list.append(cost)
         
-        opt_state = {'step': step, 'circ': circ, 'cost_list': cost_list, 'pre_states': pre_states, 'post_states': post_states}
+        opt_state = {'step': step, 'circ': circ, 'cost_list': cost_list, 'pre_state': pre_state, 'post_state': post_state}
         if context.step_update(opt_state):
             break
 

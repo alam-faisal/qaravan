@@ -125,28 +125,33 @@ def vN_entropy(dm):
     evals = np.linalg.eigvals(dm)
     return sum([-e*np.log(e) for e in evals if e > 0])
 
-#=========== optimizer metadata ===========#
+#=========== iterative runs metadata ===========#
 
 import sys, os, pickle, datetime
 class RunContext:
     def __init__(self,
                  progress_interval=10,
                  max_iter=1000,
-                 stop_ratio=1e-6,
                  checkpoint_file=None,
                  checkpoint_interval=50,
-                 resume=False):
-        
+                 resume=False,
+                 convergence_check=False, 
+                 stop_ratio=1e-6): 
+
         self.progress_interval = progress_interval
         self.max_iter = max_iter
-        self.stop_ratio = stop_ratio
         self.checkpoint_file = checkpoint_file
         self.checkpoint_interval = checkpoint_interval
         self.resume = resume
 
-        self.opt_state, self.step, self.cost_list = None, 0, []
-        if resume and checkpoint_file: 
-            self.load_checkpoint()            
+        self.convergence_check = convergence_check
+        self.stop_ratio = stop_ratio
+
+        self.run_state = None
+        self.step = 0
+
+        if resume and checkpoint_file:
+            self.load_checkpoint()
 
     def log(self, msg):
         print(msg)
@@ -155,39 +160,45 @@ class RunContext:
     def save_checkpoint(self):
         if self.checkpoint_file:
             with open(self.checkpoint_file, 'wb') as f:
-                pickle.dump(self.opt_state, f)
-            
+                pickle.dump(self.run_state, f)
             self.log(f"[Checkpoint saved at step {self.step}]")
 
     def load_checkpoint(self):
         if os.path.exists(self.checkpoint_file):
             with open(self.checkpoint_file, 'rb') as f:
-                self.opt_state = pickle.load(f)
-                self.step = self.opt_state['step']
-                self.cost_list = self.opt_state['cost_list']
-
+                self.run_state = pickle.load(f)
+                if isinstance(self.run_state, dict):
+                    self.step = self.run_state.get('step', 0)
             self.log(f"[Resuming from checkpoint: step {self.step}]")
-            return self.opt_state
-        return None
-    
-    def step_update(self, opt_state):
-        """ handles logging, checkpointing, convergence. returns True if the run should break."""
-        self.opt_state = opt_state
-        self.step, self.cost_list = opt_state['step'], opt_state['cost_list']
-        timestamp = datetime.datetime.now().isoformat(timespec='seconds')
 
+    def step_update(self, run_state):
+        self.run_state = run_state
+        self.step = run_state.get('step', self.step)
+
+        timestamp = datetime.datetime.now().isoformat(timespec='seconds')
         if self.step % self.progress_interval == 0:
-            self.log(f"Step {self.step} at time {timestamp}: cost = {self.cost_list[-1]}")
+            self.log(f"Step {self.step} at {timestamp}")
 
         if self.checkpoint_file and self.step % self.checkpoint_interval == 0:
             self.save_checkpoint()
-        
-        if np.abs(self.cost_list[-1] - self.cost_list[-2]) < self.stop_ratio * self.cost_list[-2]:
-            self.log(f"Plateau with cost {self.cost_list[-1]} at step {self.step}")
-            return True
 
-        if self.step == self.max_iter - 1:
-            self.log(f"Max iterations reached with cost {self.cost_list[-1]}")
+        if self.convergence_check:
+            return self.check_convergence()
+        
+        if self.step >= self.max_iter:
+            self.log(f"Max iterations reached.")
+            return True
+        return False
+
+    def check_convergence(self):
+        cost_list = self.run_state.get('cost_list')
+        if len(cost_list) < 2:
+            return False
+            
+        delta = np.abs(cost_list[-1] - cost_list[-2])
+        threshold = self.stop_ratio * np.abs(cost_list[-2])
+        if delta < threshold:
+            self.log(f"Plateau detected with cost {cost_list[-1]} at step {self.step}")
             return True
 
         return False

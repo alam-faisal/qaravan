@@ -41,28 +41,28 @@ def environment_update(circ, gate_idx, pre_state, post_state, target_sv, init_sv
 
     return 1 - np.abs(np.trace(new_mat @ env)), pre_state, post_state
 
-def environment_state_prep(target_sv, circ=None, skeleton=None, context=None, quiet=True):
+def environment_state_prep(target_sv, init_sv=None, circ=None, skeleton=None, context=None, quiet=True):
     """ uses environment tensors to optimize a circuit to prepare target_sv 
     either circ, skeleton or context.resume_state must be provided """
     context = RunContext() if context is None else context
     
     if context.resume: 
-        circ = context.opt_state['circ']
-        cost_list = context.opt_state['cost_list']
-        pre_state = context.opt_state['pre_state']
-        post_state = context.opt_state['post_state']
+        circ = context.run_state['circ']
+        cost_list = context.run_state['cost_list']
+        pre_state = context.run_state['pre_state']
+        post_state = context.run_state['post_state']
     else:
         if circ is None:
             circ = two_local_circ(skeleton)
         
-        sim = StatevectorSim(circ)
+        sim = StatevectorSim(circ, init_state=init_sv)
         ansatz = sim.run(progress_bar=False).reshape(2**circ.num_sites)
         cost_list = [1-np.abs(target_sv.conj().T @ ansatz)]
 
         pre_state = op_action(circ[-1].matrix.conj().T, circ[-1].indices, ansatz)   # undo the last gate 
         post_state = target_sv
 
-    init_sv = all_zero_sv(circ.num_sites, dense=True)
+    init_sv = all_zero_sv(circ.num_sites, dense=True) if init_sv is None else init_sv
     for step in range(context.step, context.max_iter):
         left_sweep = tqdm(reversed(range(1,len(circ))), disable=quiet, desc='Left sweep')
         right_sweep = tqdm(range(len(circ)-1), disable=quiet, desc='Right sweep')
@@ -75,8 +75,8 @@ def environment_state_prep(target_sv, circ=None, skeleton=None, context=None, qu
             cost, pre_state, post_state = environment_update(circ, i, pre_state, post_state, target_sv, init_sv, direction='increasing')
             cost_list.append(cost)
         
-        opt_state = {'step': step, 'circ': circ, 'cost_list': cost_list, 'pre_state': pre_state, 'post_state': post_state}
-        if context.step_update(opt_state):
+        run_state = {'step': step, 'circ': circ, 'cost_list': cost_list, 'pre_state': pre_state, 'post_state': post_state}
+        if context.step_update(run_state):
             break
 
     return circ, cost_list

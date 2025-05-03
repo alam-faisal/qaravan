@@ -1,41 +1,41 @@
 from qaravan.core.base_sim import BaseSim
 from qaravan.core.utils import string_to_sv, pretty_print_sv
 import numpy as np
-from ncon import ncon
+import torch 
+from ncon_torch import ncon, permute
 from scipy.sparse import csc_matrix
 import copy
 
 class StatevectorSim(BaseSim):
-    def __init__(self, circ, init_state=None):
+    def __init__(self, circ, init_state=None, device="cpu"):
         super().__init__(circ, init_state=init_state, nm=None)    
+        self.device = device
 
     def initialize_state(self):
         """ 
         internal state is a rank-n tensor with local dimension inherited from the circuit 
         init_state can be provided either as a tensor, a statevector or a bitstring
         """
-        if self.init_state is None: 
-            sv = np.zeros(self.local_dim**self.num_sites)
+        shape = [self.local_dim] * self.num_sites
+
+        if self.init_state is None:
+            sv = np.zeros(self.local_dim**self.num_sites, dtype=np.complex128)
             sv[0] = 1.0
-            self.state = sv.reshape([self.local_dim]*self.num_sites)
-        
-        elif type(self.init_state) == np.ndarray:
-            if len(self.init_state.shape) == 1:
-                self.state = self.init_state.reshape([self.local_dim]*self.num_sites) 
-            elif len(self.init_state.shape) == self.num_sites:
-                self.state = self.init_state
-            else:
-                raise ValueError("init_state must be a rank-1 tensor or a rank-n tensor.")
-
-        elif type(self.init_state) == str: 
+        elif isinstance(self.init_state, np.ndarray):
+            sv = self.init_state
+        elif isinstance(self.init_state, str):
             sv = string_to_sv(self.init_state, self.circ.local_dim)
-            self.state = sv.reshape([self.local_dim]*self.num_sites)
-
         else:
-            raise ValueError("init_state must be either a numpy array or a bitstring.") 
+            raise ValueError("init_state must be a NumPy array or a bitstring")
+
+        sv = sv.reshape(shape)
+        if self.device == "cuda":
+            sv = torch.tensor(sv, dtype=torch.complex128, device="cuda")
+        self.state = sv
         
     def apply_gate(self, gate):
-        self.state = op_action(gate.matrix, gate.indices, self.state, local_dim=self.local_dim)
+        mat = torch.tensor(gate.matrix, dtype=torch.complex128, device="cuda") if self.device == "cuda" else gate.matrix
+        self.state = op_action(mat, gate.indices, self.state, local_dim=self.local_dim)
 
     def measure(self, meas_sites):
         raise NotImplementedError("Measurement not yet implemented for statevector simulator.")
@@ -45,9 +45,10 @@ class StatevectorSim(BaseSim):
         self.run(progress_bar=False)
         right_state = copy.deepcopy(self.state)
         for i in range(self.num_sites):
+            op = torch.tensor(local_ops[i], dtype=torch.complex128, device=self.device) if self.device == "cuda" else local_ops[i]
             state_indices = [-(j+1) for j in range(self.num_sites)] 
             state_indices[i] = 1
-            right_state = ncon((local_ops[i], right_state), ([-(i+1),1], state_indices))
+            right_state = ncon((op, right_state), ([-(i+1),1], state_indices))
 
         return ncon((self.state.conj(), right_state), ([i for i in range(1, self.num_sites+1)], [i for i in range(1, self.num_sites+1)])).real
 
@@ -83,7 +84,7 @@ def op_action(op, indices, sv, local_dim=2):
     sorted_indices = sorted(indices)
     sort_order = [indices.index(i) for i in sorted_indices]
     perm = sort_order + [i + len(indices) for i in sort_order]  
-    op = op.transpose(perm)
+    op = permute(op, perm)
 
     gate_indices, state_indices = locs_to_indices(sorted_indices, n)
     new_sv = ncon((op, state), (gate_indices, state_indices))

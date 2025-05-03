@@ -46,7 +46,9 @@ class DensityMatrixSim(BaseSim):
         """ should just use local_expectation """
         raise NotImplementedError("Measurement not yet implemented for density matrix simulator.")
     
+    # TODO: allo local_ops to have span greater than 1
     def local_expectation(self, local_ops):
+        """ local_ops is a list of local operators, one for each site """
         self.run(progress_bar=False)
         for i in range(self.num_sites):
             state_indices = [-(j+1) for j in range(2*self.num_sites)] 

@@ -1,4 +1,4 @@
-from ncon import *
+from ncon_torch import ncon
 import numpy as np
 import copy
 from scipy.linalg import svd, block_diag

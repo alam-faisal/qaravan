@@ -1,3 +1,4 @@
+import string
 import numpy as np
 from .gates import *
 from .paulis import pauli_commute, pauli_mapping, pauli_multiply, pauli_strings, random_pauli_string
@@ -156,12 +157,43 @@ class PauliNoise(Noise):
     def __str__(self): 
         noise_dict = {str(s): np.around(p, 3) for s, p in zip(self.strings, self.probs)}
         return str(noise_dict)
+    
+class PauliLindbladNoise(Noise): 
+    def __init__(self, strings, lindblad_coefficients):
+        self.strings = strings
+        self.lindblad_coefficients = lindblad_coefficients
+        self.rates = [0.5*(1-np.exp(-2*lam)) for lam in lindblad_coefficients]
+        self.num_sites = len(strings[0])
+        self.local_dim = 2
+        self.superop = self.make_superop()
+
+    def get_kraus_for_string(self, i): 
+        # note id_mat and error_mat can be complex
+        id_mat = np.emath.sqrt(1-self.rates[i]) * np.eye(2**self.num_sites)  
+        s = self.strings[i]
+        error_mat = np.emath.sqrt(self.rates[i]) * embed_operator(len(s), [i for i in range(len(s))], [pauli_mapping[op] for op in s], dense=True)
+        return [id_mat, error_mat]
+    
+    def get_superop_for_string(self, i): 
+        kraus_list = self.get_kraus_for_string(i)
+        return sum([np.kron(k.conj(), k) for k in kraus_list])            
+    
+    def make_superop(self): 
+        superop_list = [self.get_superop_for_string(i) for i in range(len(self.strings))]
+        return np.linalg.multi_dot(superop_list) if len(superop_list) > 1 else superop_list[0]
+    
+    def get_superop(self):
+        return self.superop
 
 def gate_time(gate, nm):   
     if gate.name[0:4] == "CNOT": 
         return nm.two_site_time
-    elif gate.name[0:2] in ["RZ", "CU", "SW"]:
+    elif gate.name[0:2] == "RZ":
         return 0.0
+    elif gate.name[0:2] == "SW":
+        return 0.0
+    elif gate.name[0:2] in ["CU"]: 
+        return 2*nm.two_site_time
     else: 
         return nm.one_site_time
     
@@ -170,3 +202,5 @@ def random_pauli_channel(n,n_strings=5,c=0.1):
     probs = [1,] + [c*np.random.rand() for _ in range(n_strings-1)] 
     probs /= np.sum(probs)
     return PauliNoise(strings, probs)
+
+

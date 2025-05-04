@@ -10,7 +10,7 @@ class StatevectorSim(BaseSim):
     def __init__(self, circ, init_state=None, backend="numpy", device="cpu"):
         super().__init__(circ, init_state=init_state, nm=None)    
         self.backend = backend
-        self.device = device
+        self.device = torch.device(device)
 
     def to_backend(self, array):
         if self.backend == "torch":
@@ -44,7 +44,7 @@ class StatevectorSim(BaseSim):
         self.state = self.to_backend(sv)
         
     def apply_gate(self, gate):
-        mat = torch.tensor(gate.matrix, dtype=torch.complex128, device="cuda") if self.device == "cuda" else gate.matrix
+        mat = self.to_backend(gate.matrix)
         self.state = op_action(mat, gate.indices, self.state, local_dim=self.local_dim)
 
     def measure(self, meas_sites):
@@ -55,7 +55,7 @@ class StatevectorSim(BaseSim):
         self.run(progress_bar=False)
         right_state = copy.deepcopy(self.state)
         for i in range(self.num_sites):
-            op = torch.tensor(local_ops[i], dtype=torch.complex128, device=self.device) if self.device == "cuda" else local_ops[i]
+            op = self.to_backend(local_ops[i])
             state_indices = [-(j+1) for j in range(self.num_sites)] 
             state_indices[i] = 1
             right_state = ncon((op, right_state), ([-(i+1),1], state_indices))

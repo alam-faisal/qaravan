@@ -2,13 +2,9 @@ name: Run Tests
 
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
   pull_request:
-    branches:
-      - main
-      - master
+    branches: [main, master]
 
 jobs:
   test:
@@ -28,7 +24,14 @@ jobs:
         pip install pytest pytest-cov
 
     - name: Run tests with coverage
-      run: pytest --cov=qaravan tests/
+      run: |
+        pytest --cov=qaravan tests/
+        coverage xml
+
+    - name: Check for coverage.xml
+      run: ls -l coverage.xml
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
+      with:
+        verbose: true

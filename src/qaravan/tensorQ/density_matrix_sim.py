@@ -3,7 +3,7 @@ from qaravan.core.utils import string_to_sv, pretty_print_dm
 from qaravan.core.gates import SuperOp
 
 import numpy as np
-from ncon import ncon
+from ncon_torch import ncon
 import copy
 
 class DensityMatrixSim(BaseSim):

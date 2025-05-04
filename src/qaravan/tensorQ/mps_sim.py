@@ -2,7 +2,7 @@ from calendar import c
 from qaravan.core import BaseSim, pretty_print_sv
 from qaravan.tensorQ import MPS, all_zero_mps, string_to_mps, contract_sites, decimate
 import numpy as np
-from ncon import ncon
+from ncon_torch import ncon
 
 class MPSSim(BaseSim):
     def __init__(self, circ, init_state=None):

@@ -1,5 +1,6 @@
 from .noise import *
 from .gates import *
+from .param_gates import *
 from .paulis import *
 from .utils import *
 from .base_sim import *

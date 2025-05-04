@@ -1,9 +1,9 @@
 import numpy as np
 import copy 
-from scipy.linalg import block_diag, expm 
+from scipy.linalg import block_diag
 import scipy.sparse as sp
 from functools import reduce
-from .paulis import pauli_X, pauli_Y, pauli_Z, pauli_mapping
+from .paulis import pauli_mapping
 
 def embed_operator(num_sites, active_sites, local_ops, local_dim=2, dense=False, factor=False):
     # only works if Pauli string is provided 
@@ -97,7 +97,7 @@ class ID(Gate):
 # applies subgate when control wire is at 1 and applies identity otherwise
 
 class CUGate(Gate):
-    def __init__(self, indices, subgate, n):
+    def __init__(self, indices, subgate):
         d = subgate.get_local_dim()
         submat = subgate.matrix
         s = submat.shape[0]
@@ -147,6 +147,7 @@ class CNOTGate(Gate):
                 indices = indices[::-1]
                 mat = matrix.reshape(d,d,d,d).transpose(1,0,3,2).reshape(d*d,d*d)
                 bottom_heavy = True
+
         else: # nearest neighbor gate 
             if indices[0] < indices[1]: 
                 indices = indices
@@ -164,33 +165,7 @@ class CNOTGate(Gate):
     def __str__(self):
         title = "bottom heavy" if self.bottom_heavy else "top heavy"
         return f"{title} {self.name} gate on site(s) {self.indices}"
-    
-class ParamGate(Gate):
-    def __init__(self, name, indices, *args): 
-        super().__init__(name, indices, None) 
         
-        if type(args[0]) == np.ndarray: 
-            mat = args[0]
-            self.update_matrix(mat)
-            self.angles = self.solve_angles()
-        
-        else:
-            self.angles = [args] if type(args) == float else args
-            mat = self.construct_matrix()
-            self.update_matrix(mat)
-            
-    def __str__(self):
-        return f"{self.name} gate on site(s) {self.indices} with angle(s) {self.angles}"
-
-    def update_matrix(self, mat): 
-        self.matrix = mat
-        
-    def construct_matrix(self): 
-        raise NotImplementedError("Subclasses must implement this method")
-        
-    def solve_angles(self): 
-        return "unsolved" # if subclass doesn't bother implementing we probably don't need angles
-    
 ########################################
 ############ QUBIT GATES ###############
 ########################################
@@ -224,94 +199,6 @@ def SWAP(indices): return Gate("SWAP", indices,
 
 def iSWAP(indices): return Gate("iSWAP", indices,
                                 np.array([[1,0,0,0],[0,0,1j,0],[0,1j,0,0],[0,0,0,1]]))
-
-class RZ(ParamGate): 
-    def __init__(self, indices, *args):
-        super().__init__("RZ", indices, *args)
-    
-    def construct_matrix(self): 
-        return np.array([[1,0],[0,np.exp(1.j*self.angles[0])]])
-    
-class RZZ(ParamGate):
-    def __init__(self, indices, *args):
-        super().__init__("RZZ", indices, *args)
-    
-    def construct_matrix(self): 
-        return expm(-1.j*self.angles[0] * embed_operator(2, [0,1], [pauli_Z, pauli_Z], dense=True))
-    
-class CPhase(ParamGate):
-    def __init__(self, indices, *args):
-        super().__init__("CPhase", indices, *args)
-    
-    def construct_matrix(self): 
-        return np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,np.exp(1.j*self.angles[0])]])
-    
-    def solve_angles(self): 
-        theta = np.angle(self.matrix[3,3])
-        return (theta,)
-
-class U(ParamGate):
-    def __init__(self, indices, *args):
-        super().__init__("U", indices, *args)
-    
-    def construct_matrix(self): 
-        t,p,l = self.angles
-        return np.array([[np.cos(t/2), -np.exp(1j*l)*np.sin(t/2)],
-                           [np.exp(1j*p)*np.sin(t/2), np.exp(1j*(p+l))*np.cos(t/2)]])
-    
-    def solve_angles(self): 
-        phase = np.angle(self.matrix[0,0]) 
-        self.matrix = self.matrix / np.exp(1.j*phase) # removes phase for top left entry
-        t = np.arccos(self.matrix[0,0])*2
-        if np.abs(np.sin(t/2)) > 1e-12:
-            l = np.angle(-self.matrix[0,1]/np.sin(t/2))
-            p = np.angle(self.matrix[1,1]/self.matrix[0,0])-l
-        else: 
-            l_plus_p = np.angle(self.matrix[1,1])
-            l,p = l_plus_p/2, l_plus_p/2
-        
-        return t,p,l        
-        
-    def decompose(self, basis='ZSX'): 
-        if basis == 'ZSX': 
-            t,p,l = self.solve_angles()#self.angles
-            i = self.indices
-            
-            return list(reversed([
-                RZ(i,p+np.pi),
-                SX(i),
-                RZ(i,t+np.pi),
-                SX(i), 
-                RZ(i,l)
-            ]))   # If A = BC, we must apply C first and then B
-            
-        else: 
-            raise NotImplementedError(f"{basis} basis decomposition has not been implemented")
-
-class Givens(ParamGate):
-    def __init__(self, indices, *args):
-        super().__init__("Givens", indices, *args)
-    
-    def construct_matrix(self): 
-        theta = self.angles[0]
-        return np.array([[1,0,0,0],
-                     [0, np.cos(theta/2), -np.sin(theta/2), 0], 
-                     [0, np.sin(theta/2), np.cos(theta/2), 0], 
-                     [0,0,0,1]])
-     
-    def solve_angles(self): 
-        theta = np.arccos(self.matrix[1,1])*2
-        return (theta,)
-
-class XYCoupling(ParamGate):
-    def __init__(self, indices, *args):
-        super().__init__("XYCoupling", indices, *args)
-    
-    def construct_matrix(self): 
-        theta = self.angles[0]
-        xx = embed_operator(2, [0,1], [pauli_X, pauli_X], dense=True)
-        yy = embed_operator(2, [0,1], [pauli_Y, pauli_Y], dense=True)
-        return expm(-1.j*theta * (xx + yy))
 
 #########################################
 ############# QUTRIT GATES ##############
@@ -364,62 +251,11 @@ def SWAP3(indices): return Gate("SWAP3", indices,
                                        [0., 0., 0., 0., 0., 1., 0., 0, 0.],
                                        [0., 0., 0., 0., 0., 0., 0., 0., 1.]]))
 
-class RZ01(ParamGate): 
-    def __init__(self, indices, *args):
-        super().__init__("RZ01", indices, *args)
-    
-    def construct_matrix(self): 
-        return np.array([[1,0,0],[0,np.exp(1.j*self.angles[0]),0],[0,0,1]])
-    
-class RZ12(ParamGate): 
-    def __init__(self, indices, *args):
-        super().__init__("RZ12", indices, *args)
-    
-    def construct_matrix(self): 
-        return np.array([[1,0,0],[0,1,0],[0,0,np.exp(1.j*self.angles[0])]])
-
-class U01(ParamGate):
-    def __init__(self, indices, *args):
-        super().__init__("U01", indices, *args)
-    
-    def construct_matrix(self): 
-        t,p,l = self.angles
-        return np.array([[np.cos(t/2), -np.exp(1j*l)*np.sin(t/2), 0],
-                           [np.exp(1j*p)*np.sin(t/2), np.exp(1j*(p+l))*np.cos(t/2), 0],
-                           [0, 0, 1]])
-    
-    def solve_angles(self): 
-        return None # TODO implement solver 
-    
-    def decompose(self, basis='ZSX'): 
-        if basis == 'ZSX': 
-            t,p,l = self.angles
-            i = self.indices
-            return list(reversed([
-                RZ01(i,p+np.pi),
-                SX01(i),
-                RZ01(i,t+np.pi),
-                SX01(i), 
-                RZ01(i,l)
-            ]))
-        else: 
-            raise NotImplementedError(f"{basis} basis decomposition has not been implemented")
-
 def random_unitary(size):
     a = np.random.rand(size, size) + 1.j * np.random.rand(size, size)
     h = a @ a.conj().T
     _, u = np.linalg.eigh(h)
     return u
-
-def kak_unitary(params): 
-    left_mat = np.kron(U(0, *params[0:3]).matrix, U(0, *params[3:6]).matrix)
-    right_mat = np.kron(U(0, *params[9:12]).matrix, U(0, *params[12:15]).matrix)
-    
-    xx, yy, zz = np.kron(pauli_X, pauli_X), np.kron(pauli_Y, pauli_Y), np.kron(pauli_Z, pauli_Z)
-    arg = sum([p*P for p,P in zip(params[6:], [xx, yy, zz])])
-    center_mat = expm(1.j* arg)
-    
-    return left_mat @ center_mat @ right_mat
 
 def is_unitary(u):
     return np.allclose(u @ u.conj().T, np.eye(u.shape[0]), atol=1e-10) and np.allclose(u.conj().T @ u, np.eye(u.shape[0]), atol=1e-10)

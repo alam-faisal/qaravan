@@ -1,4 +1,5 @@
-from .gates import ID, SuperOp, random_unitary, kak_unitary, Gate
+from .gates import ID, SuperOp, random_unitary, Gate
+from .param_gates import kak_unitary
 from .noise import gate_time, ThermalNoise
 import numpy as np
 import copy
@@ -81,8 +82,18 @@ class Circuit:
         
         self.layers = layers
         
-    def build(self, nm=None): 
-        """ note that this returns a new circuit instance built with provided noise model
+    def build(self, nm=None):
+        """ this changes the current circuit instance and returns it """
+        if not self.built:
+            self.decompose()
+            self.construct_layers()
+            if nm is not None: 
+                self.add_noise(nm)
+            self.built = True
+        return self
+    
+    def old_build(self, nm=None): 
+        """ DEPRECATED: note that this returns a new circuit instance built with provided noise model
         and leaves the current circuit instance unchanged """
         new_circ = copy.deepcopy(self)
         new_circ.decompose()
@@ -167,9 +178,15 @@ def shift_gate_list(circ, start_site):
         for gate in circ.gate_list
     ]
 
-def two_local_circ(skeleton, mag=None):
+def two_local_circ(skeleton, params=None, mag=None):
     gate_list = []
-    for indices in skeleton:
-        mat = random_unitary(4) if mag is None else kak_unitary(np.random.rand(15) * mag)
+    for i,indices in enumerate(skeleton):
+        if mag is None and params is None:
+            mat = random_unitary(4)
+        elif params is not None:
+            mat = kak_unitary(params[15*i:15*(i+1)])
+        else:
+            mat = kak_unitary(np.random.rand(15) * mag)
+
         gate_list.append(Gate("rand_U", indices, mat))
     return Circuit(gate_list)

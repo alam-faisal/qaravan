@@ -1,7 +1,9 @@
 from .utils import *
-from .gates import U, CNOT, U01, CNOT3, RZ, RZZ, embed_operator, expm, Gate
+from .gates import CNOT, CNOT3, embed_operator, Gate
+from .param_gates import U, U01, RZ
 from .paulis import pauli_Z
 from .circuits import Circuit
+from scipy.linalg import expm
 from itertools import product, combinations
 from scipy.optimize import minimize
 from tqdm import tqdm

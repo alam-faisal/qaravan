@@ -7,31 +7,41 @@ from scipy.sparse import csc_matrix
 import copy
 
 class StatevectorSim(BaseSim):
-    def __init__(self, circ, init_state=None, device="cpu"):
+    def __init__(self, circ, init_state=None, backend="numpy", device="cpu"):
         super().__init__(circ, init_state=init_state, nm=None)    
+        self.backend = backend
         self.device = device
 
+    def to_backend(self, array):
+        if self.backend == "torch":
+            if torch.is_tensor(array):
+                return array.to(dtype=torch.complex128, device=self.device)
+            else:
+                return torch.tensor(array, dtype=torch.complex128, device=self.device)
+        else:
+            if isinstance(array, np.ndarray):
+                return array
+            else:
+                return array.detach().cpu().numpy()
+            
     def initialize_state(self):
         """ 
         internal state is a rank-n tensor with local dimension inherited from the circuit 
         init_state can be provided either as a tensor, a statevector or a bitstring
         """
         shape = [self.local_dim] * self.num_sites
-
         if self.init_state is None:
             sv = np.zeros(self.local_dim**self.num_sites, dtype=np.complex128)
             sv[0] = 1.0
-        elif isinstance(self.init_state, np.ndarray):
-            sv = self.init_state
         elif isinstance(self.init_state, str):
             sv = string_to_sv(self.init_state, self.circ.local_dim)
+        elif isinstance(self.init_state, (np.ndarray, torch.Tensor)):
+            sv = self.init_state
         else:
-            raise ValueError("init_state must be a NumPy array or a bitstring")
+            raise ValueError("init_state must be a NumPy array, Torch tensor, or a bitstring")
 
         sv = sv.reshape(shape)
-        if self.device == "cuda":
-            sv = torch.tensor(sv, dtype=torch.complex128, device="cuda")
-        self.state = sv
+        self.state = self.to_backend(sv)
         
     def apply_gate(self, gate):
         mat = torch.tensor(gate.matrix, dtype=torch.complex128, device="cuda") if self.device == "cuda" else gate.matrix
@@ -90,7 +100,7 @@ def op_action(op, indices, sv, local_dim=2):
     new_sv = ncon((op, state), (gate_indices, state_indices))
     return new_sv.reshape(local_dim**n) if sv.ndim == 1 else new_sv
 
-def all_zero_sv(num_sites, local_dim=2, dense=False):
+def all_zero_sv(num_sites, local_dim=2, dense=False, backend="numpy"):    
     if dense: 
         sv = np.zeros(local_dim**num_sites)
         sv[0] = 1.0

@@ -25,7 +25,7 @@ def test_construct_unitary():
     in_strings = ['00', '01', '10']
     local_dim = 2
 
-    unitary = random_unitary(local_dim)
+    unitary = random_unitary(local_dim**2)
     out_states = [unitary @ string_to_sv(in_str, local_dim) for in_str in in_strings]
     Q = construct_unitary(in_strings, out_states, local_dim)
 

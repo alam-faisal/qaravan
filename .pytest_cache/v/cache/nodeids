@@ -1,5 +1,8 @@
 [
-  "test.py::test_construct_unitary",
-  "test.py::test_contract_and_decimate",
-  "test.py::test_statevector_sim"
+  "run_tests.py::test_construct_unitary",
+  "run_tests.py::test_contract_and_decimate",
+  "run_tests.py::test_statevector_sim",
+  "tests/test_core.py::test_construct_unitary",
+  "tests/test_core.py::test_contract_and_decimate",
+  "tests/test_core.py::test_statevector_sim"
 ]

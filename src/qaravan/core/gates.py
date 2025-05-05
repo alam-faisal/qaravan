@@ -186,9 +186,9 @@ def SDG(indices): return Gate("SDG",
                               indices, 
                               np.array([[1,0],[0,-1j]]))
 
-def CNOT(indices, n): return CNOTGate(indices, 
+def CNOT(indices, n=1000): return CNOTGate(indices, 
                                       np.array([[1,0,0,0],[0,0,0,1],[0,0,1,0],[0,1,0,0]]), 
-                                      n)  
+                                      n=n)  
 
 def CZ(indices): return Gate("CZ", 
                              indices, 

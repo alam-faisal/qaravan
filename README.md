@@ -2,9 +2,7 @@
 
 ![PyPI version](https://img.shields.io/pypi/v/qaravan)
 [![Tests](https://github.com/alam-faisal/qaravan/actions/workflows/tests.yml/badge.svg)](https://github.com/alam-faisal/qaravan/actions/workflows/tests.yml)
-[![codecov](https://codecov.io/gh/alam-faisal/qaravan/branch/main/graph/badge.svg)](https://codecov.io/gh/alam-faisal/qaravan)
-
-
+[![codecov](https://codecov.io/gh/alam-faisal/qaravan/branch/master/graph/badge.svg)](https://codecov.io/gh/alam-faisal/qaravan)
 
 **Qaravan** is a Python library for simulating quantum circuits with and without noise using a variety of classical simulation techniques. 
 

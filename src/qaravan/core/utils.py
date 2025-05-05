@@ -136,7 +136,8 @@ class RunContext:
                  checkpoint_interval=50,
                  resume=False,
                  convergence_check=False, 
-                 stop_ratio=1e-6): 
+                 stop_ratio=1e-6,
+                 stop_absolute=None): 
 
         self.progress_interval = progress_interval
         self.max_iter = max_iter
@@ -146,6 +147,7 @@ class RunContext:
 
         self.convergence_check = convergence_check
         self.stop_ratio = stop_ratio
+        self.stop_absolute = stop_absolute
 
         self.run_state = None
         self.step = 0
@@ -177,7 +179,10 @@ class RunContext:
 
         timestamp = datetime.datetime.now().isoformat(timespec='seconds')
         if self.step % self.progress_interval == 0:
-            self.log(f"Step {self.step} at {timestamp}")
+            l = f"Step {self.step} at {timestamp}"
+            if self.run_state.get('cost_list'):
+                l += f" with cost {self.run_state['cost_list'][-1]}"
+            self.log(l)
 
         if self.checkpoint_file and self.step % self.checkpoint_interval == 0:
             self.save_checkpoint()
@@ -199,6 +204,10 @@ class RunContext:
         threshold = self.stop_ratio * np.abs(cost_list[-2])
         if delta < threshold:
             self.log(f"Plateau detected with cost {cost_list[-1]} at step {self.step}")
+            return True
+
+        if self.stop_absolute is not None and cost_list[-1] < self.stop_absolute:
+            self.log(f"Absolute stop condition met with cost {cost_list[-1]} at step {self.step}")
             return True
 
         return False

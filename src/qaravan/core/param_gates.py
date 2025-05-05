@@ -5,9 +5,9 @@ import scipy
 import torch
 
 xxN, yyN, zzN = np.kron(pauli_X, pauli_X), np.kron(pauli_Y, pauli_Y), np.kron(pauli_Z, pauli_Z)
-pauli_XT = torch.tensor([[0,1],[1,0]], dtype=complex)
-pauli_YT = torch.tensor([[0,-1.j],[1.j,0]], dtype=complex)
-pauli_ZT = torch.tensor([[1,0],[0,-1]], dtype=complex)
+pauli_XT = torch.tensor([[0,1],[1,0]], dtype=torch.complex128)
+pauli_YT = torch.tensor([[0,-1.j],[1.j,0]], dtype=torch.complex128)
+pauli_ZT = torch.tensor([[1,0],[0,-1]], dtype=torch.complex128)
 xxT = torch.kron(pauli_XT, pauli_XT)
 yyT = torch.kron(pauli_YT, pauli_YT)
 zzT = torch.kron(pauli_ZT, pauli_ZT)

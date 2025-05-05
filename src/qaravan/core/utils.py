@@ -187,12 +187,12 @@ class RunContext:
         if self.checkpoint_file and self.step % self.checkpoint_interval == 0:
             self.save_checkpoint()
 
-        if self.convergence_check:
-            return self.check_convergence()
-        
         if self.step >= self.max_iter:
             self.log(f"Max iterations reached.")
             return True
+        
+        if self.convergence_check:
+            return self.check_convergence()
         return False
 
     def check_convergence(self):

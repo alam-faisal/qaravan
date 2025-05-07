@@ -3,9 +3,9 @@ from setuptools import setup, find_packages
 setup(
     name="qaravan",
     packages=find_packages(where="src"),
-    python_requires='>=3.11',
+    python_requires='>=3.8',
     package_dir={"": "src"},
-    version="0.1.36", 
+    version="0.1.37", 
     author="Faisal Alam",
     author_email="mfalam2@illinois.edu",
     description="Unified classical simulation of noiseless and noisy quantum circuits",

@@ -193,7 +193,7 @@ def gate_time(gate, nm):
     elif gate.name[0:2] == "SW":
         return 0.0
     elif gate.name[0:2] in ["CU"]: 
-        return 2*nm.two_site_time
+        return 4*nm.two_site_time
     else: 
         return nm.one_site_time
     

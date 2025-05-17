@@ -4,14 +4,14 @@
 [![Tests](https://github.com/alam-faisal/qaravan/actions/workflows/tests.yml/badge.svg)](https://github.com/alam-faisal/qaravan/actions/workflows/tests.yml)
 [![codecov](https://codecov.io/gh/alam-faisal/qaravan/branch/master/graph/badge.svg)](https://codecov.io/gh/alam-faisal/qaravan)
 
-**Qaravan** is a Python library for simulating quantum circuits with and without noise using a variety of classical simulation techniques. It has built in GPU acceleration and autodiff support, and designed with usability and extensibility in mind.  
+**Qaravan** is a Python library for simulating quantum circuits with and without noise using a variety of classical simulation techniques. It has built in GPU acceleration and autodiff support, and is designed with usability and extensibility in mind.  
 
 ## Features
 
 - **tensorQ**: statevector, density matrix, MPS, MPDO methods
 - **algebraQ**: Lie algebraic, doped matchgate, doped Clifford (in development) simulators
 - **Noise models**: most simulators support noise models natively
-- **Arbitrary qudits**: tensorQ supports quantum systems beyong qubits
+- **Arbitrary qudits**: tensorQ supports quantum systems beyond qubits
 - **2D lattices**: built-in support for several commonly used 2D lattices
 - **GPU acceleration + autodiff**: PyTorch backend for select simulators
 - **Algorithmic tools**: algorithms for state preparation, circuit synthesis, ground state search
@@ -27,7 +27,7 @@ pip install qaravan
 
 ## Quick Start
 
-``` 
+```python 
 from qaravan.tensorQ import StatevectorSim
 import torch
 

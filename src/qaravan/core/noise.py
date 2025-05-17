@@ -202,5 +202,3 @@ def random_pauli_channel(n,n_strings=5,c=0.1):
     probs = [1,] + [c*np.random.rand() for _ in range(n_strings-1)] 
     probs /= np.sum(probs)
     return PauliNoise(strings, probs)
-
-

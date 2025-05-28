@@ -151,6 +151,7 @@ class RunContext:
 
         self.run_state = None
         self.step = 0
+        self.term_msg = ""
 
         if resume and checkpoint_file:
             self.load_checkpoint()
@@ -188,7 +189,8 @@ class RunContext:
             self.save_checkpoint()
 
         if self.step >= self.max_iter:
-            self.log(f"Max iterations reached.")
+            self.term_msg = "Max iterations reached."
+            self.log(self.term_msg)
             return True
         
         if self.convergence_check:
@@ -203,11 +205,13 @@ class RunContext:
         delta = np.abs(cost_list[-1] - cost_list[-2])
         threshold = self.stop_ratio * np.abs(cost_list[-2])
         if delta < threshold:
-            self.log(f"Plateau detected with cost {cost_list[-1]} at step {self.step}")
+            self.term_msg = f"Plateau detected with cost {cost_list[-1]} at step {self.step}"
+            self.log(self.term_msg)
             return True
 
         if self.stop_absolute is not None and cost_list[-1] < self.stop_absolute:
-            self.log(f"Absolute stop condition met with cost {cost_list[-1]} at step {self.step}")
+            self.term_msg = f"Absolute stop condition met with cost {cost_list[-1]} at step {self.step}"
+            self.log(self.term_msg)
             return True
 
         return False

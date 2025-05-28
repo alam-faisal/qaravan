@@ -3,7 +3,7 @@ import copy
 from scipy.linalg import block_diag
 import scipy.sparse as sp
 from functools import reduce
-from .paulis import pauli_mapping
+from .paulis import pauli_mapping, pauli_X, pauli_Y, pauli_Z
 
 def embed_operator(num_sites, active_sites, local_ops, local_dim=2, dense=False, factor=False):
     # only works if Pauli string is provided 
@@ -178,6 +178,14 @@ def X(indices): return Gate("X",
                             indices, 
                             np.array([[0,1],[1,0]]))
 
+def Y(indices): return Gate("Y",
+                            indices,
+                            pauli_Y)
+
+def Z(indices): return Gate("Z",
+                            indices,
+                            pauli_Z)
+
 def H(indices): return Gate("H", 
                             indices, 
                             np.array([[1,1],[1,-1]])/np.sqrt(2))
@@ -259,3 +267,12 @@ def random_unitary(size):
 
 def is_unitary(u):
     return np.allclose(u @ u.conj().T, np.eye(u.shape[0]), atol=1e-10) and np.allclose(u.conj().T @ u, np.eye(u.shape[0]), atol=1e-10)
+
+pauli_gate_map = {
+    'x': X,
+    'y': Y,
+    'z': Z
+}
+
+def pauli_string_to_gates(string):
+    return [pauli_gate_map[op](i) for i, op in enumerate(string) if op != 'i']

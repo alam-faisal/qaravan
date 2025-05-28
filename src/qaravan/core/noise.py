@@ -166,6 +166,7 @@ class PauliLindbladNoise(Noise):
         self.num_sites = len(strings[0])
         self.local_dim = 2
         self.superop = self.make_superop()
+        self.gamma = np.exp(2*sum(lindblad_coefficients))
 
     def get_kraus_for_string(self, i): 
         # note id_mat and error_mat can be complex
@@ -182,8 +183,26 @@ class PauliLindbladNoise(Noise):
         superop_list = [self.get_superop_for_string(i) for i in range(len(self.strings))]
         return np.linalg.multi_dot(superop_list) if len(superop_list) > 1 else superop_list[0]
     
-    def get_superop(self):
+    def get_superop(self, *args, **kwargs):
         return self.superop
+
+    def sample_string(self, rng=np.random.default_rng()):
+        apply_flags = [rng.random() < r for r in self.rates]
+        active_strings = [self.strings[i] for i, flag in enumerate(apply_flags) if flag]
+        final_string = 'i'*self.num_sites
+        for s in active_strings:
+            final_string, _ = pauli_multiply(final_string, s)
+        return final_string   
+
+    def sample(self, rng=np.random.default_rng()):
+        """ sample a list of Gate objects from the channel """
+        return pauli_string_to_gates(self.sample_string(rng))
+    
+    def inv_sample(self, rng=np.random.default_rng()):
+        """ sample a list of Gate objects from the inverse channel """
+        layer = self.sample(rng)
+        prefac = self.gamma * (-1)**(len(layer) != 0)
+        return layer, prefac
 
 def gate_time(gate, nm):   
     if gate.name[0:4] == "CNOT": 

@@ -205,16 +205,19 @@ class PauliLindbladNoise(Noise):
         return layer, prefac
 
 def gate_time(gate, nm):   
-    if gate.name[0:4] == "CNOT": 
-        return nm.two_site_time
-    elif gate.name[0:2] == "RZ":
-        return 0.0
-    elif gate.name[0:2] == "SW":
-        return 0.0
-    elif gate.name[0:2] in ["CU"]: 
-        return 4*nm.two_site_time
+    if gate.time is not None: 
+        return gate.time
     else: 
-        return nm.one_site_time
+        if gate.name[0:4] == "CNOT": 
+            return nm.two_site_time
+        elif gate.name[0:2] == "RZ":
+            return 0.0
+        elif gate.name[0:2] == "SW":
+            return 0.0
+        elif gate.name[0:2] in ["CU"]: 
+            return 4*nm.two_site_time
+        else: 
+            return nm.one_site_time
     
 def random_pauli_channel(n,n_strings=5,c=0.1):
     strings = ['i'*n] + [random_pauli_string(n) for _ in range(n_strings-1)]

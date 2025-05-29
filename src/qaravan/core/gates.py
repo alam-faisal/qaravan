@@ -30,21 +30,18 @@ def embed_operator(num_sites, active_sites, local_ops, local_dim=2, dense=False,
         return reduce(sp.kron, full_op)
 
 class Gate:
-    def __init__(self, name, indices, matrix, nm=None):
+    def __init__(self, name, indices, matrix, time=None):
         self.name = name
         self.indices = [indices] if type(indices) == int else indices
         self.span = len(self.indices)
         self.matrix = matrix
-        self.nm = nm
+        self.time = time
 
     def __str__(self):
         return f"{self.name} gate on site(s) {self.indices}"
 
     def to_superop(self): 
-        if self.nm is None: 
-            return np.kron(self.matrix.conj(), self.matrix).reshape([self.get_local_dim()]*4*self.span)
-        else: 
-            return self.nm.get_superop(self.time, self.dd).reshape([self.get_local_dim()]*4*self.span)
+        return np.kron(self.matrix.conj(), self.matrix).reshape([self.get_local_dim()]*4*self.span)
         
     def get_local_dim(self):
         return int(self.matrix.shape[0]**(1/self.span))
@@ -78,12 +75,14 @@ class SuperOp:
 ###########################################
 
 class ID(Gate): 
-    def __init__(self, local_dim, time, indices, nm=None, dd=False): 
-        super().__init__("ID", indices, matrix=None)
+    def __init__(self, local_dim, time, indices, nm, dd=False): 
+        super().__init__("ID", indices, matrix=None, time=time)
         self.matrix = np.eye(local_dim**self.span)
-        self.time = time
         self.dd = dd
         self.nm = nm
+
+    def to_superop(self): 
+        return self.nm.get_superop(self.time, self.dd).reshape([self.get_local_dim()] * 4 * self.span)
         
     def __str__(self):
         str = f"Idling on site(s) {self.indices} with {type(self.nm).__name__} for time {self.time}"

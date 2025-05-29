@@ -226,14 +226,15 @@ class XYNNN(Hamiltonian):
             )
 
 class TFI(Hamiltonian):
-    def __init__(self, num_x, jz=1, h=0):
+    def __init__(self, num_x, jz=1, h=0, periodic_x=False):
         super().__init__(
             coupling_types=['zz'],
             coupling_strengths=[jz],
             field_types=['x'],
             field_strengths=[h],
             num_x=num_x,
-            locality='nn'
+            locality='nn', 
+            periodic_x=periodic_x
         )
         self.op_grouping = ['x', 'zz']
 

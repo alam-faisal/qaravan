@@ -8,6 +8,7 @@ __pycache__/
 *.sh
 dist/
 build/
+notebooks/
 
 # Jupyter
 .ipynb_checkpoints/

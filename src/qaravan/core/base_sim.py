@@ -8,7 +8,7 @@ class BaseSim:
     """
 
     def __init__(self, circ, init_state=None, nm=None):
-        self.circ = circ
+        self.circ = circ.copy()
         self.num_sites = circ.num_sites
         self.local_dim = circ.local_dim
         self.nm = nm

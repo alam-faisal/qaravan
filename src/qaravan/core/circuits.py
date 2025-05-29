@@ -143,6 +143,10 @@ class Circuit:
     def draw(self): # TODO 
         """ use svgwrite to visualize the circuit """
         return None
+    
+    def copy(self):
+        return Circuit(copy.deepcopy(self.gate_list), n=self.num_sites, local_dim=self.local_dim, 
+                       meas_sites=self.meas_sites)
 
 def compose_circuits(circ_list): 
     gate_list = [circ.gate_list for circ in circ_list]

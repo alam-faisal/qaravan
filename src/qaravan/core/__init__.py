@@ -8,4 +8,3 @@ from .lattices import *
 from .hamiltonians import *
 from .circuits import *
 from .compilers import *
-from .plotter import *

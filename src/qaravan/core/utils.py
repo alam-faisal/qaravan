@@ -1,4 +1,3 @@
-from matplotlib.pyplot import step
 import numpy as np
 
 def endian_transform(arr):

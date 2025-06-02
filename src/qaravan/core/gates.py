@@ -3,7 +3,7 @@ import copy
 from scipy.linalg import block_diag
 import scipy.sparse as sp
 from functools import reduce
-from .paulis import pauli_mapping, pauli_X, pauli_Y, pauli_Z
+from .paulis import pauli_mapping, pauli_Y, pauli_Z
 
 def embed_operator(num_sites, active_sites, local_ops, local_dim=2, dense=False, factor=False):
     # only works if Pauli string is provided 

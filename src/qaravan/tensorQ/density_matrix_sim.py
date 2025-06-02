@@ -4,7 +4,6 @@ from qaravan.core.gates import SuperOp
 
 import numpy as np
 from ncon_torch import ncon
-import copy
 
 class DensityMatrixSim(BaseSim):
     def __init__(self, circ, init_state=None, nm=None):

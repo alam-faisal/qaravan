@@ -126,7 +126,10 @@ def vN_entropy(dm):
 
 #=========== iterative runs metadata ===========#
 
-import sys, os, pickle, datetime
+import sys
+import os
+import pickle
+import datetime
 class RunContext:
     def __init__(self,
                  progress_interval=10,

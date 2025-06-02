@@ -1,4 +1,3 @@
-import pytest
 import numpy as np
 from qaravan.tensorQ import *
 from qaravan.core import *

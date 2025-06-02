@@ -1,6 +1,5 @@
 from .tn import *
 from numpy.random import uniform, normal
-from scipy.special import factorial
 
 ######################################
 ################ TI ##################

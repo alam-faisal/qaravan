@@ -1,8 +1,9 @@
-matplotlib==3.10.1
+matplotlib==3.7
 ncon_torch==0.2.1
-numpy==2.2.4
+numpy==1.20
 pytest==8.3.4
 scipy==1.15.2
 setuptools==75.1.0
 tqdm==4.67.1
-torch==2.7.0
+ncon_torch==0.3
+torch==1.12

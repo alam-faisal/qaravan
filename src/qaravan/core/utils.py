@@ -1,4 +1,5 @@
 import numpy as np
+from .circuits import Circuit
 
 def endian_transform(arr):
     """ only works for qubits now """ 
@@ -14,6 +15,14 @@ def endian_transform(arr):
 
     else: 
         raise ValueError("only works for 1D and 2D arrays")
+    
+def endian_transform_circ(circ: Circuit) -> Circuit:
+    """ reverse endianness of a circuit """
+    new_circ = circ.copy()
+    n = new_circ.num_sites
+    for gate in new_circ.gate_list:
+        gate.indices = [(n - 1 - i) for i in gate.indices]
+    return new_circ
 
 def base(b,n,length):
     """ base b representation of number n assuming there are length dits """

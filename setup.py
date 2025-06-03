@@ -5,7 +5,7 @@ setup(
     packages=find_packages(where="src"),
     python_requires='>=3.8',
     package_dir={"": "src"},
-    version="0.1.45", 
+    version="0.1.46", 
     author="Faisal Alam",
     author_email="mfalam2@illinois.edu",
     description="Unified classical simulation of noiseless and noisy quantum circuits",
@@ -16,5 +16,6 @@ setup(
     "tqdm>=4.67.1",
     "ncon_torch>=0.3",
     "torch>=1.12",
+    "stim>=1.14.0"
 ]
 )

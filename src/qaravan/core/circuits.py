@@ -162,7 +162,7 @@ def circ_to_mat(circ, n=None):
     for layer in circ.layers: 
         missing_indices = set(range(n)) - set(np.concatenate([gate.indices for gate in layer]))
         for index in missing_indices: 
-            layer.append(ID(circ.local_dim, 0.0, [index]))
+            layer.append(ID(circ.local_dim, 0.0, [index], None))
         
         sorted_layer = sorted(layer, key=lambda gate: gate.indices[0])
         mat_list = [gate.matrix for gate in sorted_layer]

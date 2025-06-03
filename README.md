@@ -54,6 +54,6 @@ Check out the `examples/` directory for notebooks on:
 - ✅ **PyTorch integration**: GPU acceleration + autodiff
 - ✅ **algebraQ**: Doped matchgate simulator
 - 🔧 **algebraQ**: Lie algebraic simulator 
-- ⬜ **algebraQ**: Doped Clifford simulator 
-- ⬜ **pathQ**: Pauli path propagation 
-- 🔧 **pathQ**: Noise sampling-based simulator
+- ✅ **algebraQ**: Doped Clifford simulator 
+- ⬜ **algebraQ**: Pauli path propagation 
+- ✅ **tensorQ**: Trajectory based simulation of noise channels 

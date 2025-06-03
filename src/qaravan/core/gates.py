@@ -51,6 +51,9 @@ class Gate:
         g.matrix = g.matrix.conj().T
         return g    
     
+    def shallow_copy(self):
+        return Gate(self.name, self.indices, self.matrix, time=self.time)
+    
 class SuperOp:
     """ deprecated; need to be debugged first """
     def __init__(self, name, span, matrix, start_idx=0, time=0.0):

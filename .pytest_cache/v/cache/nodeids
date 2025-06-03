@@ -1,7 +1,5 @@
 [
-  "run_tests.py::test_construct_unitary",
-  "run_tests.py::test_contract_and_decimate",
-  "run_tests.py::test_statevector_sim",
+  "tests/test_core.py::test_circuit_copy_with_autograd_gate",
   "tests/test_core.py::test_construct_unitary",
   "tests/test_core.py::test_contract_and_decimate",
   "tests/test_core.py::test_statevector_sim"

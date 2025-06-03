@@ -1,6 +1,7 @@
 import numpy as np
 from qaravan.tensorQ import *
 from qaravan.core import *
+import torch
 
 def test_statevector_sim():
     gate_list = [
@@ -65,3 +66,19 @@ def test_contract_and_decimate():
     c_site2 = contract_sites(dec_sites)
     assert np.allclose(c_site, c_site2), "decimate failed for MPDO sites"
     assert all(s.shape == d.shape for s, d in zip(sites, dec_sites)), "Shapes do not match for MPDO sites"
+
+def test_circuit_copy_with_autograd_gate():
+    theta = torch.randn(1, dtype=torch.float64, requires_grad=True)
+    mat = torch.matrix_exp(-1j * theta * torch.tensor([[0., 1.], [1., 0.]], dtype=torch.complex128))
+    assert mat.requires_grad
+
+    gate = Gate('Rx', [0], mat)
+    circ = Circuit([gate], n=1)
+    circ_copy = circ.copy()
+    
+    sv = torch.tensor([1.0, 0.0], dtype=torch.complex128)
+    sv_out = torch.matmul(gate.matrix, sv)
+    loss = torch.real(torch.dot(sv_out.conj(), sv_out))
+    loss.backward()
+    assert theta.grad is not None
+    print("Test passed: Circuit with autograd-compatible gate copied successfully.")

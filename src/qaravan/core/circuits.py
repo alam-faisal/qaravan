@@ -145,7 +145,8 @@ class Circuit:
         return None
     
     def copy(self):
-        return Circuit(copy.deepcopy(self.gate_list), n=self.num_sites, local_dim=self.local_dim, 
+        new_gate_list = [gate.shallow_copy() for gate in self.gate_list]
+        return Circuit(new_gate_list, n=self.num_sites, local_dim=self.local_dim, 
                        meas_sites=self.meas_sites)
 
 def compose_circuits(circ_list): 

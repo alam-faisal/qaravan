@@ -146,8 +146,12 @@ class Circuit:
     
     def copy(self):
         new_gate_list = [gate.shallow_copy() for gate in self.gate_list]
-        return Circuit(new_gate_list, n=self.num_sites, local_dim=self.local_dim, 
+        new_circ = Circuit(new_gate_list, n=self.num_sites, local_dim=self.local_dim, 
                        meas_sites=self.meas_sites)
+        if self.layers is not None:
+            new_circ.layers = [[g.shallow_copy() for g in layer] for layer in self.layers]
+        new_circ.built = self.built
+        return new_circ
 
 def compose_circuits(circ_list): 
     gate_list = [circ.gate_list for circ in circ_list]

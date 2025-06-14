@@ -1,5 +1,6 @@
 from .tn import *
 from numpy.random import uniform, normal
+from sympy.combinatorics import Permutation
 
 ######################################
 ################ TI ##################

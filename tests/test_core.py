@@ -82,3 +82,14 @@ def test_circuit_copy_with_autograd_gate():
     loss.backward()
     assert theta.grad is not None
     print("Test passed: Circuit with autograd-compatible gate copied successfully.")
+
+def test_ti_rmps_generation():
+    num_sites = 4
+    chi = 2
+
+    rmps = ti_rmps(num_sites, chi)
+    ref = rmps.sites[0]
+    for site in rmps.sites:
+        assert np.allclose(site, ref), "Not all tensors in rmps.sites are the same"
+    
+    print("Test passed: TI-RMPS generation successful with translation invariant tensors.")

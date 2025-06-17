@@ -45,13 +45,6 @@ def random_unitary(n, local_dim=2):
     q *= ph
     return q
 
-def haar_purity(num_sites, k_copies, local_dim=2, ti=False, scaled=False): 
-    """ if scaled, returns purity * r**(num_sites*k_copies) where r is the effective local dimension """
-    q = one_copy_projector_ti_subspace(local_dim, num_sites) if ti else local_dim**num_sites
-    q_norm = q if scaled else 1
-    factors = [(q+i)/q_norm for i in range(k_copies)]
-    return np.math.factorial(k_copies)/np.prod(factors)
-
 def haar_random_isometry(l_chi, r_chi=None, local_dim=2):
     r_chi = l_chi if r_chi is None else r_chi
     size = local_dim * l_chi
@@ -107,8 +100,18 @@ def open_rmps_even(num_sites, chi, local_dim=2, distrib='isometric', param=1.0):
     return mps
     
 def periodic_rmps(num_sites, chi, local_dim=2, distrib="isometric", param=1.0): 
-    sites = [haar_random_isometry(chi, chi, local_dim).reshape(chi, local_dim, chi).transpose(0,2,1) 
-             for _ in range(num_sites)]
+    sites = []
+    for _ in range(num_sites):
+        if distrib == 'isometric':
+            site = haar_random_isometry(chi, chi, local_dim).reshape(chi, local_dim, chi).transpose(0,2,1)
+        elif distrib == 'uniform':
+            site = uniform(-1, 1, (chi, chi, local_dim)) + 1.j * uniform(-1, 1, (chi, chi, local_dim))
+        elif distrib == 'gaussian': 
+            site = normal(0, param, (chi, chi, local_dim)) + 1.j * normal(0, param, (chi, chi, local_dim))
+        else: 
+            raise ValueError(f"{distrib} is not a valid distribution for site tensors")
+        sites.append(site)
+
     mps = MPS(sites)
     mps.normalize()
     return mps

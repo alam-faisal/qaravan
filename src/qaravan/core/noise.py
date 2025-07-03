@@ -158,13 +158,13 @@ class PauliNoise(Noise):
         return str(noise_dict)
     
 class PauliLindbladNoise(Noise): 
-    def __init__(self, strings, lindblad_coefficients):
+    def __init__(self, strings, lindblad_coefficients, dense=True):
         self.strings = strings
         self.lindblad_coefficients = lindblad_coefficients
         self.rates = [0.5*(1-np.exp(-2*lam)) for lam in lindblad_coefficients]
         self.num_sites = len(strings[0])
         self.local_dim = 2
-        self.superop = self.make_superop()
+        self.superop = self.make_superop() if dense else None
         self.gamma = np.exp(2*sum(lindblad_coefficients))
 
     def get_kraus_for_string(self, i): 

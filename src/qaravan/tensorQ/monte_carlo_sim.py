@@ -1,6 +1,6 @@
 from .statevector_sim import *
 
-class TrajectorySim(BaseSim):
+class MonteCarloSim(BaseSim):
     """ 
     noisy simulation for channels that can be thought of as 
     a pseudo-probability distribution over unitaries applied to statevector

@@ -8,6 +8,20 @@ def magnetization(n):
     mz = sum(embed_operator(n, [i], [pauli_Z], dense=True) for i in range(n))
     return mz / np.sqrt(n * 2**n)
 
+def trotter_sv_sim(ham, step_size, max_steps, channel, op):
+    """ run a statevector simulation of the Trotter circuit for a given Hamiltonian """
+    circ = ham.trotter_circ(step_size, 1)
+    cur_sv = all_zero_sv(ham.num_sites, dense=True)
+    
+    mag_list = []
+    for _ in tqdm(range(max_steps)):
+        sim = StatevectorSim(circ=circ, nm=channel, init_state=cur_sv)
+        sim.run(progress_bar=False)
+        cur_sv = sim.get_statevector()
+        exp = np.vdot(cur_sv, op @ cur_sv).real
+        mag_list.append(exp)
+    return mag_list
+
 def trotter_dm_sim(ham, step_size, max_steps, channel, op): 
     """ run a density matrix simulation of the Trotter circuit for a given Hamiltonian """
     circ = ham.trotter_circ(step_size, 1)

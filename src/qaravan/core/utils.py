@@ -175,7 +175,7 @@ class RunContext:
         if self.checkpoint_file:
             with open(self.checkpoint_file, 'wb') as f:
                 pickle.dump(self.run_state, f)
-            self.log(f"[Checkpoint saved at step {self.step}]")
+            self.log(f"[Checkpoint saved at step {self.step} in file {self.checkpoint_file}]")
 
     def load_checkpoint(self):
         if os.path.exists(self.checkpoint_file):

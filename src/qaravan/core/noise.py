@@ -157,6 +157,12 @@ class PauliNoise(Noise):
         noise_dict = {str(s): np.around(p, 3) for s, p in zip(self.strings, self.probs)}
         return str(noise_dict)
     
+    def sample(self):
+        """ sample a list of Gate objects from the channel """
+        sampled_string = self.sample_string()
+        return pauli_string_to_gates(sampled_string)
+
+    
 class PauliLindbladNoise(Noise): 
     def __init__(self, strings, lindblad_coefficients, dense=True):
         self.strings = strings

@@ -1,8 +1,9 @@
-from .utils import *
-from .gates import CNOT, CNOT3, embed_operator, Gate
-from .param_gates import U, U01, RZ
-from .paulis import pauli_Z
-from .circuits import Circuit
+from qaravan.core.utils import *
+from qaravan.core.gates import CNOT, CNOT3, embed_operator, Gate
+from qaravan.core.param_gates import U, U01, RZ
+from qaravan.core.paulis import pauli_Z
+from qaravan.core.circuits import Circuit, circ_to_mat
+
 from scipy.linalg import expm
 from itertools import product, combinations
 from scipy.optimize import minimize
@@ -32,12 +33,16 @@ def dressed_cnot_circ(skeleton, num_qubits, params, local_dim=2):
 
     return Circuit(gate_list, num_qubits)
 
-def dressed_cnot_skeletons(num_sites, num_cnots, orientation=False):
-    nn_pairs = [(i+1, i) for i in range(num_sites-1)]
+def dressed_cnot_skeletons(num_sites, num_cnots, orientation=False, a2a=False):
+    if not a2a: 
+        pairs = [(i, i+1) for i in range(num_sites-1)]
+    else: 
+        pairs = [(i,j) for i in range(num_sites) for j in range(num_sites) if i != j]
+
     if orientation: 
-        nn_pairs += [(i, i+1) for i in range(num_sites-1)]
-    skeletons = list(product(nn_pairs, repeat=num_cnots))
-    return skeletons
+        pairs += [pair[::-1] for pair in pairs]
+
+    return list(product(pairs, repeat=num_cnots))
 
 def msp_cost(params, skeleton, vecs, target): 
     num_qubits = int(np.log2(len(vecs[0])))
@@ -47,21 +52,27 @@ def msp_cost(params, skeleton, vecs, target):
     
     if type(target) == np.ndarray:
         for vec in vecs: 
-            c += np.linalg.norm(ansatz_mat @ vec - mat @ vec)
+            c += np.linalg.norm(ansatz_mat @ vec - target @ vec)
     else:
         for vec,out in zip(vecs, target): 
             c += np.linalg.norm(ansatz_mat @ vec - out)
         
     return c / (len(vecs)) 
 
+import os 
 def msp_optimize(vecs, target, skeleton, num_reps=10, quiet=True): 
+    """ 
+    target can either be the matrix or the list of output statevectors 
+    vecs are the list of input statevectors
+    """
+
     num_cnots = len(skeleton)
     num_qubits = int(np.log2(len(vecs[0])))
     num_params = (num_cnots * 6) + (num_qubits * 3)
     
     results = []
     vals = []
-    for i in range(num_reps): 
+    for i in tqdm(range(num_reps)): 
         params = np.random.rand(num_params)
         result = minimize(msp_cost, x0=params, args=(skeleton, vecs, target), 
                                  method='BFGS')

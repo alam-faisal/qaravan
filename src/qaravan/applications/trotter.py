@@ -13,28 +13,28 @@ def trotter_sv_sim(ham, step_size, max_steps, op):
     circ = ham.trotter_circ(step_size, 1)
     cur_sv = all_zero_sv(ham.num_sites, dense=True)
     
-    mag_list = []
+    exp_list = []
     for _ in tqdm(range(max_steps)):
         sim = StatevectorSim(circ=circ, init_state=cur_sv)
         sim.run(progress_bar=False)
         cur_sv = sim.get_statevector()
         exp = np.vdot(cur_sv, op @ cur_sv).real
-        mag_list.append(exp)
-    return mag_list
+        exp_list.append(exp)
+    return exp_list
 
 def trotter_dm_sim(ham, step_size, max_steps, channel, op): 
     """ run a density matrix simulation of the Trotter circuit for a given Hamiltonian """
     circ = ham.trotter_circ(step_size, 1)
     cur_dm = all_zero_dm(ham.num_sites)
     
-    mag_list = []
+    exp_list = []
     for _ in tqdm(range(max_steps)):
         sim = DensityMatrixSim(circ=circ, nm=channel, init_state=cur_dm)
         sim.run(progress_bar=False)
         cur_dm = sim.get_density_matrix()
         noisy_exp = np.trace(op @ cur_dm).real
-        mag_list.append(noisy_exp)
-    return mag_list
+        exp_list.append(noisy_exp)
+    return exp_list
 
 def trotter_dm_sim_uncached(ham, step_size, max_steps, channel, op): 
     """ slow version without caching the state """

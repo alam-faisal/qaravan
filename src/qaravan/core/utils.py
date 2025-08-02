@@ -41,13 +41,13 @@ def generate_basis(n):
         basis.append(bin(i)[2:].zfill(n))
     return basis
 
-def string_to_sv(string, local_dim): 
+def string_to_sv(string, local_dim=2): 
     n = len(string)
     sv = np.zeros(local_dim**n)
     sv[int(string, local_dim)] = 1.0
     return sv
 
-def pretty_print_dm(dmat, local_dim, threshold=1e-3):
+def pretty_print_dm(dmat, local_dim=2, threshold=1e-3):
     """ prints density matrix as a mixture of quantum states """
     evals, evecs = np.linalg.eigh(dmat)
     n = dmat.shape[0]
@@ -72,7 +72,7 @@ def pretty_print_dm(dmat, local_dim, threshold=1e-3):
     
     return "\n ".join(result)
     
-def pretty_print_sv(sv, local_dim, threshold=1e-3):
+def pretty_print_sv(sv, local_dim=2, threshold=1e-3):
     """ prints statevector as a linear combination of computational basis states """
     n = sv.shape[0]
     length = round(np.log(n) / np.log(local_dim))
@@ -226,3 +226,12 @@ class RunContext:
             return True
 
         return False
+    
+def parloop(func, args): 
+    import os 
+    from multiprocessing import Pool
+
+    with Pool(os.cpu_count()) as p:
+        results = p.starmap(func, args)
+
+    return results

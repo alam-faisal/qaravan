@@ -1,7 +1,9 @@
 import numpy as np
 from qaravan.tensorQ import *
 from qaravan.core import *
+from qaravan.applications import *
 import torch
+from collections import Counter
 
 def test_statevector_sim():
     gate_list = [
@@ -93,3 +95,42 @@ def test_ti_rmps_generation():
         assert np.allclose(site, ref), "Not all tensors in rmps.sites are the same"
     
     print("Test passed: TI-RMPS generation successful with translation invariant tensors.")
+
+def test_measurement_on_statevector():
+    sv = (
+        np.sqrt(0.3) * string_to_sv('0001') +
+        np.sqrt(0.45) * string_to_sv('1110') +
+        np.sqrt(0.25) * string_to_sv('1011')
+    )
+    counts = Counter()
+    num_samples = 5000
+    for _ in range(num_samples):
+        outcome = measure_sv(sv, [0, 1])
+        counts[outcome] += 1
+
+    assert abs(counts['00'] / num_samples - 0.3) < 0.05, f"Expected ~0.3, got {counts['00'] / num_samples}"
+    assert abs(counts['11'] / num_samples - 0.45) < 0.05, f"Expected ~0.45, got {counts['11'] / num_samples}"
+    assert abs(counts['10'] / num_samples - 0.25) < 0.05, f"Expected ~0.25, got {counts['10'] / num_samples}"
+
+def test_measure_and_collapse_sv():
+    sv = (
+        np.sqrt(0.3) * string_to_sv('0001') +
+        np.sqrt(0.45) * string_to_sv('1110') +
+        np.sqrt(0.25) * string_to_sv('1011')
+    )
+
+    num_trials = 50
+    for _ in range(num_trials):
+        meas_indices = [0, 2]
+        outcome, new_sv = measure_and_collapse_sv(sv, meas_indices)
+
+        if outcome == '00':
+            assert np.allclose(new_sv, string_to_sv('01')), f"Collapsed state mismatch for outcome '00'"
+        elif outcome == '11':
+            true_outcome = (
+                np.sqrt(0.45 / (0.45 + 0.25)) * string_to_sv('10') +
+                np.sqrt(0.25 / (0.45 + 0.25)) * string_to_sv('01')
+            )
+            assert np.allclose(new_sv, true_outcome, atol=1e-7), f"Collapsed state mismatch for outcome '11'"
+        else:
+            assert False, f"Unexpected measurement outcome: {outcome}"

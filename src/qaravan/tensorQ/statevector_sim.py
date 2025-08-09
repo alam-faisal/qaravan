@@ -1,10 +1,13 @@
 from qaravan.core.base_sim import BaseSim
 from qaravan.core.utils import string_to_sv, pretty_print_sv
+from qaravan.core.gates import proj_up, proj_down
+from qaravan.core.circuits import Circuit
 import numpy as np
 import torch 
 from ncon_torch import ncon, permute
 from scipy.sparse import csc_matrix
 import copy
+from functools import reduce
 
 class StatevectorSim(BaseSim):
     def __init__(self, circ, init_state=None, backend="numpy", device="cpu"):
@@ -48,8 +51,13 @@ class StatevectorSim(BaseSim):
         self.state = op_action(mat, gate.indices, self.state, local_dim=self.local_dim)
 
     def measure(self, meas_sites):
-        raise NotImplementedError("Measurement not yet implemented for statevector simulator.")
-    
+        """ returns a measurement bitstring """
+        return measure_sv(self.get_statevector(), meas_sites)
+        
+    def measure_and_collapse(self, meas_sites): 
+        """ returns a measurement bitstring and post-measurement statevector """
+        return measure_and_collapse_sv(self.get_statevector(), meas_sites)
+        
     def local_expectation(self, local_ops):
         """ op is a list of 1-local Hermitian matrices """
         self.run(progress_bar=False)
@@ -67,6 +75,8 @@ class StatevectorSim(BaseSim):
         return pretty_print_sv(sv, self.local_dim)
 
     def get_statevector(self): 
+        if not self.ran:
+            self.run(progress_bar=False)
         return self.state.reshape(self.local_dim**self.num_sites)
 
 def locs_to_indices(locs, n): 
@@ -142,3 +152,31 @@ def partial_overlap(sv1, sv2, local_dim=2, skip=None):
 
 def rdm_from_sv(sv, sites, local_dim=2):
     return partial_overlap(sv, sv, local_dim=local_dim, skip=sites) 
+
+def measure_sv(sv, meas_sites): 
+    rdm = rdm_from_sv(sv, meas_sites)
+    probs = np.real(np.diag(rdm))
+    basis_outcomes = [np.binary_repr(i, width=len(meas_sites)) for i in range(len(probs))]
+    return str(np.random.choice(basis_outcomes, p=probs))
+
+def measure_and_collapse_sv(sv, meas_sites, local_dim=2): 
+    outcome_str = measure_sv(sv, meas_sites)
+    
+    bras = [np.array([1,0]) if bit == '0' else np.array([0,1]) for bit in outcome_str]
+    bra = reduce(np.kron, bras).reshape([local_dim]* len(bras))
+    
+    n = sv.ndim if sv.ndim > 1 else int(np.log(len(sv)) / np.log(local_dim))
+    state = sv.reshape(*[local_dim]*n) if sv.ndim == 1 else sv
+    
+    sorted_indices = sorted(meas_sites)
+    sort_order = [meas_sites.index(i) for i in sorted_indices]
+    perm = sort_order 
+
+    bra = permute(bra, perm)
+    gate_indices, state_indices = locs_to_indices(sorted_indices, n)
+    bra_indices = gate_indices[len(gate_indices)//2:]
+    collapsed = ncon((bra, state), (bra_indices, state_indices))
+    collapsed /= np.linalg.norm(collapsed)
+    
+    collapsed = collapsed.reshape(local_dim**(n - len(meas_sites))) if sv.ndim == 1 else collapsed
+    return outcome_str, collapsed

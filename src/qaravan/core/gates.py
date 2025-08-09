@@ -196,8 +196,9 @@ def SDG(indices): return Gate("SDG",
                               indices, 
                               np.array([[1,0],[0,-1j]]))
 
-def CNOT(indices, n=1000): return CNOTGate(indices, 
-                                      np.array([[1,0,0,0],[0,0,0,1],[0,0,1,0],[0,1,0,0]]), 
+def CNOT(indices, n=1000): 
+    """ indices = (target, control) """
+    return CNOTGate(indices, np.array([[1,0,0,0],[0,0,0,1],[0,0,1,0],[0,1,0,0]]), 
                                       n=n)  
 
 def CZ(indices): return Gate("CZ", 
@@ -209,6 +210,12 @@ def SWAP(indices): return Gate("SWAP", indices,
 
 def iSWAP(indices): return Gate("iSWAP", indices,
                                 np.array([[1,0,0,0],[0,0,1j,0],[0,1j,0,0],[0,0,0,1]]))
+
+def proj_up(indices): 
+    return Gate("P0", indices, np.array([[1,0],[0,0]]))
+
+def proj_down(indices):
+    return Gate("P1", indices, np.array([[0,0],[0,1]]))
 
 #########################################
 ############# QUTRIT GATES ##############

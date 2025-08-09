@@ -6,7 +6,7 @@ import copy
 from functools import reduce 
 
 class Circuit:
-    def __init__(self, gate_list, n=None, local_dim=None, meas_sites=None):
+    def __init__(self, gate_list, n=None, local_dim=2, meas_sites=None):
         self.gate_list = gate_list
 
         if len(gate_list) != 0: 

@@ -76,6 +76,8 @@ class CPhase(ParamGate):
         return (theta,)
 
 class U(ParamGate):
+    """ create this gate with the following signature: 
+        U(indices, theta, phi, lambda) """
     def __init__(self, indices, *args):
         super().__init__("U", indices, *args)
     
@@ -114,6 +116,9 @@ class U(ParamGate):
             
         else: 
             raise NotImplementedError(f"{basis} basis decomposition has not been implemented")
+        
+    def shallow_copy(self):
+        return U(self.indices, *self.angles)
 
 class Givens(ParamGate):
     def __init__(self, indices, *args):

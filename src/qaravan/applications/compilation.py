@@ -3,14 +3,21 @@ from qaravan.core.gates import CNOT, CNOT3, embed_operator, Gate
 from qaravan.core.param_gates import U, U01, RZ
 from qaravan.core.paulis import pauli_Z
 from qaravan.core.circuits import Circuit, circ_to_mat
+from qaravan.tensorQ.statevector_sim import StatevectorSim
 
 from scipy.linalg import expm
 from itertools import product, combinations
 from scipy.optimize import minimize
 from tqdm import tqdm
 from numpy.linalg import qr 
+import copy
+import torch
 
 # only for qubits
+
+################################################
+################ CIRCUIT ANSATZES ##############
+################################################
 
 def dressed_cnot_circ(skeleton, num_qubits, params, local_dim=2):
     single_site = U if local_dim == 2 else U01
@@ -42,48 +49,8 @@ def dressed_cnot_skeletons(num_sites, num_cnots, orientation=False, a2a=False):
     if orientation: 
         pairs += [pair[::-1] for pair in pairs]
 
-    return list(product(pairs, repeat=num_cnots))
-
-def msp_cost(params, skeleton, vecs, target): 
-    num_qubits = int(np.log2(len(vecs[0])))
-    ansatz_mat = circ_to_mat(dressed_cnot_circ(skeleton, num_qubits, params))
+    return list(product(pairs, repeat=num_cnots)) 
     
-    c = 0.0 
-    
-    if type(target) == np.ndarray:
-        for vec in vecs: 
-            c += np.linalg.norm(ansatz_mat @ vec - target @ vec)
-    else:
-        for vec,out in zip(vecs, target): 
-            c += np.linalg.norm(ansatz_mat @ vec - out)
-        
-    return c / (len(vecs)) 
-
-import os 
-def msp_optimize(vecs, target, skeleton, num_reps=10, quiet=True): 
-    """ 
-    target can either be the matrix or the list of output statevectors 
-    vecs are the list of input statevectors
-    """
-
-    num_cnots = len(skeleton)
-    num_qubits = int(np.log2(len(vecs[0])))
-    num_params = (num_cnots * 6) + (num_qubits * 3)
-    
-    results = []
-    vals = []
-    for i in tqdm(range(num_reps)): 
-        params = np.random.rand(num_params)
-        result = minimize(msp_cost, x0=params, args=(skeleton, vecs, target), 
-                                 method='BFGS')
-        results.append(result)
-        vals.append(result.fun)
-        if not quiet:
-            print(result.fun)
-
-    print(f"Best cost with {num_cnots} CNOTs is: {min(vals)}")
-    return results, vals
-
 def brickwall_skeleton(n, num_layers): 
     skeleton = []
     for _ in range(num_layers):
@@ -93,7 +60,99 @@ def brickwall_skeleton(n, num_layers):
             skeleton.append((2*i+1,2*i+2))
     return skeleton 
 
-def environment(in_state, ansatz, out_state, gate_idx): 
+def k_body_z(n, k): 
+    ops = []
+    for indices in combinations(range(n), k): 
+        name = "".join("Z" if i in indices else "I" for i in range(n))
+        mat = embed_operator(n, list(indices), [pauli_Z] * k, dense=True)
+        ops.append((name, mat))
+    return ops
+
+def rz_ansatz(n, params, body=1): 
+    gate_list = [RZ(i, params[i]) for i in range(n)]
+    for k in range(2,body+1):
+        generators = k_body_z(n, k)
+        gates = []
+        for i, (name, mat) in enumerate(generators):
+            u = expm(-1.j * params[len(gate_list)+i] * mat)
+            gates.append(Gate('R'+name, np.arange(n), u))
+        gate_list += gates
+
+    return Circuit(gate_list, n)
+
+def random_circ(n, depth): 
+    skeleton = brickwall_skeleton(n,depth)
+    num_cnots = len(skeleton)
+    num_params = (num_cnots * 6) + (n * 3)
+    return dressed_cnot_circ(skeleton, n, np.random.rand(num_params))
+
+###############################################
+############# COMPILERS #######################
+###############################################
+
+def msp_infidelity(params, skeleton, in_states, out_states, backend="numpy"):
+    """ assuming qubits here """
+    num_qubits = int(np.log2(len(in_states[0])))
+    ansatz = dressed_cnot_circ(skeleton, num_qubits, params, local_dim=2)
+    
+    infid = 0
+    for in_state, out_state in zip(in_states, out_states):
+        sim = StatevectorSim(ansatz, backend=backend, init_state=in_state)
+        sim.run(progress_bar=False)
+        ansatz_sv = sim.get_statevector()
+
+        if backend == "torch":
+            target_sv = torch.tensor(out_state, dtype=torch.complex128)
+            infid += 1 - torch.abs(torch.dot(ansatz_sv.conj(), target_sv))**2
+        else:
+            infid += 1 - np.abs(np.dot(ansatz_sv.conj(), out_state))**2 
+                  
+    return infid / len(in_states)
+
+def msp_via_autodiff(in_states, out_states, cnot_skeleton, init_params=None, lr=0.05, 
+                     num_sweeps=100, threshold=2e-8):
+    
+    if init_params is None:
+        num_qubits = int(np.log2(len(in_states[0])))
+        num_cnots = len(cnot_skeleton)
+        num_params = (num_cnots * 6) + (num_qubits * 3)
+        init_params = torch.nn.Parameter(torch.randn(num_params))
+    
+    elif not isinstance(init_params, torch.nn.Parameter):
+        init_params = torch.nn.Parameter(torch.tensor(init_params, dtype=torch.float64))
+
+    optimizer = torch.optim.Adam([init_params], lr=lr)
+    context = RunContext(
+        progress_interval=10,
+        max_iter=num_sweeps,
+        checkpoint_file="checkpoint.pickle",
+        checkpoint_interval=100,
+        resume=False,
+        convergence_check=True,
+        stop_ratio=1e-8, 
+        stop_absolute=threshold,
+    )
+
+    cost_list = []
+    run_state = {'cost_list': cost_list, 'step': context.step}
+    
+    while True: 
+        cost = msp_infidelity(init_params, cnot_skeleton, in_states, out_states, backend="torch")
+        cost_list.append(cost.item())
+        optimizer.zero_grad()
+        cost.backward()
+        optimizer.step()
+
+        run_state["step"] += 1
+        run_state["cost_list"] = cost_list
+
+        if context.step_update(run_state):
+            print(f"Terminating at step {run_state['step']} with cost {cost_list[-1]}")
+            break
+
+    return init_params, run_state
+
+def msp_environment(in_state, ansatz, out_state, gate_idx): 
     d = ansatz.local_dim
     env = np.zeros((d,d), dtype=complex)
     for i in range(d): 
@@ -106,39 +165,7 @@ def environment(in_state, ansatz, out_state, gate_idx):
             
     return env.T 
 
-def ssp_opt(in_state, ansatz, out_state, num_sweeps=100): 
-    cost_list = []
-    term_cond = None
-    for sweep in range(num_sweeps):
-        for gate_idx in range(len(ansatz.gate_list)): 
-            if ansatz.gate_list[gate_idx].name[0] == 'U': 
-                gate = ansatz.gate_list[gate_idx]
-                env = environment(in_state, ansatz, out_state, gate_idx) 
-
-                x,s,yh = np.linalg.svd(env) 
-                new_gate = yh.conj().T @ x.conj().T 
-                ansatz.update_gate(gate_idx, new_gate)
-
-                new_cost = 1-np.trace(env@new_gate).real
-                if new_cost < 0: 
-                    if np.abs(new_cost) < 1e-6: 
-                        new_cost = 1e-16 
-                    else: 
-                        print("Cost has become negative somehow")
-                
-        cost_list.append(np.sqrt(new_cost))
-        if sweep > 1 and (cost_list[-2] - cost_list[-1]) / cost_list[-2] < 1e-3:
-            term_cond = "cost function has plateaued"
-            break
-        if cost_list[-1] < 1e-6:
-            term_cond = "cost function has converged"
-            break
-            
-        
-    print(term_cond)
-    return ansatz, cost_list, term_cond 
-
-def msp_opt(in_states, ansatz, out_states, num_sweeps=100, quiet=True, threshold=2e-8): 
+def msp_via_environments(in_states, ansatz, out_states, num_sweeps=100, quiet=True, threshold=2e-8): 
     term_cond = None
     cost_list = []
     for sweep in tqdm(range(num_sweeps)):
@@ -148,7 +175,7 @@ def msp_opt(in_states, ansatz, out_states, num_sweeps=100, quiet=True, threshold
                 
                 env_list = []
                 for in_state,out_state in zip(in_states, out_states):
-                    env = environment(in_state, ansatz, out_state, gate_idx) 
+                    env = msp_environment(in_state, ansatz, out_state, gate_idx) 
                     env_list.append(env)
                     
                 env = sum(env_list)
@@ -189,7 +216,8 @@ def msp_job(in_states, out_states, skeleton, local_dim=2, max_sweeps=500, max_in
     for i in range(max_instances):
         params = np.random.rand(num_params)
         ansatz = dressed_cnot_circ(skeleton, num_sites, params, local_dim) 
-        new_ansatz, cost_list, term_cond = msp_opt(in_states, ansatz, out_states, num_sweeps=max_sweeps, threshold=threshold)
+        new_ansatz, cost_list, term_cond = msp_via_environments(in_states, ansatz, out_states, 
+                                            num_sweeps=max_sweeps, threshold=threshold)
         sols.append(new_ansatz)
         data.append({'sol':new_ansatz, 'cost_list':cost_list, 'term_cond': term_cond})
 
@@ -233,28 +261,46 @@ def unitary_embedding(in_strings, out_states, local_dim=2):
         
     return A 
 
-def k_body_z(n, k): 
-    ops = []
-    for indices in combinations(range(n), k): 
-        name = "".join("Z" if i in indices else "I" for i in range(n))
-        mat = embed_operator(n, list(indices), [pauli_Z] * k, dense=True)
-        ops.append((name, mat))
-    return ops
+############################################## 
+###### DEPRECATED / BAD FUNCTIONS ############
+##############################################
 
-def rz_ansatz(n, params, body=1): 
-    gate_list = [RZ(i, params[i]) for i in range(n)]
-    for k in range(2,body+1):
-        generators = k_body_z(n, k)
-        gates = []
-        for i, (name, mat) in enumerate(generators):
-            u = expm(-1.j * params[len(gate_list)+i] * mat)
-            gates.append(Gate('R'+name, np.arange(n), u))
-        gate_list += gates
+def msp_cost(params, skeleton, vecs, target): 
+    num_qubits = int(np.log2(len(vecs[0])))
+    ansatz_mat = circ_to_mat(dressed_cnot_circ(skeleton, num_qubits, params))
+    
+    c = 0.0 
+    if type(target) == np.ndarray:
+        for vec in vecs: 
+            c += np.linalg.norm(ansatz_mat @ vec - target @ vec)
+    else:
+        for vec,out in zip(vecs, target): 
+            c += np.linalg.norm(ansatz_mat @ vec - out)
+        
+    return c / (len(vecs)) 
 
-    return Circuit(gate_list, n)
+def msp_optimize(vecs, target, skeleton, num_reps=10, quiet=True): 
+    """ 
+    target can either be the matrix or the list of output statevectors 
+    vecs are the list of input statevectors
+    """
+    print("SciPy optimizers are horrible. Use msp_via_autodiff or msp_via_environments instead.")
 
-def random_circ(n, depth): 
-    skeleton = brickwall_skeleton(n,depth)
     num_cnots = len(skeleton)
-    num_params = (num_cnots * 6) + (n * 3)
-    return dressed_cnot_circ(skeleton, n, np.random.rand(num_params))
+    num_qubits = int(np.log2(len(vecs[0])))
+    num_params = (num_cnots * 6) + (num_qubits * 3)
+    
+    results = []
+    vals = []
+    for i in tqdm(range(num_reps)): 
+        params = np.random.rand(num_params)
+        result = minimize(msp_cost, x0=params, args=(skeleton, vecs, target), 
+                                 method='L-BFGS-B', options={'maxfun':5000, 'maxiter':5000, 'disp':False})
+        results.append(result)
+        vals.append(result.fun)
+        if not quiet:
+            print(result.fun)
+
+    print(f"Best cost with {num_cnots} CNOTs is: {min(vals)}")
+    return results, vals
+

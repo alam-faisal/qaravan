@@ -6,7 +6,7 @@ import copy
 from functools import reduce 
 
 class Circuit:
-    def __init__(self, gate_list, n=None, local_dim=2, meas_sites=None):
+    def __init__(self, gate_list, n=None, local_dim=2, meas_sites=None, requires_decomp=False):
         self.gate_list = gate_list
 
         if len(gate_list) != 0: 
@@ -21,6 +21,7 @@ class Circuit:
         self.layers = None
         self.built = False
         self.meas_sites = meas_sites
+        self.requires_decomp = requires_decomp
         
     def update_gate(self, gate_idx, new_array): 
         self.gate_list[gate_idx].matrix = new_array
@@ -85,7 +86,8 @@ class Circuit:
     def build(self, nm=None):
         """ this changes the current circuit instance and returns it """
         if not self.built:
-            self.decompose()
+            if self.requires_decomp: 
+                self.decompose()
             self.construct_layers()
             if nm is not None: 
                 self.add_noise(nm)

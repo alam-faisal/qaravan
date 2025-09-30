@@ -7,7 +7,7 @@ def set_style(axes_labelsize=8, tick_labelsize=8, legend_fontsize=8, axes_titles
               xtick_top=False, ytick_right=False, spines_left=True, ytick_left=False):
     
     plt.style.use(['science', 'grid'])
-    plt.rcParams['text.usetex'] = True
+    plt.rcParams['text.usetex'] = False # haven't been able to get TeX on Mac
     plt.rcParams['image.cmap'] = 'cividis'
     
     plt.rcParams['axes.labelsize'] = axes_labelsize

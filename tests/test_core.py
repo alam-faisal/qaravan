@@ -134,3 +134,15 @@ def test_measure_and_collapse_sv():
             assert np.allclose(new_sv, true_outcome, atol=1e-7), f"Collapsed state mismatch for outcome '11'"
         else:
             assert False, f"Unexpected measurement outcome: {outcome}"
+
+def test_one_local_expectation(): 
+    """ testing one_local_expectation() method of StatevectorSim """
+    gate_list = [
+        H(0),               
+        CNOT([1, 0], 3),    
+        CNOT([2, 1], 3)    
+    ]
+    circ = Circuit(gate_list, 3)
+    sim = StatevectorSim(circ)
+    z_exp = sim.one_local_expectation(pauli_Z, 2)  # <Z_2>
+    assert abs(z_exp) < 1e-7, f"Expected <Z_2> = 0, got {z_exp}"

@@ -70,6 +70,21 @@ class StatevectorSim(BaseSim):
 
         return ncon((self.state.conj(), right_state), ([i for i in range(1, self.num_sites+1)], [i for i in range(1, self.num_sites+1)])).real
 
+    def one_local_expectation(self, op, site): 
+        """ op is a 1-local Hermitian matrix 
+        TODO: rewrite using op_action() """
+        if not self.ran:
+            self.run(progress_bar=False)
+
+        right_state = copy.deepcopy(self.state)
+        op = self.to_backend(op)
+        state_indices = [-(j+1) for j in range(self.num_sites)]
+        state_indices[site] = 1
+        right_state = ncon((op, right_state), ([-(site+1),1], state_indices))
+
+        return ncon((self.state.conj(), right_state), ([i for i in range(1, self.num_sites+1)], 
+                                            [i for i in range(1, self.num_sites+1)])).real
+
     def __str__(self):
         sv = self.state.reshape(self.local_dim**self.num_sites)
         return pretty_print_sv(sv, self.local_dim)

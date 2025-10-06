@@ -141,7 +141,21 @@ class Circuit:
     
     def __add__(self, other):
         return compose_circuits([self, other])
-        
+
+    def __mul__(self, other):
+        if isinstance(other, int) and other >= 0:
+            if other == 0:
+                return Circuit([], n=self.num_sites, local_dim=self.local_dim)
+            elif other == 1:
+                return self.copy()
+            else:
+                return compose_circuits([self] * other)
+        else:
+            raise TypeError("Circuit multiplication only supports non-negative integers")
+
+    def __rmul__(self, other):
+        return self.__mul__(other)
+    
     def draw(self): # TODO 
         """ use svgwrite to visualize the circuit """
         return None
@@ -202,9 +216,9 @@ def two_local_circ(skeleton, params=None, mag=None):
         gate_list.append(Gate("rand_U", indices, mat))
     return Circuit(gate_list)
 
-def rz_layer(skeleton, params=None): 
-    params = np.random.rand(len(skeleton)) * np.pi if params is None else params
-    gate_list = [RZ(indices, params[i]) for i,indices in enumerate(skeleton)]
+def rz_layer(n, params=None): 
+    params = np.random.rand(n) * np.pi if params is None else params
+    gate_list = [RZ([i], params[i]) for i in range(n)]
     return Circuit(gate_list)
 
 def rxx_layer(skeleton, params=None): 

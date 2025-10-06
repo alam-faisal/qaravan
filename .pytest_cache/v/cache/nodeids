@@ -4,6 +4,7 @@
   "tests/test_core.py::test_contract_and_decimate",
   "tests/test_core.py::test_measure_and_collapse_sv",
   "tests/test_core.py::test_measurement_on_statevector",
+  "tests/test_core.py::test_one_local_expectation",
   "tests/test_core.py::test_statevector_sim",
   "tests/test_core.py::test_ti_rmps_generation"
 ]

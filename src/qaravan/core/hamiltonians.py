@@ -19,7 +19,9 @@ class Hamiltonian:
         coupling_types is a list like ['xx', 'yx', 'zz'] 
         coupling_strengths is same or double the length of coupling_types
         field_types is a subset of ['x', 'y', 'z']
-        field_strengths is same length as field_types
+        field_strengths is same length as field_types each element can be either:
+        - a scalar (uniform field across all sites)
+        - an array of length num_sites (non-uniform field)
         locality is one of ['nn', 'nnn', 'a2a', 'long-range'] 
         """
         if lattice is not None:
@@ -67,9 +69,19 @@ class Hamiltonian:
                     self.terms.append((strength/np.abs(pairs[0]-pairs[1]), pairs, [ops[0], ops[1]]))
 
         for op, strength in zip(field_types, field_strengths):
-            if np.abs(strength) > 1e-10:  # avoid adding zero fields
-                for i in range(self.num_sites):
-                    self.terms.append((strength, [i], [op]))
+            if np.isscalar(strength):     # uniform field
+                if np.abs(strength) > 1e-10:
+                    for i in range(self.num_sites):
+                        self.terms.append((strength, [i], [op]))
+            else:
+                # Non-uniform field case - strength should be an array
+                strength_array = np.asarray(strength)
+                if len(strength_array) != self.num_sites:
+                    raise ValueError(f"Field strength array length {len(strength_array)} must match "
+                                     f"number of sites {self.num_sites}")
+                for i, site_strength in enumerate(strength_array):
+                    if np.abs(site_strength) > 1e-10:
+                        self.terms.append((site_strength, [i], [op]))
 
     def matrix(self, dense=False):
         return terms_to_matrix(self.terms, self.num_sites, dense=dense)
@@ -127,6 +139,24 @@ class Hamiltonian:
 
     def layer_from_group(self, group, time, num_sites):
         """ group is something like 'xx' or 'z' or 'xy' or 'even' or 'odd' """
+        gate_list = []
+        
+        # patch to handle non-uniform field terms TODO: refactor this function
+        if len(group) == 1 and group in self.field_types:
+            field_idx = self.field_types.index(group)
+            field_strength = self.field_strengths[field_idx]
+            
+            if not np.isscalar(field_strength):
+                field_array = np.asarray(field_strength)
+                pauli_op = pauli_mapping[group]
+                for i, site_strength in enumerate(field_array):
+                    if np.abs(site_strength) > 1e-10:
+                        site_generator = site_strength * pauli_op
+                        site_gate_mat = expm(-1j * time * site_generator)
+                        gate = Gate('R1', [i], site_gate_mat)
+                        gate_list.append(gate)
+                return gate_list
+
         if group in ['even', 'odd']:
             generator_mat = sum([c*embed_operator(2, [0, 1], [pauli_mapping[t[0]], pauli_mapping[t[1]]]) for c,t in zip(self.coupling_strengths, self.coupling_types)])
         else: 
@@ -134,7 +164,6 @@ class Hamiltonian:
             generator_mat = c*embed_operator(len(group), [i for i in range(len(group))], [pauli_mapping[op] for op in group])
 
         gate_mat = expm(-1j * time * generator_mat.toarray())
-        gate_list = []
 
         if len(group) == 1: 
             for i in range(num_sites): 
@@ -177,7 +206,7 @@ class Heisenberg(Hamiltonian):
             num_x=num_x,
             locality='nn'
         )
-        self.op_grouping = ['even', 'odd']
+        self.op_grouping = ['even', 'odd', 'z']
 
 class HeisenbergNNN(Hamiltonian):
     def __init__(self, num_x, jx=1, jy=1, jz=1, jx2=1e-2, jy2=1e-2, jz2=1e-2, h=0):

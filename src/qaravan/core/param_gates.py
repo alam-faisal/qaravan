@@ -53,6 +53,24 @@ class RZ(ParamGate):
         xp = np if self.backend == "numpy" else torch
         return arr_constructor([[1,0],[0,xp.exp(1.j*self.angles[0])]], backend=self.backend)
     
+class RXX(ParamGate):
+    def __init__(self, indices, *args):
+        super().__init__("RXX", indices, *args)
+    
+    def construct_matrix(self): 
+        expm = scipy.linalg.expm if self.backend == "numpy" else torch.linalg.matrix_exp
+        xx = xxN if self.backend == "numpy" else xxT
+        return arr_constructor(expm(-1.j*self.angles[0] * xx))
+    
+class RYY(ParamGate):
+    def __init__(self, indices, *args):
+        super().__init__("RYY", indices, *args)
+    
+    def construct_matrix(self): 
+        expm = scipy.linalg.expm if self.backend == "numpy" else torch.linalg.matrix_exp
+        yy = yyN if self.backend == "numpy" else yyT
+        return arr_constructor(expm(-1.j*self.angles[0] * yy))
+
 class RZZ(ParamGate):
     def __init__(self, indices, *args):
         super().__init__("RZZ", indices, *args)
@@ -61,7 +79,7 @@ class RZZ(ParamGate):
         expm = scipy.linalg.expm if self.backend == "numpy" else torch.linalg.matrix_exp
         zz = zzN if self.backend == "numpy" else zzT
         return arr_constructor(expm(-1.j*self.angles[0] * zz))
-    
+        
 class CPhase(ParamGate):
     def __init__(self, indices, *args):
         super().__init__("CPhase", indices, *args)

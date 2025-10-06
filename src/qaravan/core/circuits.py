@@ -1,5 +1,5 @@
 from .gates import ID, SuperOp, random_unitary, Gate
-from .param_gates import kak_unitary
+from .param_gates import kak_unitary, RZ, RXX, RYY, RZZ
 from .noise import gate_time, ThermalNoise
 import numpy as np
 import copy
@@ -200,4 +200,24 @@ def two_local_circ(skeleton, params=None, mag=None):
             mat = kak_unitary(np.random.rand(15) * mag)
 
         gate_list.append(Gate("rand_U", indices, mat))
+    return Circuit(gate_list)
+
+def rz_layer(skeleton, params=None): 
+    params = np.random.rand(len(skeleton)) * np.pi if params is None else params
+    gate_list = [RZ(indices, params[i]) for i,indices in enumerate(skeleton)]
+    return Circuit(gate_list)
+
+def rxx_layer(skeleton, params=None): 
+    params = np.random.rand(len(skeleton)) * np.pi if params is None else params
+    gate_list = [RXX(indices, params[i]) for i,indices in enumerate(skeleton)]
+    return Circuit(gate_list)
+
+def ryy_layer(skeleton, params=None):
+    params = np.random.rand(len(skeleton)) * np.pi if params is None else params
+    gate_list = [RYY(indices, params[i]) for i,indices in enumerate(skeleton)]
+    return Circuit(gate_list)
+
+def rzz_layer(skeleton, params=None):
+    params = np.random.rand(len(skeleton)) * np.pi if params is None else params
+    gate_list = [RZZ(indices, params[i]) for i,indices in enumerate(skeleton)]
     return Circuit(gate_list)

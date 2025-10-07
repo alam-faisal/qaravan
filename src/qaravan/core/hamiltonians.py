@@ -4,17 +4,19 @@ from .lattices import LinearLattice, KagomeLattice, ToricLattice
 from .paulis import pauli_mapping
 from scipy.linalg import expm
 
-def terms_to_matrix(terms, num_sites, dense=True):
-    """ builds full 2**n by 2**n matrix from a list of terms, where each term is a tuple (coefficient, active_sites, local_ops) """
+def terms_to_matrix(terms, num_sites, dense=True, spin_half=False):
+    """ builds full 2**n by 2**n matrix from a list of terms, where each term is a tuple (coefficient, active_sites, local_ops) 
+    spin_half: if True, uses spin-1/2 operators (Pauli/2), if False uses full Pauli matrices (default)
+    """
     H = sp.csr_matrix((2**num_sites, 2**num_sites), dtype=complex)
     for coeff, active_sites, local_ops in terms:
-        H += coeff * embed_operator(num_sites, active_sites, [pauli_mapping[op] for op in local_ops], factor=True)
+        H += coeff * embed_operator(num_sites, active_sites, [pauli_mapping[op] for op in local_ops], factor=spin_half)
     if dense: 
         return H.toarray()
     return H
 
 class Hamiltonian:
-    def __init__(self, coupling_types, coupling_strengths, field_types, field_strengths, lattice=None, num_x=None, locality='nn', periodic_x=False):
+    def __init__(self, coupling_types, coupling_strengths, field_types, field_strengths, lattice=None, num_x=None, locality='nn', periodic_x=False, spin_half=False):
         """ 
         coupling_types is a list like ['xx', 'yx', 'zz'] 
         coupling_strengths is same or double the length of coupling_types
@@ -22,7 +24,8 @@ class Hamiltonian:
         field_strengths is same length as field_types each element can be either:
         - a scalar (uniform field across all sites)
         - an array of length num_sites (non-uniform field)
-        locality is one of ['nn', 'nnn', 'a2a', 'long-range'] 
+        locality is one of ['nn', 'nnn', 'a2a', 'long-range']
+        spin_half: if True, uses spin-1/2 operators (Pauli/2), if False uses full Pauli matrices (default)
         """
         if lattice is not None:
             self.lattice = lattice
@@ -38,6 +41,7 @@ class Hamiltonian:
         self.field_types = field_types
         self.field_strengths = field_strengths
         self.locality = locality
+        self.spin_half = spin_half
         self.terms = []  # stores (coefficient, active_sites, local_ops)
         
         if locality == 'nn':
@@ -84,7 +88,7 @@ class Hamiltonian:
                         self.terms.append((site_strength, [i], [op]))
 
     def matrix(self, dense=False):
-        return terms_to_matrix(self.terms, self.num_sites, dense=dense)
+        return terms_to_matrix(self.terms, self.num_sites, dense=dense, spin_half=self.spin_half)
 
     def evals(self):
         return np.linalg.eigvalsh(self.matrix(dense=True)) 
@@ -158,10 +162,10 @@ class Hamiltonian:
                 return gate_list
 
         if group in ['even', 'odd']:
-            generator_mat = sum([c*embed_operator(2, [0, 1], [pauli_mapping[t[0]], pauli_mapping[t[1]]]) for c,t in zip(self.coupling_strengths, self.coupling_types)])
+            generator_mat = sum([c*embed_operator(2, [0, 1], [pauli_mapping[t[0]], pauli_mapping[t[1]]], factor=self.spin_half) for c,t in zip(self.coupling_strengths, self.coupling_types)])
         else: 
             c = self.coupling_strengths[self.coupling_types.index(group)] if len(group) == 2 else self.field_strengths[self.field_types.index(group)]
-            generator_mat = c*embed_operator(len(group), [i for i in range(len(group))], [pauli_mapping[op] for op in group])
+            generator_mat = c*embed_operator(len(group), [i for i in range(len(group))], [pauli_mapping[op] for op in group], factor=self.spin_half)
 
         gate_mat = expm(-1j * time * generator_mat.toarray())
 
@@ -305,10 +309,10 @@ class ChiralHeisenberg(Hamiltonian):
     def primitive_matrices(self):
         """ returns small 8 by 8 matrix for triangle primitives and 4 by 4 matrix for edge primitives """
         triangle_terms = self.pairwise_terms([(0,1), (1,2), (0,2)]) + self.chiral_terms((0,1,2))
-        tmat = sum([coeff * embed_operator(3, sites, [pauli_mapping[op] for op in local_ops], factor=True) for coeff, sites, local_ops in triangle_terms])
+        tmat = sum([coeff * embed_operator(3, sites, [pauli_mapping[op] for op in local_ops], factor=self.spin_half) for coeff, sites, local_ops in triangle_terms])
 
         edge_terms = self.pairwise_terms([(0,1),])
-        emat = sum([coeff * embed_operator(2, sites, [pauli_mapping[op] for op in local_ops], factor=True) for coeff, sites, local_ops in edge_terms])
+        emat = sum([coeff * embed_operator(2, sites, [pauli_mapping[op] for op in local_ops], factor=self.spin_half) for coeff, sites, local_ops in edge_terms])
         return tmat.toarray(), emat.toarray()
 
     def grouped_terms(self): 

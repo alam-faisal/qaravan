@@ -165,6 +165,18 @@ class XYCoupling(ParamGate):
         xx = xxN if self.backend == "numpy" else xxT
         yy = yyN if self.backend == "numpy" else yyT
         return arr_constructor(expm(-1.j*theta * (xx + yy)), backend=self.backend)
+    
+class HeisenbergCoupling(ParamGate):
+    def __init__(self, indices, *args):
+        super().__init__("HeisenbergCoupling", indices, *args)
+    
+    def construct_matrix(self): 
+        theta = self.angles[0]
+        expm = scipy.linalg.expm if self.backend == "numpy" else torch.linalg.matrix_exp
+        xx = xxN if self.backend == "numpy" else xxT
+        yy = yyN if self.backend == "numpy" else yyT
+        zz = zzN if self.backend == "numpy" else zzT
+        return arr_constructor(expm(-1.j*theta * (xx + yy + zz)), backend=self.backend)
 
 class RZ01(ParamGate): 
     def __init__(self, indices, *args):

@@ -39,6 +39,49 @@ class LinearLattice(Lattice):
 
         else:
             raise ValueError("Unsupported locality type")
+        
+class SquareLattice(Lattice):
+    def __init__(self, Lx, Ly, periodic_x=False, periodic_y=False):
+        super().__init__(Lx, Ly, periodic_x=periodic_x, periodic_y=periodic_y)
+        self.atom_positions = {(x + y * Lx): (x, y) for y in range(Ly) for x in range(Lx)}
+        self.cells = set((x, y) for y in range(Ly) for x in range(Lx))
+        self.num_sites = Lx * Ly
+
+    def get_connections(self, locality='nn'):
+        connections = []
+        if locality == 'nn':
+            for y in range(self.Ly):
+                for x in range(self.Lx):
+                    right = (x + 1) % self.Lx if self.periodic_x else (x + 1)
+                    down = (y + 1) % self.Ly if self.periodic_y else (y + 1)
+
+                    if right < self.Lx:
+                        connections.append((y * self.Lx + x, y * self.Lx + right))
+                    if down < self.Ly:
+                        connections.append((y * self.Lx + x, down * self.Lx + x))
+
+        else:
+            raise ValueError("Unsupported locality type")
+
+        return connections
+    
+    def plot(self, show_labels=True, figsize=(6, 6), save_path=None):
+        _, ax = plt.subplots(figsize=figsize)
+        for idx, (x, y) in self.atom_positions.items():
+            ax.scatter(x, y, s=100, color='blue', edgecolor='black', zorder=2)
+            if show_labels:
+                ax.text(x, y, str(idx), ha='center', va='center', color='white', fontsize=8)
+
+        for i, j in self.get_connections('nn'):
+            x1, y1 = self.atom_positions[i]
+            x2, y2 = self.atom_positions[j]
+            ax.plot([x1, x2], [y1, y2], 'k-', lw=1, zorder=1)
+
+        ax.set_aspect('equal')
+        ax.axis('off')
+        plt.title("Square Lattice")
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight')
 
 class ToricLattice:
     def __init__(self, Lx, Ly):

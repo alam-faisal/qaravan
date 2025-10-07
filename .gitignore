@@ -9,6 +9,7 @@ __pycache__/
 dist/
 build/
 notebooks/
+.dev_scratch/
 
 # Jupyter
 .ipynb_checkpoints/

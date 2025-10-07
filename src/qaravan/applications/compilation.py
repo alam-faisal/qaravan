@@ -6,7 +6,7 @@ from qaravan.core.circuits import Circuit, circ_to_mat
 from qaravan.tensorQ.statevector_sim import StatevectorSim
 
 from scipy.linalg import expm
-from itertools import product, combinations
+from itertools import combinations
 from scipy.optimize import minimize
 from tqdm import tqdm
 from numpy.linalg import qr 
@@ -39,26 +39,6 @@ def dressed_cnot_circ(skeleton, num_qubits, params, local_dim=2):
         counter += 1
 
     return Circuit(gate_list, num_qubits)
-
-def dressed_cnot_skeletons(num_sites, num_cnots, orientation=False, a2a=False):
-    if not a2a: 
-        pairs = [(i, i+1) for i in range(num_sites-1)]
-    else: 
-        pairs = [(i,j) for i in range(num_sites) for j in range(num_sites) if i != j]
-
-    if orientation: 
-        pairs += [pair[::-1] for pair in pairs]
-
-    return list(product(pairs, repeat=num_cnots)) 
-    
-def brickwall_skeleton(n, num_layers): 
-    skeleton = []
-    for _ in range(num_layers):
-        for i in range(n//2): 
-            skeleton.append((2*i,2*i+1))
-        for i in range((n+1)//2 -1): 
-            skeleton.append((2*i+1,2*i+2))
-    return skeleton 
 
 def k_body_z(n, k): 
     ops = []

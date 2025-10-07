@@ -1,5 +1,5 @@
 from .gates import ID, SuperOp, random_unitary, Gate
-from .param_gates import kak_unitary, RZ, RXX, RYY, RZZ
+from .param_gates import kak_unitary, RZ, RXX, RYY, RZZ, HeisenbergCoupling
 from .noise import gate_time, ThermalNoise
 import numpy as np
 import copy
@@ -234,4 +234,9 @@ def ryy_layer(skeleton, params=None):
 def rzz_layer(skeleton, params=None):
     params = np.random.rand(len(skeleton)) * np.pi if params is None else params
     gate_list = [RZZ(indices, params[i]) for i,indices in enumerate(skeleton)]
+    return Circuit(gate_list)
+
+def heisenberg_layer(skeleton, params=None):
+    params = np.random.rand(len(skeleton)) * np.pi if params is None else params
+    gate_list = [HeisenbergCoupling(indices, params[i]) for i,indices in enumerate(skeleton)]
     return Circuit(gate_list)

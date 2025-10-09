@@ -18,9 +18,9 @@ class StatevectorSim(BaseSim):
     def to_backend(self, array):
         if self.backend == "torch":
             if torch.is_tensor(array):
-                return array.to(dtype=torch.complex128, device=self.device)
+                return array.to(dtype=torch.complex64, device=self.device)
             else:
-                return torch.tensor(array, dtype=torch.complex128, device=self.device)
+                return torch.tensor(array, dtype=torch.complex64, device=self.device)
         else:
             if isinstance(array, np.ndarray):
                 return array
@@ -34,7 +34,7 @@ class StatevectorSim(BaseSim):
         """
         shape = [self.local_dim] * self.num_sites
         if self.init_state is None:
-            sv = np.zeros(self.local_dim**self.num_sites, dtype=np.complex128)
+            sv = np.zeros(self.local_dim**self.num_sites, dtype=np.complex64)
             sv[0] = 1.0
         elif isinstance(self.init_state, str):
             sv = string_to_sv(self.init_state, self.circ.local_dim)
@@ -52,6 +52,7 @@ class StatevectorSim(BaseSim):
 
     def measure(self, meas_sites):
         """ returns a measurement bitstring """
+        assert self.backend == "numpy", "Measurement only supported for numpy backend"
         return measure_sv(self.get_statevector(), meas_sites)
         
     def measure_and_collapse(self, meas_sites): 

@@ -44,14 +44,24 @@ class ParamGate(Gate):
         
     def solve_angles(self): 
         return "unsolved" # if subclass doesn't bother implementing we probably don't need angles
+
+class RX(ParamGate): 
+    def __init__(self, indices, *args):
+        super().__init__("RX", indices, *args)
     
+    def construct_matrix(self): 
+        expm = scipy.linalg.expm if self.backend == "numpy" else torch.linalg.matrix_exp
+        x = pauli_X if self.backend == "numpy" else pauli_XT
+        return arr_constructor(expm(-1.j*self.angles[0] * x), backend=self.backend)
+
 class RZ(ParamGate): 
     def __init__(self, indices, *args):
         super().__init__("RZ", indices, *args)
     
     def construct_matrix(self): 
-        xp = np if self.backend == "numpy" else torch
-        return arr_constructor([[1,0],[0,xp.exp(1.j*self.angles[0])]], backend=self.backend)
+        expm = scipy.linalg.expm if self.backend == "numpy" else torch.linalg.matrix_exp
+        z = pauli_Z if self.backend == "numpy" else pauli_ZT
+        return arr_constructor(expm(-1.j*self.angles[0] * z), backend=self.backend)
     
 class RXX(ParamGate):
     def __init__(self, indices, *args):

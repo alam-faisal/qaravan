@@ -54,6 +54,15 @@ class RX(ParamGate):
         x = pauli_X if self.backend == "numpy" else pauli_XT
         return arr_constructor(expm(-1.j*self.angles[0] * x), backend=self.backend)
 
+class RY(ParamGate):
+    def __init__(self, indices, *args):
+        super().__init__("RY", indices, *args)
+    
+    def construct_matrix(self): 
+        expm = scipy.linalg.expm if self.backend == "numpy" else torch.linalg.matrix_exp
+        y = pauli_Y if self.backend == "numpy" else pauli_YT
+        return arr_constructor(expm(-1.j*self.angles[0] * y), backend=self.backend)
+
 class RZ(ParamGate): 
     def __init__(self, indices, *args):
         super().__init__("RZ", indices, *args)

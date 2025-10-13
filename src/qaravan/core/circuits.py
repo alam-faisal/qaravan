@@ -1,5 +1,5 @@
 from .gates import ID, SuperOp, random_unitary, Gate
-from .param_gates import kak_unitary, RX, RZ, RXX, RYY, RZZ, HeisenbergCoupling
+from .param_gates import kak_unitary, RX, RY, RZ, RXX, RYY, RZZ, HeisenbergCoupling
 from .noise import gate_time, ThermalNoise
 import numpy as np
 import copy
@@ -219,6 +219,11 @@ def two_local_circ(skeleton, params=None, mag=None):
 def rx_layer(n, params=None):
     params = np.random.rand(n) * np.pi if params is None else params
     gate_list = [RX([i], params[i]) for i in range(n)]
+    return Circuit(gate_list)
+
+def ry_layer(n, params=None):
+    params = np.random.rand(n) * np.pi if params is None else params
+    gate_list = [RY([i], params[i]) for i in range(n)]
     return Circuit(gate_list)
 
 def rz_layer(n, params=None): 

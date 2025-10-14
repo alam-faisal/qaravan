@@ -222,7 +222,12 @@ def gate_time(gate, nm):
         elif gate.name[0:2] in ["CU"]: 
             return 4*nm.two_site_time
         else: 
-            return nm.one_site_time
+            if gate.span == 1: 
+                return nm.one_site_time
+            elif gate.span == 2:
+                return nm.two_site_time
+            else:
+                raise ValueError("Gate span > 2 not supported for automatic timing.")
     
 def random_pauli_channel(n,n_strings=5,c=0.1):
     strings = ['i'*n] + [random_pauli_string(n) for _ in range(n_strings-1)]

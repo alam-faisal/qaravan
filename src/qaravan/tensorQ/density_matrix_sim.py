@@ -45,7 +45,7 @@ class DensityMatrixSim(BaseSim):
         """ should just use local_expectation """
         raise NotImplementedError("Measurement not yet implemented for density matrix simulator.")
     
-    # TODO: allo local_ops to have span greater than 1
+    # TODO: allo local_ops to have span greater than 1, also improve for one_local_exp()
     def local_expectation(self, local_ops):
         """ local_ops is a list of local operators, one for each site """
         self.run(progress_bar=False)
@@ -55,6 +55,18 @@ class DensityMatrixSim(BaseSim):
             self.state = ncon((local_ops[i], self.state), ([-(i+1),1], state_indices))
 
         dm = self.state.reshape(self.local_dim**self.num_sites, self.local_dim**self.num_sites)
+        return np.trace(dm).real
+    
+    def one_local_expectation(self, op, site): 
+        """ op is a 1-local Hermitian matrix """
+        if not self.ran:
+            self.run(progress_bar=False)
+
+        state_indices = [-(j+1) for j in range(2*self.num_sites)] 
+        state_indices[site] = 1
+        modified_state = ncon((op, self.state), ([-(site+1), 1], state_indices))
+
+        dm = modified_state.reshape(self.local_dim**self.num_sites, self.local_dim**self.num_sites)
         return np.trace(dm).real
     
     def global_expectation(self, global_op):

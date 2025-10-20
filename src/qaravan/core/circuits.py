@@ -172,7 +172,7 @@ class Circuit:
 def compose_circuits(circ_list): 
     gate_list = [circ.gate_list for circ in circ_list]
     gate_list = [gate for sublist in gate_list for gate in sublist]
-    return Circuit(gate_list, n=circ_list[0].num_sites)
+    return Circuit(gate_list, n=np.max([circ.num_sites for circ in circ_list]))
 
 def circ_to_mat(circ, n=None): 
     if circ.layers == None: 

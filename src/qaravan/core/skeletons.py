@@ -16,17 +16,9 @@ def dressed_cnot_skeletons(num_sites, num_cnots, orientation=False, a2a=False):
         pairs += [pair[::-1] for pair in pairs]
 
     return list(product(pairs, repeat=num_cnots)) 
-    
-def brickwall_skeleton(n, num_layers): 
-    skeleton = []
-    for _ in range(num_layers):
-        for i in range(n//2): 
-            skeleton.append((2*i,2*i+1))
-        for i in range((n+1)//2 -1): 
-            skeleton.append((2*i+1,2*i+2))
-    return skeleton 
 
-def brickwall_skeleton_2D(Lx, Ly):
+def brickwall_skeleton(Lx, Ly=1):
+    """ brickwall skeleton for 1D and 2D lattices """
     skeleton = []
     for y in range(Ly):
         for x in range(0, Lx-1, 2):

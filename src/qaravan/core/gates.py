@@ -72,6 +72,7 @@ class SuperOp:
     
     def __str__(self):
         return f"{self.name} superoperator on site(s) {self.indices}"
+    
 
 ###########################################
 ############# SUBCLASSES ##################
@@ -167,7 +168,24 @@ class CNOTGate(Gate):
     def __str__(self):
         title = "bottom heavy" if self.bottom_heavy else "top heavy"
         return f"{title} {self.name} gate on site(s) {self.indices}"
+    
+class Reset(Gate): 
+    def __init__(self, indices, reset_to: str, normalize=True, time=None): 
+        proj_up = np.array([[1,0],[0,0]])
+        proj_down = np.array([[0,0],[0,1]])
+        projectors = [proj_up if bit == '0' else proj_down for bit in reset_to]
+        matrix = reduce(np.kron, projectors)
+        super().__init__("Reset", indices, matrix, time=time)
         
+        self.reset_to = reset_to
+        self.normalize = normalize
+    
+    def __str__(self):
+        return f"Reset on site(s) {self.indices} to state |{self.reset_to}⟩"
+
+    def shallow_copy(self):
+        return Reset(self.indices, self.reset_to, self.normalize, self.time)
+
 ########################################
 ############ QUBIT GATES ###############
 ########################################

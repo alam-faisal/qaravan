@@ -94,6 +94,10 @@ class StatevectorSim(BaseSim):
         if not self.ran:
             self.run(progress_bar=False)
         return self.state.reshape(self.local_dim**self.num_sites)
+    
+    def normalize_state(self): 
+        norm = np.linalg.norm(self.state.reshape(-1))
+        self.state /= norm
 
 def locs_to_indices(locs, n): 
     shifted_locs = [loc + 1 for loc in locs]

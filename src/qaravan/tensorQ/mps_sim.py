@@ -25,7 +25,7 @@ class MPSSim(BaseSim):
         
     def apply_gate(self, gate):
         inds, mat = gate.indices, gate.matrix
-        self.state.canonize(inds)
+        self.state.canonize(inds[0]) # need to check why I was passing inds fully earlier
         sites = self.state.sites
         con_site = contract_sites([sites[i] for i in inds])        
         con_site = ncon((mat, con_site), ([-3,1], [-1,-2,1]))
@@ -42,3 +42,13 @@ class MPSSim(BaseSim):
     def __str__(self):
         sv = self.state.to_vector()
         return pretty_print_sv(sv, self.local_dim)
+    
+    def normalize_state(self):
+        self.state.normalize() # using MPS normalize method
+
+def measure_mps(mps, meas_sites):
+    # inefficient to compute k-RDMs. Instead we do this sequentially. 
+    # compute expectation value of projectors on first site, collapse, get new MPS
+    # repeat for next site
+    # need to first implement local_expectation and then use projectors as operators
+    return None

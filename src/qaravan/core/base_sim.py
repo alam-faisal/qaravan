@@ -21,6 +21,11 @@ class BaseSim:
 
     def apply_gate(self, gate):
         raise NotImplementedError("must be implemented by child classes.")
+    
+    def apply_reset(self, reset_op): 
+        self.apply_gate(reset_op) 
+        if reset_op.normalize:
+            self.normalize_state()
 
     def run(self, progress_bar=True, debug=0):
         """
@@ -33,8 +38,8 @@ class BaseSim:
         layers = tqdm(circ.layers) if progress_bar else circ.layers
 
         for layer in layers:
-            for gate in layer:
-                self.apply_gate(gate)
+            for op in layer:
+                self.apply_reset(op) if op.name == "Reset" else self.apply_gate(op)
                 if debug == 2:
                     print(self)
             
@@ -52,4 +57,7 @@ class BaseSim:
 
     def __str__(self):
         """ pretty prints the state """
+        raise NotImplementedError("must be implemented by child classes.")
+
+    def normalize_state(self):
         raise NotImplementedError("must be implemented by child classes.")

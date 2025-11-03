@@ -82,6 +82,12 @@ class DensityMatrixSim(BaseSim):
     def get_density_matrix(self):
         return self.state.reshape(self.local_dim**self.num_sites, self.local_dim**self.num_sites)
 
+    def normalize_state(self):
+        dm = self.state.reshape(self.local_dim**self.num_sites, self.local_dim**self.num_sites)
+        trace = np.trace(dm).real
+        dm /= trace
+        self.state = dm.reshape([self.local_dim]*self.num_sites*2)
+
 def generate_gate_indices(locs, n): 
     numbers = [i for i in range(1,2*len(locs)+1)]
     contracted = sorted(numbers)[-len(numbers)//2:] + sorted(numbers)[:len(numbers)//2]

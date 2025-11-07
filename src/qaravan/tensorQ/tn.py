@@ -156,6 +156,7 @@ class MPS(TensorNetwork):
     """ a site is a np.array of shape (left_bond_dim, right_bond_dim, local_dim) """
     def __init__(self, sites):
         super().__init__(sites)
+        self.center = None
     
     def __matmul__(self, other):
         if isinstance(other, MPS):
@@ -182,29 +183,27 @@ class MPS(TensorNetwork):
     def canonize(self, center): 
         """ orthogonalize self.state at center; 
         upto center-1 we have left-canonical; 
-        from center+1 we have right-canonical """
+        from center+1 we have right-canonical 
+        if center == 0 and MPS is normalized, then all sites are right-canonical 
+        if center == num_sites-1 and MPS is normalized, then all sites are left-canonical
+        """
         sites = copy.deepcopy(self.sites)
         if sites[0].shape[0] > 1:
             raise NotImplementedError("canonization for periodic boundaries has not been implemented")
-        
-        for i in range(self.num_sites-1, center-1, -1):
+
+        left_start = 0 if self.center is None else self.center
+        right_start = self.num_sites - 1 if self.center is None else self.center
+
+        for i in range(right_start, center, -1):
             left_tensor, right_tensor = site_svd(sites[i], 'right', None, None, False)
             sites[i] = right_tensor
             sites[i-1] = ncon((sites[i-1], left_tensor), ([-1,1,-3], [1,-2]))
 
-        for i in range(0, center-1):
+        for i in range(left_start, center):
             left_tensor, right_tensor = site_svd(sites[i], 'left', None, None, False)
             sites[i] = left_tensor
             sites[i+1] = ncon((right_tensor, sites[i+1]), ([-1,1], [1,-2,-3]))
 
-        left_tensor, right_tensor = site_svd(sites[center], 'left', None, None, False)
-        sites[center] = left_tensor
-        
-        if center + 1 <= self.num_sites - 1:
-            sites[center+1] = ncon((right_tensor, sites[center+1]), ([-1,1], [1,-2,-3]))
-        else: 
-            print("MPS has become normalized")       
-        
         self.center = center
         self.sites = sites
         

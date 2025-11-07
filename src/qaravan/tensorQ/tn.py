@@ -236,7 +236,6 @@ class MPS(TensorNetwork):
     def to_vector(self):
         return contract_sites(self.sites)[0,0,:].reshape(self.local_dim**self.num_sites)
     
-    
     def evaluate(self, basis): 
         return 0.0
  
@@ -447,7 +446,7 @@ def contract_sites(site_list):
         
     return site
 
-def decompose_site_n(data, msvr=None, max_dim=None): 
+def decompose_site_n(data, msvr=None, max_dim=None, symmetric=False): 
     """ 
     decomposes sites of an MPS or MPDO by combining left_bond and top_spin, and right_bond and bottom_spin
     data.shape = (left_bond, right_bond, top_spin, bottom_spin)
@@ -459,7 +458,10 @@ def decompose_site_n(data, msvr=None, max_dim=None):
     # shape has become (left_bond * top_spin, right_bond * bottom_spin)
 
     u,s,vh = svd(data, full_matrices=False, lapack_driver='gesvd')    
-    u, vh = u @ np.diag(np.sqrt(s)), np.diag(np.sqrt(s)) @ vh
+    if symmetric:
+        u, vh = u @ np.diag(np.sqrt(s)), np.diag(np.sqrt(s)) @ vh
+    else: 
+        u, vh = u, np.diag(s) @ vh
 
     if msvr is not None: 
         s = s[s>msvr*s[0]]
@@ -477,7 +479,7 @@ def decompose_site_n(data, msvr=None, max_dim=None):
         
     return top_site, bottom_site
 
-def decimate(con_site, local_dim): 
+def decimate(con_site, local_dim, symmetric=False): 
     """ decimates sites of an MPS or MPDO after the action of span-local gate 
     con_site.shape = (bond_dim, bond_dim, local_dim**span) """
     span = int(np.log(con_site.shape[2]) / np.log(local_dim))
@@ -486,7 +488,7 @@ def decimate(con_site, local_dim):
     for i in range(span-1): 
         con_site = con_site.reshape(con_site.shape[0], con_site.shape[1], local_dim, local_dim**(span-i-1))
         # shape has become (b, b, d, d*d*d*...*d)
-        top, con_site = decompose_site_n(con_site)
+        top, con_site = decompose_site_n(con_site, symmetric=symmetric)
         dec_sites.append(top)
 
     dec_sites.append(con_site)

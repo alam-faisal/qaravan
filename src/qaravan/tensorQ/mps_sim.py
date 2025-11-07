@@ -23,13 +23,13 @@ class MPSSim(BaseSim):
         else:
             raise ValueError("init_state must be either an MPS or a bitstring.")
         
-    def apply_gate(self, gate):
+    def apply_gate(self, gate, symmetric=False):
         inds, mat = gate.indices, gate.matrix
         self.state.canonize(inds[0]) # need to check why I was passing inds fully earlier
         sites = self.state.sites
         con_site = contract_sites([sites[i] for i in inds])        
         con_site = ncon((mat, con_site), ([-3,1], [-1,-2,1]))
-        dec_sites = decimate(con_site, self.local_dim)
+        dec_sites = decimate(con_site, self.local_dim, symmetric=symmetric)
         for i, site in enumerate(dec_sites): 
             sites[inds[i]] = site
 

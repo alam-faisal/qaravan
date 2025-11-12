@@ -6,5 +6,18 @@
   "tests/test_core.py::test_measurement_on_statevector",
   "tests/test_core.py::test_one_local_expectation",
   "tests/test_core.py::test_statevector_sim",
-  "tests/test_core.py::test_ti_rmps_generation"
+  "tests/test_core.py::test_ti_rmps_generation",
+  "tests/test_tn.py::test_canonize",
+  "tests/test_tn.py::test_contract_sites_mpdo",
+  "tests/test_tn.py::test_contract_sites_mps",
+  "tests/test_tn.py::test_decimate_mpdo",
+  "tests/test_tn.py::test_decimate_mps",
+  "tests/test_tn.py::test_environments",
+  "tests/test_tn.py::test_environments_two_mps",
+  "tests/test_tn.py::test_fast_measure",
+  "tests/test_tn.py::test_mps_to_sv_and_back",
+  "tests/test_tn.py::test_one_local_expectation",
+  "tests/test_tn.py::test_one_rdm",
+  "tests/test_tn.py::test_overlap",
+  "tests/test_tn.py::test_random_mps_normalized"
 ]

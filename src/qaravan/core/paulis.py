@@ -55,3 +55,9 @@ def random_pauli_string(n):
     for i in range(n):
         out += chars[np.random.choice(len(chars))]
     return out
+
+def random_hermitian_op(n): 
+    dim = 2**n
+    rand_mat = np.random.randn(dim, dim) + 1j * np.random.randn(dim, dim)
+    hermitian_op = (rand_mat + rand_mat.conj().T) / 2
+    return hermitian_op

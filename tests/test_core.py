@@ -41,34 +41,6 @@ def test_construct_unitary():
             f"Constructed Q does not match reference unitary for input state '{st}'."
         )
 
-def test_contract_and_decimate():
-    # Test contract_sites produces the correct shape for MPS sites
-    sites = [np.random.rand(4,3,2)] + [np.random.rand(3,3,2)] * 1 + [np.random.rand(3,5,2)]
-    c_site = contract_sites(sites)
-    assert c_site.shape == (4, 5, 2**3), "contract_sites failed for MPS sites"
-
-    # Test contract_sites produces the correct shape for MPDO sites
-    sites = [np.random.rand(4,3,2,2)] + [np.random.rand(3,3,2,2)] * 1 + [np.random.rand(3,5,2,2)]
-    c_site = contract_sites(sites)
-    assert c_site.shape == (4, 5, 2**6), "contract_sites failed for MPDO sites"
-
-    # Test decimate produces the correct shape and correct tensors for MPS sites
-    sites = [np.random.rand(4,3,2)] + [np.random.rand(3,3,2)] * 1 + [np.random.rand(3,5,2)]
-    c_site = contract_sites(sites)
-    dec_sites = decimate(c_site, 2)
-    c_site2 = contract_sites(dec_sites)
-    assert np.allclose(c_site, c_site2), "decimate failed for MPS sites"
-    assert all(s.shape == d.shape for s, d in zip(sites, dec_sites)), "Shapes do not match for MPS sites"
-
-    # Test decimate produces the correct shape and correct tensors for MPDO sites
-    sites = [np.random.rand(4,3,2,2)] + [np.random.rand(3,3,2,2)] * 1 + [np.random.rand(3,5,2,2)]
-    c_site = contract_sites(sites)
-    dec_sites = decimate(c_site, 2*2)  # super local_dim is square of local_dim
-    dec_sites = [s.reshape(s.shape[0], s.shape[1], 2, 2) for s in dec_sites]
-    c_site2 = contract_sites(dec_sites)
-    assert np.allclose(c_site, c_site2), "decimate failed for MPDO sites"
-    assert all(s.shape == d.shape for s, d in zip(sites, dec_sites)), "Shapes do not match for MPDO sites"
-
 def test_circuit_copy_with_autograd_gate():
     theta = torch.randn(1, dtype=torch.float64, requires_grad=True)
     mat = torch.matrix_exp(-1j * theta * torch.tensor([[0., 1.], [1., 0.]], dtype=torch.complex128))

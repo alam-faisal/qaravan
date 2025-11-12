@@ -1,5 +1,6 @@
 import numpy as np
 from .circuits import Circuit
+from collections import Counter
 
 def endian_transform(arr):
     """ only works for qubits now """ 
@@ -235,3 +236,30 @@ def parloop(func, args):
         results = p.starmap(func, args)
 
     return results
+
+def shots_to_counts(shots): 
+    counts = Counter(shots)
+    return counts 
+
+def shots_to_density(shots):
+    num_samples = len(shots)
+    counts = shots_to_counts(shots)
+    density = {k: v / num_samples for k, v in counts.items()}
+    return density
+
+def shots_to_density_vec(shots, local_dim=2): 
+    n = len(shots[0])
+    density_dict = shots_to_density(shots)
+    density_vec = np.zeros(local_dim**n)
+    for key, value in density_dict.items():
+        index = int(key, local_dim)
+        density_vec[index] = value
+    return density_vec
+
+def l2_threshold(num_samples, meas_sys_size, delta=1e-6):
+    """ 
+    returns an upper bound on l2 error in estimating a density vector of size meas_sys_size 
+    from num_samples samples with probability at least 1-delta 
+    based on Hoeffding + union bound
+    """
+    return np.sqrt(meas_sys_size * np.log(2*meas_sys_size/delta) / (2*num_samples))

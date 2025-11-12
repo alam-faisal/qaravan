@@ -156,29 +156,62 @@ class MPS(TensorNetwork):
     """ a site is a np.array of shape (left_bond_dim, right_bond_dim, local_dim) """
     def __init__(self, sites):
         super().__init__(sites)
-        self.center = None
+        self.center = None 
+        self.right_envs = None 
+        self.left_envs = None 
     
     def __matmul__(self, other):
         if isinstance(other, MPS):
             return self.overlap(other)
         else:
             raise TypeError("Unsupported operand type for @")
-    
-    def overlap(self, other, scaled=False):
-        scale = np.sqrt(self.local_dim) if scaled else 1.0
         
-        tensor = ncon((self.sites[0], other.sites[0].conj()), ([-1,-3,1],[-2,-4,1])) * scale
-        for i in range(1,self.num_sites):
-            tensor = ncon((tensor, self.sites[i]), ([-1,-2,1,-3],[1,-4,-5]))
-            tensor = ncon((tensor, other.sites[i].conj()), ([-1,-2,1,-3,2],[1,-4,2])) * scale
-        return np.trace(tensor.reshape(tensor.shape[0] * tensor.shape[1], tensor.shape[2] * tensor.shape[3]))
+    def compute_right_envs(self, other=None, scale=1):
+        """ usually pre-computed and reused for efficiency """
+        if self.right_envs is not None:
+            return self.right_envs
+    
+        other = self if other is None else other
 
+        right_envs = [None] * (self.num_sites)
+        right_envs[-1] = np.array([[1.0]]) 
+        for i in range(self.num_sites-1, 0, -1):
+            right_envs[i-1] = contract_mps_env(right_envs[i], self.sites[i], other.sites[i], right=True) * scale
+
+        self.right_envs = right_envs
+        return right_envs
+    
+    def compute_left_envs(self, other=None, scale=1):
+        """ usually pre-computed and reused for efficiency """
+        if self.left_envs is not None:
+            return self.left_envs
+
+        other = self if other is None else other
+
+        left_envs = [None] * (self.num_sites)
+        left_envs[0] = np.array([[1.0]]) 
+        
+        for i in range(1, self.num_sites):
+            left_envs[i] = contract_mps_env(left_envs[i-1], self.sites[i-1], other.sites[i-1], right=False) * scale
+        
+        self.left_envs = left_envs
+        return left_envs
+    
+    def overlap(self, other, scaled=False):   
+        scale = np.sqrt(self.local_dim) if scaled else 1.0
+        self.compute_right_envs(other, scale=scale)
+        tensor = ncon((self.sites[0], other.sites[0].conj()), ([1,-1,2],[1,-2,2])) * scale
+        return ncon((tensor, self.right_envs[0]), ([1,2],[1,2]))
+         
     def norm(self): 
         return self.overlap(self)
     
     def normalize(self): 
         n = self.norm()
         self.sites = [site/np.sqrt(np.abs(n))**(1/self.num_sites) for site in self.sites]
+        # need to reset environments after normalization
+        self.left_envs = None
+        self.right_envs = None
     
     def canonize(self, center): 
         """ orthogonalize self.state at center; 
@@ -206,6 +239,8 @@ class MPS(TensorNetwork):
 
         self.center = center
         self.sites = sites
+        self.left_envs = None
+        self.right_envs = None
         
     def compress(self, msvr=None, max_dim=None):
         sites = copy.deepcopy(self.sites)
@@ -232,12 +267,66 @@ class MPS(TensorNetwork):
 
         return MPS(sites)
     
+    def fast_measure(self, meas_sites):
+        """ 
+        currently supports qubits in Z basis, assumes state is normalized
+        built for efficient sampling of non-contiguous sites 
+        """
+        self.compute_right_envs()
+
+        cur_idx = 0
+        cur_left = np.array([[1.0]]) 
+        outcome = ''
+        for meas_site in meas_sites:
+            for i in range(cur_idx, meas_site):
+                cur_left = contract_mps_env(cur_left, self.sites[i], right=False)
+
+            left_tensor = contract_mps_env(cur_left, self.sites[meas_site], op=np.array([[1,0],[0,0]]), right=False)
+            cur_right_env = self.right_envs[meas_site]
+            prob_0 = np.trace(left_tensor @ cur_right_env).real
+
+            rand = np.random.rand()
+            if rand < prob_0:
+                outcome += '0'
+                proj_op = np.array([[1,0],[0,0]]) / prob_0
+            else:
+                outcome += '1'
+                proj_op = np.array([[0,0],[0,1]]) / (1 - prob_0)
+
+            cur_left = contract_mps_env(cur_left, self.sites[meas_site], op=proj_op, right=False)
+            cur_idx = meas_site + 1
+        
+        return outcome
+    
+    def one_rdm(self, site_idx):
+        self.compute_left_envs()
+        self.compute_right_envs()
+
+        le = self.left_envs[site_idx]
+        re = self.right_envs[site_idx]
+        site = self.sites[site_idx]
+
+        le_con = ncon((le, site.conj()), ([-1,1],[1,-2,-3]))
+        re_con = ncon((re, site), ([1,-2],[-1,1,-3]))
+
+        return ncon((le_con, re_con), ([1,2,-2],[1,2,-1]))
+    
+    def one_local_expectation(self, site_idx, op):
+        return np.trace(op @ self.one_rdm(site_idx)).real
+
     def to_vector(self):
         return contract_sites(self.sites)[0,0,:].reshape(self.local_dim**self.num_sites)
     
     def evaluate(self, basis): 
-        return 0.0
- 
+        return 0.0       
+    
+    def __str__(self):
+        desc = "MPS with {} sites, local dim {}, max bond dim {}\n".format(
+            self.num_sites, self.local_dim, self.get_max_dim())
+        for i, site in enumerate(self.sites):
+            desc += " Site {}: shape {}\n".format(i, site.shape)
+        return desc
+        
 class MPO(TensorNetwork): 
     """ a site is a np.array of shape (left_bond_dim, right_bond_dim, top_local_dim, bottom_local_dim) """
     def __init__(self, sites):
@@ -445,6 +534,20 @@ def contract_sites(site_list):
         
     return site
 
+def contract_mps_env(cur_env, self_site, other_site=None, op=None, right=True):
+    if other_site is None:
+        other_site = self_site
+
+    if op is None:
+        op = np.eye(self_site.shape[-1])
+
+    site = ncon((self_site, op), ([-1,-2,1],[1,-3]))
+    s1 = [-2,1,-3] if right else [1,-2,-3]
+    s2 = [-2,1,2] if right else [1,-2,2]
+    tensor = ncon((cur_env, site), ([1,-1], s1))
+    new_env = ncon((tensor, other_site.conj()), ([1,-1,2], s2))
+    return new_env
+
 def decompose_site_n(data, msvr=None, max_dim=None, symmetric=False): 
     """ 
     decomposes sites of an MPS or MPDO by combining left_bond and top_spin, and right_bond and bottom_spin
@@ -478,7 +581,7 @@ def decompose_site_n(data, msvr=None, max_dim=None, symmetric=False):
         
     return top_site, bottom_site
 
-def decimate(con_site, local_dim, symmetric=False): 
+def decimate(con_site, local_dim, msvr=None, max_dim=None, symmetric=False): 
     """ decimates sites of an MPS or MPDO after the action of span-local gate 
     con_site.shape = (bond_dim, bond_dim, local_dim**span) """
     span = int(np.log(con_site.shape[2]) / np.log(local_dim))
@@ -487,11 +590,17 @@ def decimate(con_site, local_dim, symmetric=False):
     for i in range(span-1): 
         con_site = con_site.reshape(con_site.shape[0], con_site.shape[1], local_dim, local_dim**(span-i-1))
         # shape has become (b, b, d, d*d*d*...*d)
-        top, con_site = decompose_site_n(con_site, symmetric=symmetric)
+        top, con_site = decompose_site_n(con_site, msvr=msvr, max_dim=max_dim, symmetric=symmetric)
         dec_sites.append(top)
 
     dec_sites.append(con_site)
     return dec_sites
+
+def sv_to_mps(sv, local_dim=2, msvr=None, max_dim=None): 
+    """ assumes sv is a vector of shape (local_dim**n,) and attaches fake bonds of dim 1 """
+    con_site = sv[np.newaxis, np.newaxis, :]
+    dec_sites = decimate(con_site, local_dim, msvr=msvr, max_dim=max_dim, symmetric=False)
+    return MPS(dec_sites)
 
 def transfer_matrices(mps1, mps2): 
     tm_list = []
@@ -499,3 +608,50 @@ def transfer_matrices(mps1, mps2):
         tm = ncon((site1, site2.conj()), ([-1,-3,1],[-2,-4,1]))
         tm_list.append(tm)
     return tm_list
+
+def left_ortho(site, local_dim=2):
+    c = sum([site[:,:,i].conj().T @ site[:,:,i] for i in range(local_dim)])
+    return np.allclose(c, np.eye(c.shape[0]), rtol=1e-5, atol=1e-8)
+
+def right_ortho(site, local_dim=2):
+    d = sum([site[:,:,i] @ site[:,:,i].conj().T for i in range(local_dim)])
+    return np.allclose(d, np.eye(d.shape[0]), rtol=1e-5, atol=1e-8)
+
+def check_center(mps, desired_center, verbose=False):    
+    status = []
+    for idx, site in enumerate(mps.sites):
+        is_left = left_ortho(site, mps.local_dim)
+        is_right = right_ortho(site, mps.local_dim)
+        
+        assert (idx < desired_center and is_left) or (idx > desired_center and is_right) or (idx == desired_center), \
+            f"Site {idx} is not properly orthogonalized for center at {desired_center}"
+        
+        if is_left and is_right:
+            status.append('L+R')
+        elif is_left:
+            status.append('L')
+        elif is_right:
+            status.append('R')
+        else:
+            status.append('N')
+        
+    if verbose: 
+        for i, s in enumerate(status):
+            print(f"Site {i}: {s}")
+
+    return True
+
+def random_mps(num_sites, local_dim=2, max_bond_dim=4, normalize=True):
+    sites = []
+    bond_dims = [1] + [max_bond_dim] * (num_sites - 1) + [1]
+    
+    for i in range(num_sites):
+        left_bond_dim = bond_dims[i]
+        right_bond_dim = bond_dims[i + 1]
+        site = np.random.rand(left_bond_dim, right_bond_dim, local_dim) + 1j * np.random.rand(left_bond_dim, right_bond_dim, local_dim)
+        sites.append(site)
+
+    mps = MPS(sites)
+    if normalize:
+        mps.normalize()
+    return mps

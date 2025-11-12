@@ -17,7 +17,7 @@ def dressed_cnot_skeletons(num_sites, num_cnots, orientation=False, a2a=False):
 
     return list(product(pairs, repeat=num_cnots)) 
 
-def brickwall_skeleton(Lx, Ly=1):
+def brickwall_skeleton(Lx, Ly=1, depth=1):
     """ brickwall skeleton for 1D and 2D lattices """
     skeleton = []
     for y in range(Ly):
@@ -32,4 +32,20 @@ def brickwall_skeleton(Lx, Ly=1):
     for x in range(Lx):
         for y in range(1, Ly-1, 2):
             skeleton.append((y*Lx + x, (y+1)*Lx + x))
-    return skeleton
+    return skeleton * depth
+
+def ss_triad_skeleton(n: int, depth: int = 1):
+    """ system-system interaction in a triad contact model """
+    if n % 3 != 0:
+        raise ValueError("n must be a multiple of 3")
+    layer1 = [(k, k+2) for k in range(0, n, 3)]
+    layer2 = [(k+2, k+3) for k in range(0, n-3, 3)]
+    return (layer1 + layer2) * depth
+
+def sb_triad_skeleton(n: int, depth: int = 1):
+    """ system-bath interaction in a triad contact model """
+    if n % 3 != 0:
+        raise ValueError("n must be a multiple of 3")
+    layer1 = [(k, k+1) for k in range(0, n, 3)]
+    layer2 = [(k+1, k+2) for k in range(0, n, 3)]
+    return (layer1 + layer2) * depth

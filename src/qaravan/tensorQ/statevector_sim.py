@@ -173,11 +173,15 @@ def partial_overlap(sv1, sv2, local_dim=2, skip=None):
 def rdm_from_sv(sv, sites, local_dim=2):
     return partial_overlap(sv, sv, local_dim=local_dim, skip=sites) 
 
-def measure_sv(sv, meas_sites): 
+def measure_sv(sv, meas_sites, shots=1): 
     rdm = rdm_from_sv(sv, meas_sites)
     probs = np.real(np.diag(rdm))
     basis_outcomes = [np.binary_repr(i, width=len(meas_sites)) for i in range(len(probs))]
-    return str(np.random.choice(basis_outcomes, p=probs))
+    if shots == 1: 
+        return str(np.random.choice(basis_outcomes, p=probs))
+    else: 
+        outcomes = np.random.choice(basis_outcomes, p=probs, size=shots)
+        return [str(o) for o in outcomes]
 
 def measure_and_collapse_sv(sv, meas_sites, local_dim=2): 
     outcome_str = measure_sv(sv, meas_sites)

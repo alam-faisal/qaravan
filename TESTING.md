@@ -10,7 +10,6 @@
 
 ### 1. `tests/test_circuits.py` - Circuit Operations (HIGH IMPACT)
 **Current Coverage:** 37% → **Target:** 60%  
-**Estimated Impact:** +8-10% overall coverage
 
 **Critical tests to add:**
 - [ ] Test `Circuit.__add__()` - circuit concatenation
@@ -24,13 +23,10 @@
 - [ ] Test `compose_circuits()` - compose multiple circuits
 - [ ] Test `circ_to_mat()` - standalone circuit to matrix conversion
 
-**Why this matters:** Circuits are the core abstraction users interact with. Good coverage here = confidence in the API.
-
 ---
 
 ### 2. `tests/test_mps_sim.py` - MPS Simulator Operations
 **Current Coverage:** 30% (tn.py: 52%) → **Target:** 65%  
-**Estimated Impact:** +5-7% overall coverage
 
 **Critical tests to add:**
 - [ ] Test `MPS.apply_one_gate()` - single-qubit gate application
@@ -42,13 +38,10 @@
 - [ ] Test `MPS.normalize()` - normalization after operations
 - [ ] Test `MPS.apply_reset()` - mid-circuit reset on MPS (you just implemented this!)
 
-**Why this matters:** MPS is your key scalable simulation method. Need confidence in gate applications and truncation.
-
 ---
 
 ### 3. `tests/test_gates.py` - Gate Classes and Operations
 **Current Coverage:** 48% → **Target:** 65%  
-**Estimated Impact:** +3-4% overall coverage
 
 **Critical tests to add:**
 - [ ] Test `Reset` class initialization and matrix building (you just added this!)
@@ -60,13 +53,10 @@
 - [ ] Test multi-qubit gates (Toffoli, Fredkin, etc.) if implemented
 - [ ] Test gate equality and comparison
 
-**Why this matters:** Gates are the building blocks. Users need to trust these work correctly.
-
 ---
 
 ### 4. `tests/test_utils.py` - Utility Functions
 **Current Coverage:** 26% → **Target:** 50%  
-**Estimated Impact:** +4-5% overall coverage
 
 **Critical tests to add:**
 - [ ] Test `measure_sv()` - statevector measurement on various states
@@ -79,13 +69,10 @@
 - [ ] Test `random_sv()`, `random_unitary()`, `random_hermitian_op()` - randomization
 - [ ] Test `construct_unitary()` - unitary construction from input/output pairs (already tested in test_core)
 
-**Why this matters:** Many high-level APIs depend on these utilities working correctly.
-
 ---
 
 ### 5. `tests/test_density_matrix_sim.py` - Density Matrix Simulator
 **Current Coverage:** 21% → **Target:** 50%  
-**Estimated Impact:** +3-4% overall coverage
 
 **Critical tests to add:**
 - [ ] Test `DensityMatrixSim.run()` - full circuit simulation
@@ -96,8 +83,6 @@
 - [ ] Test `DensityMatrixSim.local_expectation()` - multi-site expectations
 - [ ] Test purity tracking and mixed state handling
 - [ ] Test thermal noise and decoherence
-
-**Why this matters:** Only simulator that handles mixed states and noise. Critical for realistic simulations.
 
 ---
 

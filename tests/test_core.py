@@ -23,6 +23,23 @@ def test_statevector_sim():
 
     assert np.allclose(statevector, expected, atol=1e-7), "Statevector is not the expected GHZ state"
 
+def test_statevector_sim_pauli_expectation():
+    gate_list = [
+        H(0),               
+        CNOT([1, 0], 3),    
+        CNOT([2, 1], 3)    
+    ]
+    circ = Circuit(gate_list, 3)
+    
+    sim = StatevectorSim(circ)
+    izz_exp = sim.pauli_expectation('izz')  # <Z_1 Z_2>
+    assert abs(izz_exp - 1.0) < 1e-7, f"Expected <Z_1 Z_2> = 1, got {izz_exp}"
+
+    izi_exp = sim.pauli_expectation('izi')  # <Z_1>
+    assert abs(izi_exp - 0.0) < 1e-7, f"Expected <Z_1> = 0, got {izi_exp}"
+
+    # TODO: add a non-trivial test case WITHOUT GHZ state 
+
 def test_construct_unitary():
     in_strings = ['00', '01', '10']
     local_dim = 2

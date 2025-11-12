@@ -2,6 +2,7 @@ from qaravan.core.base_sim import BaseSim
 from qaravan.core.utils import string_to_sv, pretty_print_sv
 from qaravan.core.gates import proj_up, proj_down
 from qaravan.core.circuits import Circuit
+from qaravan.core.paulis import pauli_mapping
 import numpy as np
 import torch 
 from ncon_torch import ncon, permute
@@ -70,6 +71,12 @@ class StatevectorSim(BaseSim):
             right_state = ncon((op, right_state), ([-(i+1),1], state_indices))
 
         return ncon((self.state.conj(), right_state), ([i for i in range(1, self.num_sites+1)], [i for i in range(1, self.num_sites+1)])).real
+    
+    def pauli_expectation(self, pauli_string):
+        """ pauli_string is a string of length num_sites with characters in 'ixyz' """
+        self.run(progress_bar=False)
+        assert self.backend == "numpy", "Pauli expectation currently only supported for numpy backend"
+        return pauli_expectation_sv(self.get_statevector(), pauli_string)
 
     def one_local_expectation(self, op, site): 
         """ op is a 1-local Hermitian matrix 
@@ -204,3 +211,22 @@ def measure_and_collapse_sv(sv, meas_sites, local_dim=2):
     
     collapsed = collapsed.reshape(local_dim**(n - len(meas_sites))) if sv.ndim == 1 else collapsed
     return outcome_str, collapsed
+
+def pauli_expectation_sv(sv, pauli_string): 
+    """ note that pauli_string is in lower case; 
+     currently doesn't work with torch backend but simple to extend """
+    n = int(np.log(len(sv)) / np.log(2))
+    assert len(pauli_string) == n, "Pauli string length must match number of qubits in statevector"
+    
+    tensor = sv.reshape([2]*n)
+    right_tensor = copy.deepcopy(tensor)
+    for i in range(n):
+        if pauli_string[i] == 'i':
+            continue
+
+        op = pauli_mapping[pauli_string[i]]
+        state_indices = [-(j+1) for j in range(n)]
+        state_indices[i] = 1
+        right_tensor = ncon((op, right_tensor), ([-(i+1),1], state_indices))
+
+    return ncon((tensor.conj(), right_tensor), ([i for i in range(1, n+1)], [i for i in range(1, n+1)])).real

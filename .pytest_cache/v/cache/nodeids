@@ -6,6 +6,7 @@
   "tests/test_core.py::test_measurement_on_statevector",
   "tests/test_core.py::test_one_local_expectation",
   "tests/test_core.py::test_statevector_sim",
+  "tests/test_core.py::test_statevector_sim_pauli_expectation",
   "tests/test_core.py::test_ti_rmps_generation",
   "tests/test_tn.py::test_canonize",
   "tests/test_tn.py::test_contract_sites_mpdo",

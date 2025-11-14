@@ -134,7 +134,7 @@ def test_fast_measure():
         mps_shots = [mps.fast_measure(meas_sites) for _ in range(num_samples)]
         mps_density = shots_to_density(mps_shots)
         mps_density_vec = shots_to_density_vec(mps_shots)
-        assert np.linalg.norm(exact_density_vec - mps_density_vec, ord=2) < l2_threshold(num_samples, 2**len(meas_sites), delta=1e-3), \
+        assert np.linalg.norm(exact_density_vec - mps_density_vec, ord=2) < l2_threshold(num_samples, 2**len(meas_sites), delta=1e-2), \
                                                             f"Failed for {num_samples} samples"
     
     print("Test passed: fast_measure produces statistically accurate results.")

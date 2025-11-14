@@ -8,7 +8,7 @@ from collections import Counter
 def test_statevector_sim():
     gate_list = [
         H(0),               
-        CNOT([1, 0], 3),    
+        CNOT([1, 0], 3), 
         CNOT([2, 1], 3)    
     ]
     circ = Circuit(gate_list, 3)

@@ -151,6 +151,9 @@ class TensorNetwork:
     def conj(self): 
         sites = [copy.deepcopy(site).conj() for site in self.sites]
         return type(self)(sites)
+
+    def __getitem__(self, index):
+        return self.sites[index]
         
 class MPS(TensorNetwork): 
     """ a site is a np.array of shape (left_bond_dim, right_bond_dim, local_dim) """
@@ -641,7 +644,7 @@ def check_center(mps, desired_center, verbose=False):
 
     return True
 
-def random_mps(num_sites, local_dim=2, max_bond_dim=4, normalize=True):
+def random_mps(num_sites, max_bond_dim=4, local_dim=2, normalize=True):
     sites = []
     bond_dims = [1] + [max_bond_dim] * (num_sites - 1) + [1]
     
@@ -655,3 +658,23 @@ def random_mps(num_sites, local_dim=2, max_bond_dim=4, normalize=True):
     if normalize:
         mps.normalize()
     return mps
+
+def fast_ipr(mps): 
+    site0_up = mps[0][0,:,0]
+    site0_down = mps[0][0,:,1]
+
+    left_up = ncon([site0_up, site0_up, site0_up.conj(), site0_up.conj()], ([-1], [-2], [-3], [-4]))
+    left_down = ncon([site0_down, site0_down, site0_down.conj(), site0_down.conj()], ([-1], [-2], [-3], [-4]))
+
+    left = left_up + left_down
+
+    for i in range(1, n): 
+        site_i_up = mps[i][:,:,0]
+        site_i_down = mps[i][:,:,1]
+
+        next_list = [] # contract with site_i_up 4 times and add to this list, and then contract with site_i_down 4 times and add to this list, and then we will sum them up
+        next_list.append(ncon([left, site_i_up, site_i_up, site_i_up.conj(), site_i_up.conj()], ([1,2,3,4], [1,-1], [2,-2], [3,-3], [4,-4])))
+        next_list.append(ncon([left, site_i_down, site_i_down, site_i_down.conj(), site_i_down.conj()], ([1,2,3,4], [1,-1], [2,-2], [3,-3], [4,-4])))
+        left = sum(next_list)
+
+    return left[0,0,0,0].real

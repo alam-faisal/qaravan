@@ -56,6 +56,25 @@ def random_pauli_string(n):
         out += chars[np.random.choice(len(chars))]
     return out
 
+def subsystem_zstrings(n, sites):
+    zstrings = []
+    for bits in itertools.product([0,1], repeat=len(sites)):   # 2^len(sites) combinations
+        zstring = ['i']*n
+        for site, bit in zip(sites, bits):
+            if bit == 1:
+                zstring[site] = 'z'
+        zstrings.append(''.join(zstring))
+    return zstrings
+
+def fixed_weight_zstrings(n, weight): 
+    zstrings = []
+    for sites in itertools.combinations(range(n), weight):
+        zstring = ['i']*n
+        for site in sites:
+            zstring[site] = 'z'
+        zstrings.append(''.join(zstring))
+    return zstrings
+
 def random_hermitian_op(n): 
     dim = 2**n
     rand_mat = np.random.randn(dim, dim) + 1j * np.random.randn(dim, dim)

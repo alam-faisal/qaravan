@@ -1,6 +1,7 @@
 import numpy as np
 from .circuits import Circuit
 from collections import Counter
+import random
 
 def endian_transform(arr):
     """ only works for qubits now """ 
@@ -263,3 +264,6 @@ def l2_threshold(num_samples, meas_sys_size, delta=1e-6):
     based on Hoeffding + union bound
     """
     return np.sqrt(meas_sys_size * np.log(2*meas_sys_size/delta) / (2*num_samples))
+
+def subsample(shots, subsample_size): 
+    return random.choices(shots, k=subsample_size)

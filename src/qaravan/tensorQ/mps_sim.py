@@ -62,10 +62,3 @@ class MPSSim(BaseSim):
 def lift_nnn_gate(U): 
     d = int(U.shape[0]**0.5)
     return ncon((U.reshape(d,d,d,d), np.eye(d)), ([-1,-3,-4,-6], [-2, -5])).reshape(d**3, d**3)
-
-def measure_mps(mps, meas_sites):
-    # inefficient to compute k-RDMs. Instead we do this sequentially. 
-    # compute expectation value of projectors on first site, collapse, get new MPS
-    # repeat for next site
-    # need to first implement local_expectation and then use projectors as operators
-    return None

@@ -286,7 +286,7 @@ class MPS(TensorNetwork):
 
             left_tensor = contract_mps_env(cur_left, self.sites[meas_site], op=np.array([[1,0],[0,0]]), right=False)
             cur_right_env = self.right_envs[meas_site]
-            prob_0 = np.trace(left_tensor @ cur_right_env).real
+            prob_0 = ncon((left_tensor, cur_right_env), ([1,2],[1,2])).real
 
             rand = np.random.rand()
             if rand < prob_0:

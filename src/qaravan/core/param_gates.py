@@ -44,6 +44,9 @@ class ParamGate(Gate):
         
     def solve_angles(self): 
         return "unsolved" # if subclass doesn't bother implementing we probably don't need angles
+    
+    def shallow_copy(self):
+        return type(self)(self.indices, *self.angles)
 
 class RX(ParamGate): 
     def __init__(self, indices, *args):
@@ -153,9 +156,6 @@ class U(ParamGate):
             
         else: 
             raise NotImplementedError(f"{basis} basis decomposition has not been implemented")
-        
-    def shallow_copy(self):
-        return U(self.indices, *self.angles)
 
 class Givens(ParamGate):
     def __init__(self, indices, *args):

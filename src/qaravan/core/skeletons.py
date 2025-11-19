@@ -1,5 +1,7 @@
 from itertools import product
 
+import numpy as np
+
 def even_skeleton(n):
     return [(i, i+1) for i in range(0, n-1, 2)]
     
@@ -49,3 +51,38 @@ def sb_triad_skeleton(n: int, depth: int = 1):
     layer1 = [(k, k+1) for k in range(0, n, 3)]
     layer2 = [(k+1, k+2) for k in range(0, n, 3)]
     return (layer1 + layer2) * depth
+
+def triad_system_qubits(n: int):
+    """ system qubits in a triad contact model """
+    if n % 3 != 0:
+        raise ValueError("n must be a multiple of 3")
+    layer = []
+    for k in range(0, n, 3):
+        layer.append(k)
+        layer.append(k+2)
+    return layer
+
+def triad_bath_qubits(n: int):
+    """ bath qubits in a triad contact model """
+    if n % 3 != 0:
+        raise ValueError("n must be a multiple of 3")
+    layer = []
+    for k in range(0, n, 3):
+        layer.append(k+1)
+    return layer
+
+def dress_skeleton(skeleton, gate_type, params=None): 
+    """ place a gate for each interaction in the skeleton """
+    # sometimes the same angle for all gates is desired
+    if params is not None: 
+        if not isinstance(params, (list, tuple, np.ndarray)):
+            params = [params] * len(skeleton)
+
+    gate_list = []
+    for i, indices in enumerate(skeleton):
+        if params is not None:
+            gate_list.append(gate_type(indices, params[i]))
+        else:
+            gate_list.append(gate_type(indices)) 
+
+    return gate_list

@@ -94,6 +94,8 @@ class StatevectorSim(BaseSim):
                                             [i for i in range(1, self.num_sites+1)])).real
 
     def __str__(self):
+        if not self.ran:
+            self.run(progress_bar=False)
         sv = self.state.reshape(self.local_dim**self.num_sites)
         return pretty_print_sv(sv, self.local_dim)
 

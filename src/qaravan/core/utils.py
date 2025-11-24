@@ -267,3 +267,11 @@ def l2_threshold(num_samples, meas_sys_size, delta=1e-6):
 
 def subsample(shots, subsample_size): 
     return random.choices(shots, k=subsample_size)
+
+def is_eigenstate(vec: np.ndarray, operator: np.ndarray, tol=1e-6) -> bool:
+    """ check if vec is an eigenstate of operator within a given tolerance tol """
+    rayleigh_quot = (vec.conj().T @ operator @ vec) / (vec.conj().T @ vec)
+    res_vec = operator @ vec - rayleigh_quot * vec
+    rel_err = np.linalg.norm(res_vec) / np.linalg.norm(operator @ vec)
+
+    return rel_err < tol

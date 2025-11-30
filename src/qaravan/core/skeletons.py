@@ -1,6 +1,8 @@
 from itertools import product
-
 import numpy as np
+
+# TODO: probably should be combined with lattices.py
+
 
 def even_skeleton(n):
     return [(i, i+1) for i in range(0, n-1, 2)]

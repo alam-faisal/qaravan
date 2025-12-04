@@ -135,3 +135,37 @@ def test_one_local_expectation():
     sim = StatevectorSim(circ)
     z_exp = sim.one_local_expectation(pauli_Z, 2)  # <Z_2>
     assert abs(z_exp) < 1e-7, f"Expected <Z_2> = 0, got {z_exp}"
+
+def test_skeletons():
+    """ testing skeleton generation functions """ 
+
+    Lx = 4
+    assert index_from_coords(2, 1, Lx) == 6, "Index from coords (2, 1) failed"
+    assert index_from_coords(1, 2, Lx) == 9, "Index from coords (1, 2) failed"
+    assert coords_from_index(6, Lx) == (2, 1), "Coords from index 6 failed"
+    assert coords_from_index(9, Lx) == (1, 2), "Coords from index 9 failed"
+    assert not horiz_filter((1,4)), "Horizontal filter (1,4) failed"
+    assert horiz_filter((1,2)), "Horizontal filter (1,2) failed"
+    assert even_filter((0,1), vert=False, Lx=Lx), "Even filter (0,1) failed"
+    assert not even_filter((1,2), vert=False, Lx=Lx), "Even filter (1,2) failed"
+    assert even_filter((0,4), vert=True, Lx=Lx), "Even filter (0,4) failed"
+    assert even_filter((1,5), vert=True, Lx=Lx), "Even filter (1,5) failed"
+    assert not even_filter((4,8), vert=True, Lx=Lx), "Even filter (4,8) failed"
+    assert not even_filter((5,9), vert=True, Lx=Lx), "Even filter (5,9) failed"
+
+    Ly = 3 
+    assert len(nn_edges(Lx,Ly)) == 2*Lx*Ly - Lx - Ly, "Number of nearest neighbor edges incorrect"
+    assert brickwall_skeleton(Lx=4, Ly=2, depth=1) == [
+        (0, 1),
+        (2, 3),
+        (4, 5),
+        (6, 7),
+        (1, 2),
+        (5, 6),
+        (0, 4),
+        (1, 5),
+        (2, 6),
+        (3, 7)], "Brickwall skeleton incorrect"
+
+    num_gates = 4
+    assert len(all_skeletons(num_gates, Lx=Lx, Ly=Ly)) == (2*Lx*Ly - Lx - Ly)**num_gates, "Number of all skeletons incorrect"

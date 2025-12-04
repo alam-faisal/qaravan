@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name="qaravan",
     packages=find_packages(where="src"),
-    python_requires='>=3.8',
+    python_requires='>=3.9',
     package_dir={"": "src"},
     version="0.1.57", 
     author="Faisal Alam",

@@ -3,6 +3,47 @@ import numpy as np
 
 # TODO: probably should be combined with lattices.py
 
+def index_from_coords(x: int, y: int, Lx: int) -> int:
+    """ row-major indexing with Cartesian convention """
+    return y * Lx + x
+
+def coords_from_index(idx: int, Lx: int) -> tuple[int, int]:
+    """ row-major indexing with Cartesian convention """
+    row, col = divmod(idx, Lx)
+    return col, row
+
+def horiz_filter(edge: tuple[int, int]) -> bool:
+    """ takes a 2D edge and returns True if it is horizontal """
+    return abs(edge[0] - edge[1]) == 1
+
+def even_filter(edge: tuple[int, int], vert:bool=False, Lx: int=0) -> bool:
+    """ takes a 2D edge and returns True if it is even """
+    if not vert: 
+        return edge[1] % 2 == 0 
+    else: 
+        assert Lx > 0, "Lx must be provided for even filter on vertical edges"
+        _ , row = coords_from_index(edge[1], Lx)
+        return row % 2 == 0
+
+# TODO: add option for periodic boundaries
+def nn_edges(Lx: int, Ly: int=1) -> list[tuple[int, int]]:
+    """ generate nearest-neighbor edges for a 2D lattice """ 
+    edges = []
+    for row in range(Ly): 
+        for col in range(Lx):
+            idx = index_from_coords(col, row, Lx)
+
+            # right neighbor
+            if col < Lx - 1:
+                right_idx = index_from_coords(col + 1, row, Lx)
+                edges.append((idx, right_idx))
+            
+            # bottom neighbor
+            if row < Ly - 1:
+                bottom_idx = index_from_coords(col, row + 1, Lx)
+                edges.append((idx, bottom_idx))
+
+    return edges
 
 def even_skeleton(n):
     return [(i, i+1) for i in range(0, n-1, 2)]
@@ -37,41 +78,6 @@ def brickwall_skeleton(Lx, Ly=1, depth=1):
         for y in range(1, Ly-1, 2):
             skeleton.append((y*Lx + x, (y+1)*Lx + x))
     return skeleton * depth
-
-def ss_triad_skeleton(n: int, depth: int = 1):
-    """ system-system interaction in a triad contact model """
-    if n % 3 != 0:
-        raise ValueError("n must be a multiple of 3")
-    layer1 = [(k, k+2) for k in range(0, n, 3)]
-    layer2 = [(k+2, k+3) for k in range(0, n-3, 3)]
-    return (layer1 + layer2) * depth
-
-def sb_triad_skeleton(n: int, depth: int = 1):
-    """ system-bath interaction in a triad contact model """
-    if n % 3 != 0:
-        raise ValueError("n must be a multiple of 3")
-    layer1 = [(k, k+1) for k in range(0, n, 3)]
-    layer2 = [(k+1, k+2) for k in range(0, n, 3)]
-    return (layer1 + layer2) * depth
-
-def triad_system_qubits(n: int):
-    """ system qubits in a triad contact model """
-    if n % 3 != 0:
-        raise ValueError("n must be a multiple of 3")
-    layer = []
-    for k in range(0, n, 3):
-        layer.append(k)
-        layer.append(k+2)
-    return layer
-
-def triad_bath_qubits(n: int):
-    """ bath qubits in a triad contact model """
-    if n % 3 != 0:
-        raise ValueError("n must be a multiple of 3")
-    layer = []
-    for k in range(0, n, 3):
-        layer.append(k+1)
-    return layer
 
 def dress_skeleton(skeleton, gate_type, params=None): 
     """ place a gate for each interaction in the skeleton """

@@ -81,5 +81,8 @@ def random_hermitian_op(n):
     hermitian_op = (rand_mat + rand_mat.conj().T) / 2
     return hermitian_op
 
+def support(pstr): 
+    return tuple(i for i, p in enumerate(pstr) if p != 'i')
+
 def count_weight(pstr): 
-    return sum(1 for p in pstr if p != 'i')
+    return len(support(pstr))

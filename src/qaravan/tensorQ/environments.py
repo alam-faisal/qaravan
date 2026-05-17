@@ -54,7 +54,6 @@ def environment_state_prep(target_sv, init_sv=None, circ=None, skeleton=None, co
     else:
         if circ is None:
             circ = two_local_circ(skeleton)
-        
         sim = StatevectorSim(circ, init_state=init_sv)
         ansatz = sim.run(progress_bar=False).reshape(2**circ.num_sites)
         cost_list = [1-np.abs(target_sv.conj().T @ ansatz)]

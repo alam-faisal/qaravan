@@ -3,6 +3,7 @@ import numpy as np
 import copy
 from scipy.linalg import svd, block_diag
 
+
 ###################################
 ##### Tensor methods ##############
 ###################################
@@ -28,7 +29,7 @@ def site_svd(site, which='left', msvr=None, max_dim=None, return_sv=False):
         else: 
             data = site.reshape(sh[0], sh[1] * sh[2]) 
     
-    u,s,vh = svd(data, full_matrices=False, lapack_driver='gesvd') 
+    u,s,vh = svd(data, full_matrices=False, lapack_driver='gesvd')
     if msvr is not None: 
         s = s[s>msvr*s[0]]
     elif max_dim is not None:
@@ -43,10 +44,16 @@ def site_svd(site, which='left', msvr=None, max_dim=None, return_sv=False):
             left_tensor = u.reshape(sh[0], sh[2], sh[3], len(s)).transpose(0,3,1,2)
         else: 
             left_tensor = u.reshape(sh[0], sh[2], len(s)).transpose(0,2,1)
-        right_tensor = np.diag(s) @ vh if not return_sv else vh
+        if not return_sv:
+            right_tensor = np.diag(s) @ vh
+        else:
+            right_tensor = vh
             
     else: 
-        left_tensor = u @ np.diag(s) if not return_sv else u
+        if not return_sv:
+            left_tensor = u @ np.diag(s)
+        else:
+            left_tensor = u
         if is_mpo:
             right_tensor = vh.reshape(len(s), sh[1], sh[2], sh[3])
         else: 
@@ -300,7 +307,39 @@ class MPS(TensorNetwork):
             cur_idx = meas_site + 1
         
         return outcome
-    
+
+    def fast_sample(self, num_samples: int = 1):
+        """
+        Sample full bitstrings via sequential Born rule, batched over K samples.
+        Canonicalizes to center=0 in-place on first call (right envs = I, no precomputation).
+        Assumes the MPS is normalized. Returns str if num_samples=1, else list[str].
+        """
+        if self.center != 0:
+            self.canonize(0)
+
+        K = num_samples
+        d = self.local_dim
+        cur_lefts = np.ones((K, 1, 1))           # (K, l, l); upcasts to complex if sites are
+        outcomes = np.empty((K, self.num_sites), dtype=np.int8)
+
+        for i, site in enumerate(self.sites):
+            # Lσ[k] = Aσ†.T @ cur_lefts[k] @ Aσ, all K samples at once via matmul broadcasting
+            Ls = np.stack([
+                np.matmul(np.matmul(site[:, :, σ].conj().T, cur_lefts), site[:, :, σ])
+                for σ in range(d)
+            ], axis=1)                            # (K, d, r, r)
+
+            probs = np.einsum('kdii->kd', Ls).real  # (K, d); sums to 1 by right-canonicality
+            rands = np.random.rand(K)
+            sampled = (rands[:, None] >= np.cumsum(probs, axis=1)).sum(axis=1).astype(np.int8)
+            outcomes[:, i] = sampled
+
+            idx = np.arange(K)
+            cur_lefts = Ls[idx, sampled] / probs[idx, sampled, None, None]
+
+        result = [''.join(map(str, row)) for row in outcomes]
+        return result[0] if K == 1 else result
+
     def one_rdm(self, site_idx):
         self.compute_left_envs()
         self.compute_right_envs()
@@ -321,7 +360,13 @@ class MPS(TensorNetwork):
         return contract_sites(self.sites)[0,0,:].reshape(self.local_dim**self.num_sites)
     
     def evaluate(self, basis): 
-        return 0.0       
+        """ basis is a list of 0s and 1s (and higher levels for qudits) """
+        mod_sites = [site[:,:,b] for site, b in zip(self.sites, basis)]
+        vec = mod_sites[0]
+        for i in range(1, self.num_sites): 
+            vec = vec @ mod_sites[i]
+        
+        return np.abs(vec[0][0])**2 
     
     def __str__(self):
         desc = "MPS with {} sites, local dim {}, max bond dim {}\n".format(
@@ -565,7 +610,7 @@ def decompose_site_n(data, msvr=None, max_dim=None, symmetric=False):
     u,s,vh = svd(data, full_matrices=False, lapack_driver='gesvd')    
     if symmetric:
         u, vh = u @ np.diag(np.sqrt(s)), np.diag(np.sqrt(s)) @ vh
-    else: 
+    else:
         u, vh = u, np.diag(s) @ vh
 
     if msvr is not None: 
@@ -578,7 +623,6 @@ def decompose_site_n(data, msvr=None, max_dim=None, symmetric=False):
 
     u = u[:,:len(s)] 
     vh = vh[:len(s),:]
-
     top_site = u.reshape(sh[0],sh[2],len(s)).transpose(0,2,1)
     bottom_site = vh.reshape(len(s),sh[1],sh[3])
         

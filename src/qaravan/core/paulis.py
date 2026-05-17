@@ -1,5 +1,6 @@
 import numpy as np
 import itertools
+import re
 
 pauli_I = np.array([[1,0],[0,1]], dtype=complex)
 pauli_X = np.array([[0,1],[1,0]], dtype=complex)
@@ -86,3 +87,27 @@ def support(pstr):
 
 def count_weight(pstr): 
     return len(support(pstr))
+
+def simple_pstr(spec: str, n: int, base: int = 0) -> str:
+    """
+    Build a length-n Pauli string of 'i' with specified letters at given sites.
+    spec like 'z2z10y3' means put 'z' at 2, 'z' at 10, 'y' at 3.
+    Indices are 0-based by default; set base=1 if your spec is 1-based.
+    """
+    chars = ['i'] * n
+    pattern = re.compile(r'([ixyzIXYZ])(\d+)')  # letter + digits
+    
+    pos = 0
+    for m in pattern.finditer(spec):
+        if m.start() != pos:
+            raise ValueError(f"Unparsed chunk in spec at {pos}: {spec[pos:m.start()]!r}")
+        pauli, idx = m.group(1).lower(), int(m.group(2)) - base
+        if not (0 <= idx < n):
+            raise IndexError(f"site {idx+base} out of bounds for n={n} with base={base}")
+        if chars[idx] != 'i':
+            raise ValueError(f"duplicate assignment to site {idx+base}")
+        chars[idx] = pauli
+        pos = m.end()
+    if pos != len(spec):
+        raise ValueError(f"Trailing garbage in spec: {spec[pos:]!r}")
+    return ''.join(chars)

@@ -150,14 +150,15 @@ class RunContext:
                  resume=False,
                  convergence_check=False, 
                  stop_ratio=1e-6,
-                 stop_absolute=None): 
+                 stop_absolute=None,
+                 quiet=False): 
 
         self.progress_interval = progress_interval
         self.max_iter = max_iter
         self.checkpoint_file = checkpoint_file
         self.checkpoint_interval = checkpoint_interval
         self.resume = resume
-
+        self.quiet = quiet
         self.convergence_check = convergence_check
         self.stop_ratio = stop_ratio
         self.stop_absolute = stop_absolute
@@ -170,8 +171,9 @@ class RunContext:
             self.load_checkpoint()
 
     def log(self, msg):
-        print(msg)
-        sys.stdout.flush()
+        if not self.quiet:
+            print(msg)
+            sys.stdout.flush()
 
     def save_checkpoint(self):
         if self.checkpoint_file:

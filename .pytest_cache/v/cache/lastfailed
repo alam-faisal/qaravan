@@ -1,1 +1,3 @@
-{}
+{
+  "tests/test_core/test_base.py::test_observable_cannot_instantiate": true
+}

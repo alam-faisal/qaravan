@@ -71,19 +71,19 @@ class Circuit:
     def __init__(
         self,
         gates: list[Gate],
-        n: int | None = None,
+        num_sites: int | None = None,
         local_dim: int = 2,
     ):
         self.gates = list(gates)
         self.local_dim = local_dim
         self.layers: list[list[Gate]] | None = None
 
-        if n is not None:
-            self.n = n
+        if num_sites is not None:
+            self.num_sites = num_sites
         elif gates:
-            self.n = max(idx for g in gates for idx in g.indices) + 1
+            self.num_sites = max(idx for g in gates for idx in g.indices) + 1
         else:
-            self.n = 0
+            self.num_sites = 0
 
     def construct_layers(self) -> None:
         """Greedy layer packing: assigns each gate to the earliest layer it fits."""
@@ -113,32 +113,33 @@ class Circuit:
         """Reversed gate order with each gate conjugate-transposed."""
         return Circuit(
             [g.dagger() for g in reversed(self.gates)],
-            n=self.n,
+            num_sites=self.num_sites,
             local_dim=self.local_dim,
         )
 
     def to_matrix(self) -> np.ndarray:
         """Full unitary matrix of the circuit."""
-        dim = self.local_dim ** self.n
+        dim = self.local_dim ** self.num_sites
         result = np.eye(dim, dtype=complex)
         for gate in self.gates:
-            full = _embed_gate(gate, self.n, self.local_dim)
+            full = _embed_gate(gate, self.num_sites, self.local_dim)
             result = full @ result
         return result
 
     def copy(self) -> Circuit:
         """Shallow copy of gate list; layers reset to None."""
-        return Circuit(list(self.gates), n=self.n, local_dim=self.local_dim)
+        return Circuit(list(self.gates), num_sites=self.num_sites, local_dim=self.local_dim)
 
     def __add__(self, other: Circuit) -> Circuit:
         if not isinstance(other, Circuit):
             return NotImplemented
-        return Circuit(self.gates + other.gates, n=max(self.n, other.n), local_dim=self.local_dim)
+        return Circuit(self.gates + other.gates, num_sites=max(self.num_sites, other.num_sites), 
+                       local_dim=self.local_dim)
 
     def __mul__(self, n: int) -> Circuit:
         if not isinstance(n, int) or n < 0:
             return NotImplemented
-        return Circuit(self.gates * n, n=self.n, local_dim=self.local_dim)
+        return Circuit(self.gates * n, num_sites=self.num_sites, local_dim=self.local_dim)
 
     def __rmul__(self, n: int) -> Circuit:
         return self.__mul__(n)
@@ -149,34 +150,35 @@ class Circuit:
     def __getitem__(self, key: int | slice) -> Gate | Circuit:
         if isinstance(key, int):
             return self.gates[key]
-        return Circuit(self.gates[key], n=self.n, local_dim=self.local_dim)
+        return Circuit(self.gates[key], num_sites=self.num_sites, local_dim=self.local_dim)
 
     def __str__(self) -> str:
-        return f"Circuit(n={self.n}, gates={self.gates})"
-
+        return f"Circuit(num_sites={self.num_sites}, gates={self.gates})"
     def __repr__(self) -> str:
         return str(self)
 
 
-def _embed_gate(gate: Gate, n: int, local_dim: int) -> np.ndarray:
-    """Embed gate matrix into full n-site Hilbert space via permutation."""
+def _embed_gate(gate: Gate, num_sites: int, local_dim: int) -> np.ndarray:
+    """Embed gate matrix into full num_sites-site Hilbert space via permutation.
+    Note this is used purely for debugging; real backends would never construct full matrices.
+    """
     k = gate.num_sites
     sorted_indices = sorted(gate.indices)
 
     if sorted_indices == list(range(sorted_indices[0], sorted_indices[0] + k)):
         left_dim = local_dim ** sorted_indices[0]
-        right_dim = local_dim ** (n - sorted_indices[0] - k)
+        right_dim = local_dim ** (num_sites - sorted_indices[0] - k)
         return np.kron(np.kron(np.eye(left_dim), gate.matrix), np.eye(right_dim))
 
     # non-contiguous sites: permute basis, apply gate on leading sites, permute back
-    dim = local_dim ** n
-    perm = sorted_indices + [i for i in range(n) if i not in sorted_indices]
+    dim = local_dim ** num_sites
+    perm = sorted_indices + [i for i in range(num_sites) if i not in sorted_indices]
     perm_mat = np.zeros((dim, dim))
     for i in range(dim):
-        digits = _int_to_digits(i, local_dim, n)
+        digits = _int_to_digits(i, local_dim, num_sites)
         j = _digits_to_int([digits[p] for p in perm], local_dim)
         perm_mat[i, j] = 1.0
-    gate_full = np.kron(gate.matrix, np.eye(local_dim ** (n - k)))
+    gate_full = np.kron(gate.matrix, np.eye(local_dim ** (num_sites - k)))
     return perm_mat.T @ gate_full @ perm_mat
 
 
@@ -208,8 +210,8 @@ class State(ABC):
         ...
 
     @abstractmethod
-    def sample(self, shots: int) -> np.ndarray:
-        """Sample measurement outcomes; returns (shots,) or (shots, n) array."""
+    def sample(self, num_shots: int) -> np.ndarray:
+        """Sample measurement outcomes; returns (num_shots, num_sites) array."""
         ...
 
     @abstractmethod
@@ -248,7 +250,7 @@ class Observable(ABC):
 # ---------------------------------------------------------------------------
 
 class NoiseModel(ABC):
-    """Base noise model. Modelled on legacy Noise class."""
+    """Base noise model. Subclasses implement get_kraus and optionally sample_error."""
 
     def get_kraus(self, gate: Gate) -> list[np.ndarray]:
         """Kraus operators for the noise channel following gate."""

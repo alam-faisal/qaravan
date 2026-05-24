@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qaravan"
-version = "0.1.57"
+version = "0.2.0"
 description = "Unified classical simulation of noiseless and noisy quantum circuits"
 authors = [{ name = "Faisal Alam", email = "faisal@phasecraft.io" }]
 requires-python = ">=3.11"

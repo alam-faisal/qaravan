@@ -13,20 +13,18 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
       with:
         python-version: "3.11"
 
     - name: Install dependencies
-      run: |
-        pip install -e .
-        pip install pytest pytest-cov
+      run: uv sync --group dev
 
     - name: Run tests with coverage
       run: |
-        pytest --cov=qaravan tests/
-        coverage xml
+        uv run pytest --cov=qaravan tests/
+        uv run coverage xml
 
     - name: Check for coverage.xml
       run: ls -l coverage.xml
@@ -34,5 +32,5 @@ jobs:
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
-        token: ${{ secrets.CODECOV_TOKEN }}  # Add this secret in repo settings
+        token: ${{ secrets.CODECOV_TOKEN }}
         verbose: true

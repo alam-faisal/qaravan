@@ -18,10 +18,16 @@
 
 ## Installation
 
-You can install Qaravan from PyPI:
+Install from PyPI:
 
 ```bash
-pip install qaravan
+uv add qaravan
+```
+
+For development (clone the repo first):
+
+```bash
+uv sync --group dev
 ```
 
 ## Quick Start

@@ -1,0 +1,234 @@
+from qaravan.legacy.base_sim import BaseSim
+from qaravan.legacy.utils import string_to_sv, pretty_print_sv
+from qaravan.legacy.gates import proj_up, proj_down
+from qaravan.legacy.circuits import Circuit
+from qaravan.legacy.paulis import pauli_mapping
+import numpy as np
+import torch 
+from ncon_torch import ncon, permute
+from scipy.sparse import csc_matrix
+import copy
+from functools import reduce
+
+class StatevectorSim(BaseSim):
+    def __init__(self, circ, init_state=None, backend="numpy", device="cpu"):
+        super().__init__(circ, init_state=init_state, nm=None)    
+        self.backend = backend
+        self.device = torch.device(device)
+
+    def to_backend(self, array):
+        if self.backend == "torch":
+            if torch.is_tensor(array):
+                return array.to(dtype=torch.complex64, device=self.device)
+            else:
+                return torch.tensor(array, dtype=torch.complex64, device=self.device)
+        else:
+            if isinstance(array, np.ndarray):
+                return array
+            else:
+                return array.detach().cpu().numpy()
+            
+    def initialize_state(self):
+        """ 
+        internal state is a rank-n tensor with local dimension inherited from the circuit 
+        init_state can be provided either as a tensor, a statevector or a bitstring
+        """
+        shape = [self.local_dim] * self.num_sites
+        if self.init_state is None:
+            sv = np.zeros(self.local_dim**self.num_sites, dtype=np.complex64)
+            sv[0] = 1.0
+        elif isinstance(self.init_state, str):
+            sv = string_to_sv(self.init_state, self.circ.local_dim)
+        elif isinstance(self.init_state, (np.ndarray, torch.Tensor)):
+            sv = self.init_state
+        else:
+            raise ValueError("init_state must be a NumPy array, Torch tensor, or a bitstring")
+
+        sv = sv.reshape(shape)
+        self.state = self.to_backend(sv)
+        
+    def apply_gate(self, gate):
+        mat = self.to_backend(gate.matrix)
+        self.state = op_action(mat, gate.indices, self.state, local_dim=self.local_dim)
+
+    def measure(self, meas_sites):
+        """ returns a measurement bitstring """
+        assert self.backend == "numpy", "Measurement only supported for numpy backend"
+        return measure_sv(self.get_statevector(), meas_sites)
+        
+    def measure_and_collapse(self, meas_sites): 
+        """ returns a measurement bitstring and post-measurement statevector """
+        return measure_and_collapse_sv(self.get_statevector(), meas_sites)
+        
+    def local_expectation(self, local_ops):
+        """ op is a list of 1-local Hermitian matrices """
+        self.run(progress_bar=False)
+        right_state = copy.deepcopy(self.state)
+        for i in range(self.num_sites):
+            op = self.to_backend(local_ops[i])
+            state_indices = [-(j+1) for j in range(self.num_sites)] 
+            state_indices[i] = 1
+            right_state = ncon((op, right_state), ([-(i+1),1], state_indices))
+
+        return ncon((self.state.conj(), right_state), ([i for i in range(1, self.num_sites+1)], [i for i in range(1, self.num_sites+1)])).real
+    
+    def pauli_expectation(self, pauli_string):
+        """ pauli_string is a string of length num_sites with characters in 'ixyz' """
+        self.run(progress_bar=False)
+        assert self.backend == "numpy", "Pauli expectation currently only supported for numpy backend"
+        return pauli_expectation_sv(self.get_statevector(), pauli_string)
+
+    def one_local_expectation(self, op, site): 
+        """ op is a 1-local Hermitian matrix 
+        TODO: rewrite using op_action() """
+        if not self.ran:
+            self.run(progress_bar=False)
+
+        right_state = copy.deepcopy(self.state)
+        op = self.to_backend(op)
+        state_indices = [-(j+1) for j in range(self.num_sites)]
+        state_indices[site] = 1
+        right_state = ncon((op, right_state), ([-(site+1),1], state_indices))
+
+        return ncon((self.state.conj(), right_state), ([i for i in range(1, self.num_sites+1)], 
+                                            [i for i in range(1, self.num_sites+1)])).real
+
+    def __str__(self):
+        if not self.ran:
+            self.run(progress_bar=False)
+        sv = self.state.reshape(self.local_dim**self.num_sites)
+        return pretty_print_sv(sv, self.local_dim)
+
+    def get_statevector(self): 
+        if not self.ran:
+            self.run(progress_bar=False)
+        return self.state.reshape(self.local_dim**self.num_sites)
+    
+    def normalize_state(self): 
+        norm = np.linalg.norm(self.state.reshape(-1))
+        self.state /= norm
+
+def locs_to_indices(locs, n): 
+    shifted_locs = [loc + 1 for loc in locs]
+    gate_indices = [-i for i in shifted_locs] + shifted_locs
+
+    boundaries = [0] + shifted_locs
+    tensor_indices = []
+    for i in range(len(shifted_locs)):
+        tensor_indices += [-j for j in range(boundaries[i] + 1, boundaries[i + 1])]
+        tensor_indices.append(shifted_locs[i])
+    
+    tensor_indices += [-j for j in range(boundaries[-1] + 1, n+1)]
+    return gate_indices, tensor_indices
+
+def op_action(op, indices, sv, local_dim=2): 
+    if op.ndim != 2*len(indices): 
+        op = op.reshape(*[local_dim]*2*len(indices))
+    
+    n = sv.ndim if sv.ndim > 1 else int(np.log(len(sv)) / np.log(local_dim))
+    state = sv.reshape(*[local_dim]*n) if sv.ndim == 1 else sv
+    #state = copy.deepcopy(sv).reshape(*[local_dim]*n) if sv.ndim == 1 else copy.deepcopy(sv)
+    
+    # locs_to_indices assumes ascending order for indices, so sort them first and transpose the operator accordingly
+    sorted_indices = sorted(indices)
+    sort_order = [indices.index(i) for i in sorted_indices]
+    perm = sort_order + [i + len(indices) for i in sort_order]  
+    op = permute(op, perm)
+
+    gate_indices, state_indices = locs_to_indices(sorted_indices, n)
+    new_sv = ncon((op, state), (gate_indices, state_indices))
+    return new_sv.reshape(local_dim**n) if sv.ndim == 1 else new_sv
+
+def all_zero_sv(num_sites, local_dim=2, dense=False, backend="numpy"):    
+    if dense: 
+        sv = np.zeros(local_dim**num_sites)
+        sv[0] = 1.0
+    else: 
+        sv = csc_matrix(([1], ([0], [0])), shape=(local_dim**num_sites, 1))
+    return sv
+
+def random_sv(num_sites, local_dim=2):
+    sv = np.random.rand(local_dim**num_sites) + 1j*np.random.rand(local_dim**num_sites)
+    sv /= np.linalg.norm(sv)
+    return sv
+
+def partial_overlap(sv1, sv2, local_dim=2, skip=None): 
+    system_size = int(np.log(len(sv1)) / np.log(local_dim))
+    sites = sorted(skip) if skip is not None else []
+    
+    psi = sv1.reshape([local_dim] * system_size)
+    phi_conj = sv2.reshape([local_dim] * system_size).conj()
+
+    psi_labels = [0] * system_size
+    phi_conj_labels = [0] * system_size
+
+    next_contract_label = 1
+    next_free_label = -1
+
+    for i in range(system_size):
+        if i in sites:
+            psi_labels[i] = next_free_label
+            phi_conj_labels[i] = next_free_label - len(sites)
+            next_free_label -= 1
+        else:
+            psi_labels[i] = next_contract_label
+            phi_conj_labels[i] = next_contract_label
+            next_contract_label += 1
+    
+    contraction = ncon([psi, phi_conj], [psi_labels, phi_conj_labels])
+    kept_dim = local_dim ** len(sites)
+    return contraction.reshape((kept_dim, kept_dim))   
+
+def rdm_from_sv(sv, sites, local_dim=2):
+    return partial_overlap(sv, sv, local_dim=local_dim, skip=sites) 
+
+def measure_sv(sv, meas_sites, shots=1): 
+    rdm = rdm_from_sv(sv, meas_sites)
+    probs = np.real(np.diag(rdm))
+    basis_outcomes = [np.binary_repr(i, width=len(meas_sites)) for i in range(len(probs))]
+    if shots == 1: 
+        return str(np.random.choice(basis_outcomes, p=probs))
+    else: 
+        outcomes = np.random.choice(basis_outcomes, p=probs, size=shots)
+        return [str(o) for o in outcomes]
+
+def measure_and_collapse_sv(sv, meas_sites, local_dim=2): 
+    outcome_str = measure_sv(sv, meas_sites)
+    
+    bras = [np.array([1,0]) if bit == '0' else np.array([0,1]) for bit in outcome_str]
+    bra = reduce(np.kron, bras).reshape([local_dim]* len(bras))
+    
+    n = sv.ndim if sv.ndim > 1 else int(np.log(len(sv)) / np.log(local_dim))
+    state = sv.reshape(*[local_dim]*n) if sv.ndim == 1 else sv
+    
+    sorted_indices = sorted(meas_sites)
+    sort_order = [meas_sites.index(i) for i in sorted_indices]
+    perm = sort_order 
+
+    bra = permute(bra, perm)
+    gate_indices, state_indices = locs_to_indices(sorted_indices, n)
+    bra_indices = gate_indices[len(gate_indices)//2:]
+    collapsed = ncon((bra, state), (bra_indices, state_indices))
+    collapsed /= np.linalg.norm(collapsed)
+    
+    collapsed = collapsed.reshape(local_dim**(n - len(meas_sites))) if sv.ndim == 1 else collapsed
+    return outcome_str, collapsed
+
+def pauli_expectation_sv(sv, pauli_string): 
+    """ note that pauli_string is in lower case; 
+     currently doesn't work with torch backend but simple to extend """
+    n = int(np.log(len(sv)) / np.log(2))
+    assert len(pauli_string) == n, "Pauli string length must match number of qubits in statevector"
+    
+    tensor = sv.reshape([2]*n)
+    right_tensor = copy.deepcopy(tensor)
+    for i in range(n):
+        if pauli_string[i] == 'i':
+            continue
+
+        op = pauli_mapping[pauli_string[i]]
+        state_indices = [-(j+1) for j in range(n)]
+        state_indices[i] = 1
+        right_tensor = ncon((op, right_tensor), ([-(i+1),1], state_indices))
+
+    return ncon((tensor.conj(), right_tensor), ([i for i in range(1, n+1)], [i for i in range(1, n+1)])).real

@@ -105,6 +105,23 @@ for _ in range(500):
 | `MatchgateSimulator` | `GaussianState` | — | Fermionic Gaussian circuits |
 | `PauliPropagationSimulator` | `PauliSum` | — | Heisenberg-picture propagation |
 
+## Gotchas
+
+**`Circuit.copy()` resets layers but preserves decomposition.**
+`copy()` returns a new circuit with the same gate list but `layers = None`.
+`construct_layers()` must be called again on the copy before iterating over layers.
+Decomposition is *not* undone: `decompose()` mutates `self.gates` in place, so a copy of a decomposed circuit still has the decomposed gates.
+
+**Qubit ordering is big-endian: qubit 0 is the most significant bit.**
+Applying `H(0)` to a 2-qubit system embeds as `H ⊗ I`, not `I ⊗ H`.
+In general, gate `G` on qubit `k` of an `n`-qubit system embeds as:
+
+```
+I^{⊗k} ⊗ G ⊗ I^{⊗(n−k−1)}
+```
+
+Basis state index `i` corresponds to bitstring `q0 q1 … q_{n−1}` where `i = q0·2^{n−1} + q1·2^{n−2} + … + q_{n−1}·2^0`. Qubit 0 is the leftmost qubit in ket notation. This is the opposite of Qiskit's little-endian convention, where qubit 0 is the least significant bit and `H(0)` embeds as `I ⊗ H`.
+
 ## Roadmap
 
 - ✅ **v0.2 scaffold** — directory structure, legacy preservation, `uv` packaging

@@ -268,3 +268,74 @@ def test_simulator_decompose_kwarg_accepted():
     sim = MinimalSimulator(circ, state, decompose=False)
     result = sim.run()
     assert isinstance(result, State)
+
+# ---------------------------------------------------------------------------
+# _embed_gate and Circuit.to_matrix
+# ---------------------------------------------------------------------------
+
+CNOT_MATRIX = np.array([[1,0,0,0],[0,1,0,0],[0,0,0,1],[0,0,1,0]], dtype=complex)
+
+def test_embed_gate_single_qubit_first():
+    from qaravan.core.base import _embed_gate
+    h = Gate("H", 0, H_MATRIX)
+    result = _embed_gate(h, n=2, local_dim=2)
+    expected = np.kron(H_MATRIX, np.eye(2))
+    assert np.allclose(result, expected)
+
+def test_embed_gate_single_qubit_second():
+    from qaravan.core.base import _embed_gate
+    h = Gate("H", 1, H_MATRIX)
+    result = _embed_gate(h, n=2, local_dim=2)
+    expected = np.kron(np.eye(2), H_MATRIX)
+    assert np.allclose(result, expected)
+
+def test_embed_gate_two_qubit_contiguous():
+    from qaravan.core.base import _embed_gate
+    cx = Gate("CX", [0, 1], CNOT_MATRIX)
+    result = _embed_gate(cx, n=2, local_dim=2)
+    assert np.allclose(result, CNOT_MATRIX)
+
+def test_embed_gate_noncontiguous_cnot_02():
+    """CNOT on qubits 0 and 2 of a 3-qubit system: |100⟩ → |101⟩."""
+    from qaravan.core.base import _embed_gate
+    cx = Gate("CX", [0, 2], CNOT_MATRIX)
+    U = _embed_gate(cx, n=3, local_dim=2)
+
+    # |100⟩ = index 4, should map to |101⟩ = index 5
+    psi_in = np.zeros(8); psi_in[4] = 1.0
+    psi_out = U @ psi_in
+    assert np.allclose(psi_out[5], 1.0)
+    assert np.allclose(np.linalg.norm(psi_out), 1.0)
+
+    # |000⟩ should be unchanged
+    psi_in2 = np.zeros(8); psi_in2[0] = 1.0
+    assert np.allclose(U @ psi_in2, psi_in2)
+
+def test_embed_gate_noncontiguous_unitary():
+    """Embedded non-contiguous gate must be unitary."""
+    from qaravan.core.base import _embed_gate
+    cx = Gate("CX", [0, 2], CNOT_MATRIX)
+    U = _embed_gate(cx, n=3, local_dim=2)
+    assert np.allclose(U @ U.conj().T, np.eye(8), atol=1e-12)
+
+def test_to_matrix_single_qubit():
+    h = Gate("H", 0, H_MATRIX)
+    circ = Circuit([h], n=1)
+    assert np.allclose(circ.to_matrix(), H_MATRIX)
+
+def test_to_matrix_h_on_qubit0_of_2():
+    h = Gate("H", 0, H_MATRIX)
+    circ = Circuit([h], n=2)
+    assert np.allclose(circ.to_matrix(), np.kron(H_MATRIX, np.eye(2)))
+
+def test_to_matrix_ghz_circuit():
+    """H(0) then CNOT(0,1) on |00⟩ should give (|00⟩+|11⟩)/√2."""
+    h = Gate("H", 0, H_MATRIX)
+    cx = Gate("CX", [0, 1], CNOT_MATRIX)
+    circ = Circuit([h, cx], n=2)
+    U = circ.to_matrix()
+
+    psi_in = np.array([1, 0, 0, 0], dtype=complex)
+    psi_out = U @ psi_in
+    expected = np.array([1, 0, 0, 1], dtype=complex) / np.sqrt(2)
+    assert np.allclose(psi_out, expected)

@@ -108,7 +108,8 @@ for _ in range(500):
 ## Roadmap
 
 - ✅ **v0.2 scaffold** — directory structure, legacy preservation, `uv` packaging
-- 🔧 **Core ABCs** — `Gate`, `Circuit`, `State`, `Simulator`, `Observable`, `NoiseModel`
+- ✅ **Core ABCs** — `Gate`, `Circuit`, `State`, `Simulator`, `Observable`, `NoiseModel`
+- 🔧 **Concrete gates** — `H`, `X`, `Y`, `Z`, `CNOT`, `RX/Y/Z`, `RXX/YY/ZZ`, `Reset`, `Measure`
 - ⬜ **Statevector backend** — reference implementation
 - ⬜ **Density matrix backend** — first noisy backend
 - ⬜ **TFI Hamiltonian** — first end-to-end Trotter workflow

@@ -12,22 +12,6 @@ Note that during each task, it's useful to break down the task into sub-tasks. A
 
 ---
 
-## Task 3 — Write `core/base.py`
-
-**Goal:** Write the file that *is* the design. 
-State and Simulator should be mostly abstract, but with required methods defined but not necessarily implemented (run() should be defined within Simulator itself and may call methods that are only implemented in subclasses). Look at legacy code for Gate, Circuit and NoiseModel to understand what they should include. Model Observable class on Gate. `Circuit` has a `construct_layers` and
-and `decompose` methods but `add_noise` and changing the representation of the gate are moved to the simulator's compile step.
-
-**Acceptance:**
-- `core/base.py` exists, contains all six classes in one file.
-- `from qaravan.core.base import Gate, Circuit, State, Simulator, Observable, NoiseModel`
-  works.
-- All abstract methods raise `NotImplementedError` with a useful message
-  ("subclass must implement `<method>`").
-- `tests/test_core/test_base.py` exists with smoke tests
-
----
-
 ## Task 4 — Implement `Gate` concrete subclasses in `core/gates.py`
 
 **Goal:** Port the v0.1 gate library to the new abstraction. Gates do not

@@ -10,6 +10,8 @@ After attempting each task, write a report to the `reports/YYYY-MM-DD-task-name.
 
 Note that during each task, it's useful to break down the task into sub-tasks. After a few sub-tasks, when it makes sense, run tests and do a git add of the specific files changed and then git commit with a small, atomic commit message (this makes it easy to roll things back later). So each Github push may contain several commits since each task might include several logically distinct changes / feature updates. 
 
+Before pushing to Github, run `uv run ruff check src/ tests/` and fix any issues. Ruff is installed as a dev dependency. Run it before push, not before every commit.
+
 ---
 
 ## Task 4 — Implement `Gate` concrete subclasses in `core/gates.py`

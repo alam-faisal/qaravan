@@ -25,6 +25,7 @@ dev = [
     "scienceplots",
     "ipykernel",
     "ipywidgets",
+    "ruff>=0.15.14",
 ]
 
 [tool.setuptools.packages.find]

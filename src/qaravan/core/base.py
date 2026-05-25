@@ -151,7 +151,10 @@ class NoiseModel(ABC):
 
     def get_superop(self, *args, **kwargs) -> np.ndarray:
         """Superoperator sum_k (K_k* ⊗ K_k). Works once get_kraus is implemented.
-        Again kwargs can include gate-dependence."""
+
+        Convention: K^* ⊗ K is correct for column-major (Fortran-order) vectorization
+        of rho, i.e. rho.flatten(order='F'). The DM backend must vectorize consistently.
+        """
         kraus = self.get_kraus(*args, **kwargs)
         return sum(np.kron(k.conj(), k) for k in kraus)
 

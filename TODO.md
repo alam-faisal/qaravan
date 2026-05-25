@@ -8,20 +8,6 @@ Before implementing a task review the "Development protocol" section in CLAUDE.m
 
 ---
 
-## Task 6 — Concrete `Observable` subclasses in `core/observables.py`
-
-**Goal:** Implement the observables needed for the cross-check and workflow
-tests: `PauliString`, `PauliSum`, `LocalOp`, `Magnetization`. Each has a name, indices and a matrix representation (although this may not be what is used by each state's expectation() method). 
-
-**Tests:**
-- `test_pauli_string_as_matrix`: 1-qubit Pauli strings give correct matrices.
-- `test_pauli_sum_as_matrix`: sum of Paulis matches direct construction.
-- `test_magnetization_on_basis_states`: ⟨Z_i⟩ on basis states.
-
-**Acceptance:**
-- tests pass 
----
-
 ## Task 7 — Implement first backend: `Statevector` and `StatevectorSimulator`
 
 **Goal:** The reference backend. Everything else gets cross-checked against

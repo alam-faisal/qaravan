@@ -6,6 +6,7 @@ from qaravan.core.base import (
     Gate, Circuit, State, Simulator, Observable, NoiseModel,
     IncompatibleNoiseError, IncompatibleStateError,
 )
+from qaravan.core.circuits import _embed_gate
 
 # ---------------------------------------------------------------------------
 # Helpers — minimal concrete subclasses for abstract class tests
@@ -27,9 +28,13 @@ class MinimalObservable(Observable):
 
 
 class MinimalNoiseModel(NoiseModel):
-    def get_kraus(self, gate):
-        d = gate.matrix.shape[0]
-        return [np.eye(d)]
+    @property
+    def gate_dependent(self) -> bool:
+        return False
+
+    def get_kraus(self, *args, **kwargs):
+        # returns identity Kraus for any call signature
+        return [np.eye(2)]
 
 
 class MinimalSimulator(Simulator):
@@ -100,14 +105,14 @@ def _two_qubit_circuit():
     cx = Gate("CX", [0, 1], np.eye(4))
     return Circuit([h, cx])
 
-def test_circuit_n_inferred():
+def test_circuit_num_sites_inferred():
     circ = _two_qubit_circuit()
-    assert circ.n == 2
+    assert circ.num_sites == 2
 
-def test_circuit_n_explicit():
+def test_circuit_num_sites_explicit():
     h = Gate("H", 0, H_MATRIX)
-    circ = Circuit([h], n=3)
-    assert circ.n == 3
+    circ = Circuit([h], num_sites=3)
+    assert circ.num_sites == 3
 
 def test_circuit_len():
     assert len(_two_qubit_circuit()) == 2
@@ -202,22 +207,29 @@ def test_observable_list_indices():
 
 def test_noisemodel_get_kraus_not_implemented_by_default():
     class BareNoise(NoiseModel):
-        pass
+        @property
+        def gate_dependent(self): return False
     nm = BareNoise()
     with pytest.raises(NotImplementedError):
-        nm.get_kraus(Gate("X", 0, X_MATRIX))
+        nm.get_kraus()
 
 def test_noisemodel_get_superop_uses_kraus():
     nm = MinimalNoiseModel()
-    g = Gate("X", 0, X_MATRIX)
-    superop = nm.get_superop(g)
+    superop = nm.get_superop()
     # identity Kraus => identity superoperator
     assert np.allclose(superop, np.eye(4))
 
 def test_noisemodel_sample_error_not_implemented():
     nm = MinimalNoiseModel()
     with pytest.raises(NotImplementedError):
-        nm.sample_error(Gate("X", 0, X_MATRIX))
+        nm.sample_error()
+
+def test_noisemodel_gate_dependent_abstract():
+    """NoiseModel without gate_dependent cannot be instantiated."""
+    class BareNoise(NoiseModel):
+        pass
+    with pytest.raises(TypeError):
+        BareNoise()
 
 # ---------------------------------------------------------------------------
 # Simulator (abstract)
@@ -276,30 +288,26 @@ def test_simulator_decompose_kwarg_accepted():
 CNOT_MATRIX = np.array([[1,0,0,0],[0,1,0,0],[0,0,0,1],[0,0,1,0]], dtype=complex)
 
 def test_embed_gate_single_qubit_first():
-    from qaravan.core.base import _embed_gate
     h = Gate("H", 0, H_MATRIX)
-    result = _embed_gate(h, n=2, local_dim=2)
+    result = _embed_gate(h, num_sites=2, local_dim=2)
     expected = np.kron(H_MATRIX, np.eye(2))
     assert np.allclose(result, expected)
 
 def test_embed_gate_single_qubit_second():
-    from qaravan.core.base import _embed_gate
     h = Gate("H", 1, H_MATRIX)
-    result = _embed_gate(h, n=2, local_dim=2)
+    result = _embed_gate(h, num_sites=2, local_dim=2)
     expected = np.kron(np.eye(2), H_MATRIX)
     assert np.allclose(result, expected)
 
 def test_embed_gate_two_qubit_contiguous():
-    from qaravan.core.base import _embed_gate
     cx = Gate("CX", [0, 1], CNOT_MATRIX)
-    result = _embed_gate(cx, n=2, local_dim=2)
+    result = _embed_gate(cx, num_sites=2, local_dim=2)
     assert np.allclose(result, CNOT_MATRIX)
 
 def test_embed_gate_noncontiguous_cnot_02():
     """CNOT on qubits 0 and 2 of a 3-qubit system: |100⟩ → |101⟩."""
-    from qaravan.core.base import _embed_gate
     cx = Gate("CX", [0, 2], CNOT_MATRIX)
-    U = _embed_gate(cx, n=3, local_dim=2)
+    U = _embed_gate(cx, num_sites=3, local_dim=2)
 
     # |100⟩ = index 4, should map to |101⟩ = index 5
     psi_in = np.zeros(8); psi_in[4] = 1.0
@@ -313,26 +321,25 @@ def test_embed_gate_noncontiguous_cnot_02():
 
 def test_embed_gate_noncontiguous_unitary():
     """Embedded non-contiguous gate must be unitary."""
-    from qaravan.core.base import _embed_gate
     cx = Gate("CX", [0, 2], CNOT_MATRIX)
-    U = _embed_gate(cx, n=3, local_dim=2)
+    U = _embed_gate(cx, num_sites=3, local_dim=2)
     assert np.allclose(U @ U.conj().T, np.eye(8), atol=1e-12)
 
 def test_to_matrix_single_qubit():
     h = Gate("H", 0, H_MATRIX)
-    circ = Circuit([h], n=1)
+    circ = Circuit([h], num_sites=1)
     assert np.allclose(circ.to_matrix(), H_MATRIX)
 
 def test_to_matrix_h_on_qubit0_of_2():
     h = Gate("H", 0, H_MATRIX)
-    circ = Circuit([h], n=2)
+    circ = Circuit([h], num_sites=2)
     assert np.allclose(circ.to_matrix(), np.kron(H_MATRIX, np.eye(2)))
 
 def test_to_matrix_ghz_circuit():
     """H(0) then CNOT(0,1) on |00⟩ should give (|00⟩+|11⟩)/√2."""
     h = Gate("H", 0, H_MATRIX)
     cx = Gate("CX", [0, 1], CNOT_MATRIX)
-    circ = Circuit([h, cx], n=2)
+    circ = Circuit([h, cx], num_sites=2)
     U = circ.to_matrix()
 
     psi_in = np.array([1, 0, 0, 0], dtype=complex)

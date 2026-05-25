@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from qaravan.core.circuits import (
-    Circuit,
+from qaravan.core.circuits import Circuit
+from qaravan.applications.circuit_library import (
     ghz_circuit,
     nn_pairs,
     rx_layer,
@@ -288,7 +288,5 @@ def test_bind_physics():
     # rx_layer(1) initialised at 0, bind to π/2 → same matrix as RX(0, π/2)
     circ = rx_layer(1, params=[0.0])
     bound = circ.bind([np.pi / 2])
-    from qaravan.core.gates import RX as _RX
-
-    expected = _RX(0, np.pi / 2).matrix
+    expected = RX(0, np.pi / 2).matrix
     assert np.allclose(bound.to_matrix(), expected)

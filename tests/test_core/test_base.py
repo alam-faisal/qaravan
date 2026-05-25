@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from qaravan.core.base import (
-    Gate, State, Simulator, Observable, NoiseModel,
+    Gate, MatrixGate, ParametricGate, State, Simulator, Observable, NoiseModel,
     IncompatibleNoiseError, IncompatibleStateError,
 )
 from qaravan.core.circuits import Circuit, _embed_gate
@@ -13,6 +13,10 @@ from qaravan.core.circuits import Circuit, _embed_gate
 # ---------------------------------------------------------------------------
 
 class MinimalState(State):
+    @property
+    def default_simulator(self):
+        return MinimalSimulator
+
     def expectation(self, observable):
         return 0.0
     def sample(self, shots):
@@ -50,59 +54,67 @@ class MinimalSimulator(Simulator):
 
 
 # ---------------------------------------------------------------------------
-# Gate
+# Gate / MatrixGate
 # ---------------------------------------------------------------------------
 
 H_MATRIX = np.array([[1, 1], [1, -1]]) / np.sqrt(2)
 X_MATRIX = np.array([[0, 1], [1, 0]], dtype=complex)
 
 def test_gate_int_index_normalised():
-    g = Gate("X", 2, X_MATRIX)
+    g = MatrixGate("X", 2, X_MATRIX)
     assert g.indices == [2]
 
 def test_gate_list_index_preserved():
-    g = Gate("CX", [0, 1], np.eye(4))
+    g = MatrixGate("CX", [0, 1], np.eye(4))
     assert g.indices == [0, 1]
 
 def test_gate_num_sites():
-    assert Gate("H", 0, H_MATRIX).num_sites == 1
-    assert Gate("CX", [0, 1], np.eye(4)).num_sites == 2
+    assert MatrixGate("H", 0, H_MATRIX).num_sites == 1
+    assert MatrixGate("CX", [0, 1], np.eye(4)).num_sites == 2
 
 def test_gate_local_dim():
-    assert Gate("H", 0, H_MATRIX).local_dim == 2
-    assert Gate("CX", [0, 1], np.eye(4)).local_dim == 2
+    assert MatrixGate("H", 0, H_MATRIX).local_dim == 2
+    assert MatrixGate("CX", [0, 1], np.eye(4)).local_dim == 2
 
 def test_gate_dagger_hermitian():
-    h = Gate("H", 0, H_MATRIX)
+    h = MatrixGate("H", 0, H_MATRIX)
     hd = h.dagger()
     assert np.allclose(hd.matrix, H_MATRIX.conj().T)
     assert "†" in hd.name
 
 def test_gate_dagger_self_inverse():
-    h = Gate("H", 0, H_MATRIX)
+    h = MatrixGate("H", 0, H_MATRIX)
     hd = h.dagger()
     assert np.allclose(hd.matrix, H_MATRIX)  # H is self-inverse
 
 def test_gate_time_default_none():
-    g = Gate("X", 0, X_MATRIX)
+    g = MatrixGate("X", 0, X_MATRIX)
     assert g.time is None
 
 def test_gate_time_set():
-    g = Gate("X", 0, X_MATRIX, time=0.04)
+    g = MatrixGate("X", 0, X_MATRIX, time=0.04)
     assert g.time == pytest.approx(0.04)
 
 def test_gate_str():
-    g = Gate("X", 0, X_MATRIX)
+    g = MatrixGate("X", 0, X_MATRIX)
     s = str(g)
     assert "X" in s
+
+def test_gate_is_abstract():
+    with pytest.raises(TypeError):
+        Gate("X", 0)  # type: ignore[abstract]
+
+def test_matrix_gate_isinstance_gate():
+    g = MatrixGate("H", 0, H_MATRIX)
+    assert isinstance(g, Gate)
 
 # ---------------------------------------------------------------------------
 # Circuit
 # ---------------------------------------------------------------------------
 
 def _two_qubit_circuit():
-    h = Gate("H", 0, H_MATRIX)
-    cx = Gate("CX", [0, 1], np.eye(4))
+    h = MatrixGate("H", 0, H_MATRIX)
+    cx = MatrixGate("CX", [0, 1], np.eye(4))
     return Circuit([h, cx])
 
 def test_circuit_num_sites_inferred():
@@ -110,7 +122,7 @@ def test_circuit_num_sites_inferred():
     assert circ.num_sites == 2
 
 def test_circuit_num_sites_explicit():
-    h = Gate("H", 0, H_MATRIX)
+    h = MatrixGate("H", 0, H_MATRIX)
     circ = Circuit([h], num_sites=3)
     assert circ.num_sites == 3
 
@@ -135,8 +147,8 @@ def test_circuit_construct_layers():
     assert len(circ.layers) == 2
 
 def test_circuit_layers_parallel():
-    h0 = Gate("H", 0, H_MATRIX)
-    h1 = Gate("H", 1, H_MATRIX)
+    h0 = MatrixGate("H", 0, H_MATRIX)
+    h1 = MatrixGate("H", 1, H_MATRIX)
     circ = Circuit([h0, h1])
     circ.construct_layers()
     # independent gates on different qubits should pack into one layer
@@ -158,8 +170,8 @@ def test_circuit_rmul():
     assert len(tripled) == 6
 
 def test_circuit_dagger_reversed():
-    h = Gate("H", 0, H_MATRIX)
-    cx = Gate("CX", [0, 1], np.eye(4))
+    h = MatrixGate("H", 0, H_MATRIX)
+    cx = MatrixGate("CX", [0, 1], np.eye(4))
     circ = Circuit([h, cx])
     dag = circ.dagger()
     assert dag.gates[0].name == circ.gates[-1].dagger().name
@@ -174,7 +186,7 @@ def test_circuit_dagger_gate_matrices():
 def test_circuit_copy_independent():
     circ = _two_qubit_circuit()
     copy = circ.copy()
-    copy.gates.append(Gate("X", 0, X_MATRIX))
+    copy.gates.append(MatrixGate("X", 0, X_MATRIX))
     assert len(circ) == 2
 
 # ---------------------------------------------------------------------------
@@ -188,6 +200,12 @@ def test_state_cannot_instantiate():
 def test_state_concrete_subclass_works():
     s = MinimalState()
     assert s.expectation(None) == 0.0
+
+def test_state_apply():
+    circ = _two_qubit_circuit()
+    state = MinimalState()
+    result = state.apply(circ)
+    assert isinstance(result, State)
 
 # ---------------------------------------------------------------------------
 # Observable (abstract)
@@ -265,6 +283,8 @@ def test_simulator_run_does_not_mutate_circuit():
 
 def test_simulator_incompatible_state_raises():
     class OtherState(State):
+        @property
+        def default_simulator(self): return MinimalSimulator
         def expectation(self, o): return 0.0
         def sample(self, s): return np.array([])
         def sample_and_collapse(self, s): return ("0", self)
@@ -288,25 +308,25 @@ def test_simulator_decompose_kwarg_accepted():
 CNOT_MATRIX = np.array([[1,0,0,0],[0,1,0,0],[0,0,0,1],[0,0,1,0]], dtype=complex)
 
 def test_embed_gate_single_qubit_first():
-    h = Gate("H", 0, H_MATRIX)
+    h = MatrixGate("H", 0, H_MATRIX)
     result = _embed_gate(h, num_sites=2, local_dim=2)
     expected = np.kron(H_MATRIX, np.eye(2))
     assert np.allclose(result, expected)
 
 def test_embed_gate_single_qubit_second():
-    h = Gate("H", 1, H_MATRIX)
+    h = MatrixGate("H", 1, H_MATRIX)
     result = _embed_gate(h, num_sites=2, local_dim=2)
     expected = np.kron(np.eye(2), H_MATRIX)
     assert np.allclose(result, expected)
 
 def test_embed_gate_two_qubit_contiguous():
-    cx = Gate("CX", [0, 1], CNOT_MATRIX)
+    cx = MatrixGate("CX", [0, 1], CNOT_MATRIX)
     result = _embed_gate(cx, num_sites=2, local_dim=2)
     assert np.allclose(result, CNOT_MATRIX)
 
 def test_embed_gate_noncontiguous_cnot_02():
     """CNOT on qubits 0 and 2 of a 3-qubit system: |100⟩ → |101⟩."""
-    cx = Gate("CX", [0, 2], CNOT_MATRIX)
+    cx = MatrixGate("CX", [0, 2], CNOT_MATRIX)
     U = _embed_gate(cx, num_sites=3, local_dim=2)
 
     # |100⟩ = index 4, should map to |101⟩ = index 5
@@ -321,24 +341,24 @@ def test_embed_gate_noncontiguous_cnot_02():
 
 def test_embed_gate_noncontiguous_unitary():
     """Embedded non-contiguous gate must be unitary."""
-    cx = Gate("CX", [0, 2], CNOT_MATRIX)
+    cx = MatrixGate("CX", [0, 2], CNOT_MATRIX)
     U = _embed_gate(cx, num_sites=3, local_dim=2)
     assert np.allclose(U @ U.conj().T, np.eye(8), atol=1e-12)
 
 def test_to_matrix_single_qubit():
-    h = Gate("H", 0, H_MATRIX)
+    h = MatrixGate("H", 0, H_MATRIX)
     circ = Circuit([h], num_sites=1)
     assert np.allclose(circ.to_matrix(), H_MATRIX)
 
 def test_to_matrix_h_on_qubit0_of_2():
-    h = Gate("H", 0, H_MATRIX)
+    h = MatrixGate("H", 0, H_MATRIX)
     circ = Circuit([h], num_sites=2)
     assert np.allclose(circ.to_matrix(), np.kron(H_MATRIX, np.eye(2)))
 
 def test_to_matrix_ghz_circuit():
     """H(0) then CNOT(0,1) on |00⟩ should give (|00⟩+|11⟩)/√2."""
-    h = Gate("H", 0, H_MATRIX)
-    cx = Gate("CX", [0, 1], CNOT_MATRIX)
+    h = MatrixGate("H", 0, H_MATRIX)
+    cx = MatrixGate("CX", [0, 1], CNOT_MATRIX)
     circ = Circuit([h, cx], num_sites=2)
     U = circ.to_matrix()
 

@@ -20,36 +20,42 @@ class IncompatibleStateError(TypeError):
 
 
 # ---------------------------------------------------------------------------
-# Gate
+# Gate (ABC) + concrete subclasses
 # ---------------------------------------------------------------------------
 
 
-class Gate:
-    """A named operation with site indices and a matrix representation.
+class Gate(ABC):
+    """Named quantum operation with site indices.
 
-    time: gate duration, usually set at compile time by Simulator; only
-    meaningful for noise-aware backends.
+    time: gate duration; only meaningful for noise-aware backends.
     """
 
     def __init__(
         self,
         name: str,
         indices: int | list[int],
-        matrix: np.ndarray,
         time: float | None = None,
     ):
         self.name = name
         self.indices = [indices] if isinstance(indices, int) else list(indices)
-        self.matrix = np.asarray(matrix, dtype=complex)
         self.time = time
-        self.local_dim = round(self.matrix.shape[0] ** (1 / self.num_sites))
+
+    @property
+    @abstractmethod
+    def matrix(self) -> np.ndarray:
+        """d^k × d^k unitary matrix."""
+        ...
 
     @property
     def num_sites(self) -> int:
         return len(self.indices)
 
+    @property
+    def local_dim(self) -> int:
+        return round(self.matrix.shape[0] ** (1 / self.num_sites))
+
     def dagger(self) -> Gate:
-        return Gate(
+        return MatrixGate(
             self.name + "†",
             self.indices,
             self.matrix.conj().T,
@@ -63,6 +69,58 @@ class Gate:
         return str(self)
 
 
+class MatrixGate(Gate):
+    """Concrete Gate with a fixed matrix stored at construction.
+
+    Use for ad-hoc gates: MatrixGate("U", [0, 1], some_4x4).
+    """
+
+    def __init__(
+        self,
+        name: str,
+        indices: int | list[int],
+        matrix: np.ndarray,
+        time: float | None = None,
+    ):
+        super().__init__(name, indices, time)
+        self._matrix = np.asarray(matrix, dtype=complex)
+
+    @property
+    def matrix(self) -> np.ndarray:
+        return self._matrix
+
+
+class ParametricGate(Gate, ABC):
+    """Abstract gate whose matrix is computed from continuous parameters.
+
+    Subclasses implement _build_matrix(). params is a tuple of floats.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        indices: int | list[int],
+        params: tuple[float, ...],
+        time: float | None = None,
+    ):
+        super().__init__(name, indices, time)
+        self.params = params
+
+    @abstractmethod
+    def _build_matrix(self) -> np.ndarray: ...
+
+    @property
+    def matrix(self) -> np.ndarray:
+        return self._build_matrix()
+
+    def __str__(self) -> str:
+        params_str = ", ".join(f"{p:.4g}" for p in self.params)
+        return f"{self.name}({self.indices}, {params_str})"
+
+    def __repr__(self) -> str:
+        return str(self)
+
+
 # ---------------------------------------------------------------------------
 # State (ABC)
 # ---------------------------------------------------------------------------
@@ -70,6 +128,16 @@ class Gate:
 
 class State(ABC):
     """Evolving data structure owned by a backend."""
+
+    @property
+    @abstractmethod
+    def default_simulator(self) -> type[Simulator]:
+        """Simulator class used by apply(). Each concrete State subclass sets this."""
+        ...
+
+    def apply(self, circuit: Circuit, **kwargs) -> State:
+        """Evolve self under circuit using the default simulator."""
+        return self.default_simulator(circuit, self, **kwargs).run()
 
     @abstractmethod
     def expectation(self, observable: Observable) -> complex:

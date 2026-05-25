@@ -1,1 +1,365 @@
-"""gates — v0.2 (not yet implemented)"""
+"""Concrete Gate subclasses: qubit gates, qutrit gates, and utilities."""
+
+from __future__ import annotations
+import numpy as np
+from qaravan.core.base import Gate, MatrixGate, ParametricGate
+
+
+# ---------------------------------------------------------------------------
+# Single-qubit MatrixGate subclasses
+# ---------------------------------------------------------------------------
+
+
+class I(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        super().__init__("I", indices, np.eye(2, dtype=complex), time)
+
+    def dagger(self) -> I:
+        return I(self.indices, self.time)
+
+
+class X(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        super().__init__("X", indices, np.array([[0, 1], [1, 0]], dtype=complex), time)
+
+    def dagger(self) -> X:
+        return X(self.indices, self.time)
+
+
+class Y(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        super().__init__("Y", indices, np.array([[0, -1j], [1j, 0]]), time)
+
+    def dagger(self) -> Y:
+        return Y(self.indices, self.time)
+
+
+class Z(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        super().__init__("Z", indices, np.array([[1, 0], [0, -1]], dtype=complex), time)
+
+    def dagger(self) -> Z:
+        return Z(self.indices, self.time)
+
+
+class H(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        super().__init__("H", indices, np.array([[1, 1], [1, -1]]) / np.sqrt(2), time)
+
+    def dagger(self) -> H:
+        return H(self.indices, self.time)
+
+
+class S(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        super().__init__("S", indices, np.array([[1, 0], [0, 1j]]), time)
+
+    def dagger(self) -> Sdg:
+        return Sdg(self.indices, self.time)
+
+
+class Sdg(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        super().__init__("Sdg", indices, np.array([[1, 0], [0, -1j]]), time)
+
+    def dagger(self) -> S:
+        return S(self.indices, self.time)
+
+
+class T(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        super().__init__("T", indices, np.array([[1, 0], [0, np.exp(1j * np.pi / 4)]]), time)
+
+    def dagger(self) -> Tdg:
+        return Tdg(self.indices, self.time)
+
+
+class Tdg(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        super().__init__("Tdg", indices, np.array([[1, 0], [0, np.exp(-1j * np.pi / 4)]]), time)
+
+    def dagger(self) -> T:
+        return T(self.indices, self.time)
+
+
+class SX(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        super().__init__(
+            "SX", indices, (1 / np.sqrt(2)) * np.array([[1, -1j], [-1j, 1]]), time
+        )
+
+
+# ---------------------------------------------------------------------------
+# Single-qubit ParametricGate subclasses
+# Convention: exp(-i θ P), full angle — no hidden 1/2 factor.
+# ---------------------------------------------------------------------------
+
+
+class RX(ParametricGate):
+    """exp(-i θ X) = cos(θ)I - i sin(θ)X."""
+
+    def __init__(self, indices: int | list[int], theta: float, time: float | None = None):
+        super().__init__("RX", indices, (theta,), time)
+
+    def _build_matrix(self) -> np.ndarray:
+        c, s = np.cos(self.params[0]), np.sin(self.params[0])
+        return np.array([[c, -1j * s], [-1j * s, c]])
+
+    def dagger(self) -> RX:
+        return RX(self.indices, -self.params[0], self.time)
+
+
+class RY(ParametricGate):
+    """exp(-i θ Y) = cos(θ)I - i sin(θ)Y."""
+
+    def __init__(self, indices: int | list[int], theta: float, time: float | None = None):
+        super().__init__("RY", indices, (theta,), time)
+
+    def _build_matrix(self) -> np.ndarray:
+        c, s = np.cos(self.params[0]), np.sin(self.params[0])
+        return np.array([[c, -s], [s, c]], dtype=complex)
+
+    def dagger(self) -> RY:
+        return RY(self.indices, -self.params[0], self.time)
+
+
+class RZ(ParametricGate):
+    """exp(-i θ Z) = diag(e^{-iθ}, e^{iθ})."""
+
+    def __init__(self, indices: int | list[int], theta: float, time: float | None = None):
+        super().__init__("RZ", indices, (theta,), time)
+
+    def _build_matrix(self) -> np.ndarray:
+        t = self.params[0]
+        return np.diag([np.exp(-1j * t), np.exp(1j * t)])
+
+    def dagger(self) -> RZ:
+        return RZ(self.indices, -self.params[0], self.time)
+
+
+# ---------------------------------------------------------------------------
+# Two-qubit MatrixGate subclasses
+# All use (control, target) index ordering.
+# ---------------------------------------------------------------------------
+
+
+class CNOT(MatrixGate):
+    """Controlled-X in (control, target) convention."""
+
+    def __init__(self, indices: list[int], time: float | None = None):
+        mat = np.array(
+            [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]], dtype=complex
+        )
+        super().__init__("CNOT", indices, mat, time)
+
+    def dagger(self) -> CNOT:
+        return CNOT(self.indices, self.time)
+
+
+class CZ(MatrixGate):
+    def __init__(self, indices: list[int], time: float | None = None):
+        mat = np.diag([1, 1, 1, -1]).astype(complex)
+        super().__init__("CZ", indices, mat, time)
+
+    def dagger(self) -> CZ:
+        return CZ(self.indices, self.time)
+
+
+class SWAP(MatrixGate):
+    def __init__(self, indices: list[int], time: float | None = None):
+        mat = np.array(
+            [[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 1]], dtype=complex
+        )
+        super().__init__("SWAP", indices, mat, time)
+
+    def dagger(self) -> SWAP:
+        return SWAP(self.indices, self.time)
+
+
+class iSWAP(MatrixGate):
+    def __init__(self, indices: list[int], time: float | None = None):
+        mat = np.array(
+            [[1, 0, 0, 0], [0, 0, 1j, 0], [0, 1j, 0, 0], [0, 0, 0, 1]], dtype=complex
+        )
+        super().__init__("iSWAP", indices, mat, time)
+
+
+# ---------------------------------------------------------------------------
+# Two-qubit ParametricGate subclasses
+# Convention: exp(-i θ P⊗P), full angle.
+# ---------------------------------------------------------------------------
+
+
+class RXX(ParametricGate):
+    """exp(-i θ X⊗X) = cos(θ)I⊗I - i sin(θ) X⊗X."""
+
+    def __init__(self, indices: list[int], theta: float, time: float | None = None):
+        super().__init__("RXX", indices, (theta,), time)
+
+    def _build_matrix(self) -> np.ndarray:
+        c, s = np.cos(self.params[0]), np.sin(self.params[0])
+        return np.array(
+            [[c, 0, 0, -1j * s],
+             [0, c, -1j * s, 0],
+             [0, -1j * s, c, 0],
+             [-1j * s, 0, 0, c]],
+        )
+
+    def dagger(self) -> RXX:
+        return RXX(self.indices, -self.params[0], self.time)
+
+
+class RYY(ParametricGate):
+    """exp(-i θ Y⊗Y) = cos(θ)I⊗I - i sin(θ) Y⊗Y."""
+
+    def __init__(self, indices: list[int], theta: float, time: float | None = None):
+        super().__init__("RYY", indices, (theta,), time)
+
+    def _build_matrix(self) -> np.ndarray:
+        c, s = np.cos(self.params[0]), np.sin(self.params[0])
+        # Y⊗Y = [[0,0,0,-1],[0,0,1,0],[0,1,0,0],[-1,0,0,0]]
+        return np.array(
+            [[c, 0, 0, 1j * s],
+             [0, c, -1j * s, 0],
+             [0, -1j * s, c, 0],
+             [1j * s, 0, 0, c]],
+        )
+
+    def dagger(self) -> RYY:
+        return RYY(self.indices, -self.params[0], self.time)
+
+
+class RZZ(ParametricGate):
+    """exp(-i θ Z⊗Z) = diag(e^{-iθ}, e^{iθ}, e^{iθ}, e^{-iθ})."""
+
+    def __init__(self, indices: list[int], theta: float, time: float | None = None):
+        super().__init__("RZZ", indices, (theta,), time)
+
+    def _build_matrix(self) -> np.ndarray:
+        t = self.params[0]
+        return np.diag([np.exp(-1j * t), np.exp(1j * t), np.exp(1j * t), np.exp(-1j * t)])
+
+    def dagger(self) -> RZZ:
+        return RZZ(self.indices, -self.params[0], self.time)
+
+
+# ---------------------------------------------------------------------------
+# Qutrit MatrixGate subclasses (local_dim=3, inferred from matrix shape)
+# ---------------------------------------------------------------------------
+
+
+class X01(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        super().__init__("X01", indices, np.array([[0, -1j, 0], [-1j, 0, 0], [0, 0, 1]]), time)
+
+
+class SX01(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        mat = (1 / np.sqrt(2)) * np.array([[1, -1j, 0], [-1j, 1, 0], [0, 0, np.sqrt(2)]])
+        super().__init__("SX01", indices, mat, time)
+
+
+class X12(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        super().__init__("X12", indices, np.array([[1, 0, 0], [0, 0, -1j], [0, -1j, 0]]), time)
+
+
+class SX12(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        mat = (1 / np.sqrt(2)) * np.array([[np.sqrt(2), 0, 0], [0, 1, -1j], [0, -1j, 1]])
+        super().__init__("SX12", indices, mat, time)
+
+
+class H01(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        s = 1 / np.sqrt(2)
+        mat = np.array([[s, s, 0], [s, -s, 0], [0, 0, 1]])
+        super().__init__("H01", indices, mat, time)
+
+
+class SDG01(MatrixGate):
+    def __init__(self, indices: int | list[int], time: float | None = None):
+        super().__init__("SDG01", indices, np.array([[1, 0, 0], [0, -1j, 0], [0, 0, 1]]), time)
+
+
+class SWAP3(MatrixGate):
+    """Two-qutrit SWAP."""
+
+    def __init__(self, indices: list[int], time: float | None = None):
+        mat = np.array(
+            [[1., 0., 0., 0., 0., 0., 0., 0., 0.],
+             [0., 0., 0., 1., 0., 0., 0., 0., 0.],
+             [0., 0., 0., 0., 0., 0., 1., 0., 0.],
+             [0., 1., 0., 0., 0., 0., 0., 0., 0.],
+             [0., 0., 0., 0., 1., 0., 0., 0., 0.],
+             [0., 0., 0., 0., 0., 0., 0., 1., 0.],
+             [0., 0., 1., 0., 0., 0., 0., 0., 0.],
+             [0., 0., 0., 0., 0., 1., 0., 0., 0.],
+             [0., 0., 0., 0., 0., 0., 0., 0., 1.]]
+        )
+        super().__init__("SWAP3", indices, mat, time)
+
+    def dagger(self) -> SWAP3:
+        return SWAP3(self.indices, self.time)
+
+
+# CNOT3 matrix: legacy uses (target, control) ordering.
+# v0.2 (control, target) matrix = SWAP3 @ M_legacy_final @ SWAP3.T
+# where M_legacy_final is the literal from legacy/gates.py transposed.
+_SWAP3_M = np.array(
+    [[1., 0., 0., 0., 0., 0., 0., 0., 0.],
+     [0., 0., 0., 1., 0., 0., 0., 0., 0.],
+     [0., 0., 0., 0., 0., 0., 1., 0., 0.],
+     [0., 1., 0., 0., 0., 0., 0., 0., 0.],
+     [0., 0., 0., 0., 1., 0., 0., 0., 0.],
+     [0., 0., 0., 0., 0., 0., 0., 1., 0.],
+     [0., 0., 1., 0., 0., 0., 0., 0., 0.],
+     [0., 0., 0., 0., 0., 1., 0., 0., 0.],
+     [0., 0., 0., 0., 0., 0., 0., 0., 1.]]
+)
+_CNOT3_LEGACY_T = np.array(
+    [[1.,           0.,           0.,           0., 0.,           0., 0.,  0.,  0.],
+     [0.,           0.,           0.,           0., 1.,           0., 0.,  0.,  0.],
+     [0.,           0.,  1/np.sqrt(2),           0., 0., -1/np.sqrt(2), 0.,  0.,  0.],
+     [0.,           0.,           0.,           1., 0.,           0., 0.,  0.,  0.],
+     [0.,           1.,           0.,           0., 0.,           0., 0.,  0.,  0.],
+     [0.,           0.,  1/np.sqrt(2),           0., 0.,  1/np.sqrt(2), 0.,  0.,  0.],
+     [0.,           0.,           0.,           0., 0.,           0., 1.,  0.,  0.],
+     [0.,           0.,           0.,           0., 0.,           0., 0., 1j,   0.],
+     [0.,           0.,           0.,           0., 0.,           0., 0.,  0.,  1.]]
+)
+_CNOT3_M = _SWAP3_M @ _CNOT3_LEGACY_T @ _SWAP3_M.T
+
+
+class CNOT3(MatrixGate):
+    """Two-qutrit CNOT in (control, target) convention."""
+
+    def __init__(self, indices: list[int], time: float | None = None):
+        super().__init__("CNOT3", indices, _CNOT3_M, time)
+
+
+# ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+
+
+def random_unitary(n: int, local_dim: int = 2, seed: int | None = None) -> np.ndarray:
+    """Haar-random d^n × d^n unitary. Uses np.random.default_rng(seed)."""
+    rng = np.random.default_rng(seed)
+    dim = local_dim**n
+    a = rng.standard_normal((dim, dim)) + 1j * rng.standard_normal((dim, dim))
+    _, u = np.linalg.eigh(a @ a.conj().T)
+    return u
+
+
+def is_unitary(u: np.ndarray, atol: float = 1e-10) -> bool:
+    n = u.shape[0]
+    return np.allclose(u @ u.conj().T, np.eye(n), atol=atol) and np.allclose(
+        u.conj().T @ u, np.eye(n), atol=atol
+    )
+
+
+def pauli_string_to_gates(string: str) -> list[Gate]:
+    """'XZI' → [X(0), Z(1)] — identity sites skipped, case-insensitive."""
+    _map = {"x": X, "y": Y, "z": Z}
+    return [_map[op.lower()](i) for i, op in enumerate(string) if op.upper() != "I"]

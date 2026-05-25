@@ -8,26 +8,16 @@ Qaravan is currently undergoing a complete overhaul with a new clean abstraction
 
 ---
 
-## Current repo layout
+
+## Repo layout
 
 ```
 qaravan/
-  core/         # Circuit, Gate, Hamiltonian, Pauli toolkit, noise models, lattices
-  tensorQ/      # StatevectorSim, DensityMatrixSim, MPSSim, MonteCarloSim and base structures for tensors 
-  algebraQ/     # MatchgateSim, CliffordSim, g-sim 
-  applications/ # Higher-level helpers: Trotter sweeps, state prep, magnetization
-tests/          # unit test suite — run with `pytest tests/` from repo root before every commit
-examples/       # Notebooks demonstrating and verifying canonical workflows; run after major changes
-```
-
-## Target repo layout
-
-```
-qaravan/
+  legacy/             # Old code that is very useful to look at for the underlying logic
   core/
-    base.py           # ABCs: State, Gate, Circuit, Simulator, Observable, NoiseModel
+    base.py           # ABCs: State, Gate, Simulator, Observable, NoiseModel
     gates.py          # Concrete gates: H, X, Y, Z, CNOT, RX/Y/Z, RXX/YY/ZZ, Reset, Measure
-    circuits.py       # functions for generating common circuits
+    circuits.py       # Circuit class and functions for generating common instances
     observables.py    # Concrete observables: Pauli strings, magnetization, etc 
     noise.py          # ThermalNoise, PauliNoise, PauliLindbladNoise
     hamiltonians.py   # TFI, XXZ, Heisenberg, output is to usually produce Circuit objects
@@ -47,20 +37,20 @@ tests/                # unit test suite — run with `pytest tests/` from repo r
 examples/             # Notebooks demonstrating and verifying canonical workflows; run after major changes
 ```
 
-The `core/base.py` file is the design document. All ABCs live there together so the architecture is legible at a glance. Concrete State and Simulator subclasses are co-located in one file per backend, because they evolve in lockstep. Backends with substantial internal machinery (MPS, MPDO) place implementation details in `_internals.py` files; the public API always imports from the backend's top-level file. The `tensorQ`/`algebraQ` distinction from v0.1 is dropped in v0.2. 
+The `core/base.py` file is the design document. All ABCs live there together so the architecture is legible at a glance. Concrete State and Simulator subclasses are co-located in one file per backend, because they should be developed together. Backends with substantial internal machinery (MPS, MPDO) place implementation details in `_internals.py` files.
 
 
 ## Core abstractions
 
-The design rests on four main classes (`Gate`, `State`, `Observable`, `NoiseModel`) plus one top-level orchestrator (`Simulator`) and one connective tissue (`Circuit`). 
+The four main classes are (`Gate`, `State`, `Observable`, `NoiseModel`). There is also a top-level orchestrator (`Simulator`) and a container class (`Circuit`). 
 
 ### `Gate`
 
-A `Gate` has a `name`, `indices` (which sites it acts on), and a **default representation** as a $d^k \times d^k$ matrix for a $k$-site gate on local dimension $d$. Non-unitary operations (`Reset`, `Measure`) are also considered to be `Gate` subclasses — the abstraction does not distinguish unitary from non-unitary at the type level. Gates do *not* know about backends; translation to the natural representation for a backend is done at *compile* time and is the Simulator's job.
+A `Gate` has a `name`, `indices` (which sites it acts on), and a **default representation** as a $d^k \times d^k$ matrix for a $k$-site gate on local dimension $d$. Non-unitary operations (`Reset`, `Measure`) are also considered to be `Gate` subclasses. Gates do *not* know about backends; translation to the natural representation for a backend is done at *compile* time and is the Simulator's job.
 
 ### `Circuit`
 
-A `Circuit` is a sequence of `Gate` objects, nothing more. It supports composition (`+`), repetition (`*`), and `dagger()`, and has methods for looking up its properties. It does not carry simulator-specific data. How it handles parametrization will be dealt with in the future. 
+A `Circuit` is a sequence of `Gate` objects. It supports composition (`+`), repetition (`*`), indexing, slicing and `dagger()`. It uses `decompose` to break gates into some native gateset (if asked) and `construct_layers` to break the sequence of gates into layers, (currently assumes unlimited entangling zones). It does not carry simulator-specific data. How it handles parametrization will be dealt with in the future. 
 
 ### `State`
 
@@ -93,6 +83,10 @@ Each simulator asks the passed `NoiseModel` to provide a natural representation.
 
 Hamiltonians (TFI, XXZ, Heisenberg, ...) and lattices are *physics objects*, not part of the ABC hierarchy. Their job is to produce `Circuit`s (via `H.trotter_circ(...)`) and `Observable`s (via `H.as_observable()`). Once that's done, the simulator and state abstractions take over and the Hamiltonian is no longer relevant to the simulation code.
 
+## API vision 
+
+Whenever you need to know what the API should look like so you can develop the source code appropriately, load docs/API_VISION.md and find a relevant example. 
+
 
 ## Coding style (Faisal's preferences — please follow)
 
@@ -103,128 +97,71 @@ Hamiltonians (TFI, XXZ, Heisenberg, ...) and lattices are *physics objects*, not
 - **`uv` for package management.** Not pip, not conda.
 - **Use outside-in test driven development** first write structural scaffold, then write extensive tests for correctness of physics and logic, and then write the code to satisfy the tests
 
----
+## Development protocol
 
-## Expected workflows upon completion of v0.2 
+This section describes the protocol for collaborating on Qaravan. Every step matters. If
+something in this protocol conflicts with a faster path, follow the protocol.
 
-After v0.2 is completely developed, we should be able to do at least a large chunk of the following:
+### Before starting a task
 
+1. Pick a task from TODO.md (either the topmost or something specified by user) 
 
-### Simulate a circuit in different simulators
+2. **Write a proposal.** Drop a markdown file in `proposals/YYYY-MM-DD-task-name.md` concisely describing:
+   - The approach.
+   - Classes, methods, and functions you plan to write, with constructors and signatures.
+   - How you plan to handle complications and edge cases.
+   - Anything you are unsure about and want the user's opinion.
+   In the proposal phase feel free to read files and do whatever necessary to understand the task but do NOT modify code under src. 
 
-```python
-circ = Circuit([H(0), CNOT([0, 1])])
-obs = PauliString("IX")
+3. **Wait for explicit approval** from the user before writing any implementation code. 
 
-thermal_nm = ThermalNoise(t1=100, t2=75, t_q1=5, t_q2=20)
-pauli_nm = PauliNoise([PauliString("II"), PauliString("ZZ")], probs=[0.9, 0.1])
+### During a task
 
-initial_sv = Statevector(bitstring="01")
-final_sv = StatevectorSimulator(circ, initial_sv).run()
-exp = final_sv.expectation(obs)
+4. **Break the task into sub-tasks.** After every few sub-tasks, when there's
+   a logical checkpoint:
+   - Run the relevant tests.
+   - `git add` the specific files changed (not `git add .`).
+   - `git commit` with a small, atomic commit message describing exactly that
+     sub-task.
 
-initial_dm = DensityMatrix(bitstring="01")
-final_dm = DensityMatrixSimulator(circ, initial_dm, thermal_nm).run()
-exp = final_dm.expectation(obs)
+   Each task may end up containing several commits, one per logical change.
 
-initial_mps = MPS(bitstring="01")
-final_mps = MPSSimulator(circ, initial_mps).run()
-exp = final_mps.expectation(obs)
+5. **When something goes wrong, stop and discuss it.** A failing test that
+   reveals a design flaw, an edge case the proposal didn't anticipate, a
+   question that needs the user's input — write up what you've found in the
+   report (see step 7) and ask. Do not push through with a workaround that
+   wasn't in the approved proposal.
 
-initial_mpdo = MPDO(bitstring="01")
-final_mpdo = MPDOSimulator(circ, initial_mpdo, thermal_nm).run()
-exp = final_mpdo.expectation(obs)
+### Finishing a task
 
-initial_tableau = StabilizerTableau(bitstring="01")
-final_tableau = CliffordSimulator(circ, initial_tableau).run()
-exp = final_tableau.expectation(obs)
+6. **Write an example notebook.** Add a nicely named `.ipynb` under
+   `examples/` walking the user through the newly added features —
+   specifically the ones the user should familiarize themselves with and
+   check by hand. Some content may overlap with tests you wrote, but the
+   notebook should focus on *physics correctness* checks that unit tests
+   either do or do not capture.
 
-initial_gaussian = GaussianState(bitstring="01")
-final_gaussian = MatchgateSimulator(circ, initial_gaussian).run()
-exp = final_gaussian.expectation(obs)
+7. **Write a report** to `reports/YYYY-MM-DD-task-name.md` containing:
+   - Whether the task succeeded or failed.
+   - On success: a short summary of what was accomplished, including
+     signatures of new functions and classes.
+   - On failure: a clear description of the bug or open question blocking
+     progress.
+   - A checklist of things the user should verify by hand: notebooks to
+     open, tests to read, READMEs to review.
 
-initial_ps = PauliSum(obs) 
-final_ps = PauliPropagationSimulator(circ, initial_ps).run()
-exp = final_ps.expectation(PauliSum(bitstring="01"))
+8. **Wait for explicit user confirmation** that they've reviewed the report
+   and are satisfied. Then:
+   - Remove the task from `TODO.md`.
+   - Run the full unit test suite (`uv run pytest tests/`).
+   - Run `uv run ruff format src/ tests/` then `uv run ruff check src/ tests/`.
+   - `git push` to GitHub. This is the **only** push event in the workflow —
+     individual commits stay local until the task is complete and approved.
 
-initial_walkers = Walkers(bitstring="01", pure_state_type=Statevector, num_walkers=1000).run()
-final_walkers = MonteCarloSimulator(circ, initial_walkers, pauli_nm).run()
-exp = final_walkers.expectation(obs)
-```
+### End of day
 
-### Simulate dynamic quantum circuits
-
-```python 
-sv = Statevector(bitstring="01")
-meas_sites = [1]
-
-def decoder(outcome, sv, round) -> Circuit: 
-  return Circuit() 
-
-for round in range(n_rounds): 
-  outcome, sv = sv.measure_and_collapse(meas_sites)
-  circ = decoder(outcome, sv, round)
-  sv = StatevectorSimulator(circ, sv).run()
-```
-
-### Noisy AKLT prep + string-order measurement
-
-```python 
-circ = aklt_prep_circuit(n) 
-obs = StringOrderObservable(indices=range(n), op_type="Z")
-
-initial_dm = DensityMatrix(bitstring='0'*n)
-final_dm = DensityMatrixSimulator(circ, initial_dm).run()
-exp = final_dm.expectation(obs)
-```
-
-### Noisy Trotter evolution with an observable
-
-```python
-
-ham = TFI(n, jz=1.0, h=0.75)
-nm = QubitNoise(t1=100, t2=75, t_q1=0.04, t_q2=0.5)
-obs = Magnetization(n)
-exp_list = trotter_dm_sim(ham, step_size=0.1, max_steps=500,
-                          nm=nm, obs=obs)
-
-def trotter_dm_sim(ham, step_size, max_steps, nm, obs) -> np.ndarray: 
-  circ = ham.trotter_circuit(step_size)
-  dm = DensityMatrix(bitstring='0'*ham.num_sites)
-  exp_list = []
-  for step in range(max_steps): 
-    exp_list.append(dm.expectation(obs))
-    dm = DensityMatrixSimulator(circ, dm, nm).run()
-
-  return exp_list                        
-```
-
-### Variational state preparation (environment sweep)
-
-```python
-
-target_sv = Statevector(n, random_seed=42)
-skeleton = brickwall_skeleton(n=4, depth=2)
-context = RunContext(max_iter=10000, stop_ratio=1e-8, stop_absolute=1e-7)
-circ, cost_list = environment_state_prep(target_sv, skeleton=skeleton,
-                                         context=context)
-```
-
----
-
-## Scope of Qaravan
-
-**In scope:**
-- Mid-circuit measurements and feed-forward (this is a research pillar — make it easy to code up ergonomic)
-- Structure-aware noise and error mitigation techniques
-- Classical simulation backends (tensor networks, matchgate, Clifford, Pauli propagation)
-- Commonly used Hamiltonians and observables for canonical near-term experiments
-- Variational state prep and circuit synthesis tools
-- Being able to deal with shots dataframes output by Phasecraft's Harness infrastructure to test error mitigation techniques. 
-
-**Out of scope (for now):**
-- Linking to actual quantum hardware. Phasecraft's pipeline handles device submission. Qaravan stays classical.
-- Heavy GPU optimization beyond the existing torch backend.
-- Compiling to or from external circuit formats (Qiskit, Cirq). If a conversion is needed, do it ad hoc in a notebook, not in the library.
-
----
+9. **On the user's signal to wrap up**, append an entry to `DAY.md` containing:
+   - The date.
+   - A concise list of what was accomplished that day.
+   - A list of what's up for the next day: anything still awaiting the user's
+     review, the next task on the docket, open questions, etc.

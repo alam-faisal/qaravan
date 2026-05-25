@@ -87,7 +87,11 @@ class Circuit:
         for gate in self.gates:
             if isinstance(gate, ParametricGate):
                 new_gates.append(
-                    type(gate)(gate.indices, *params[idx : idx + gate.num_params], time=gate.time)
+                    type(gate)(
+                        gate.indices,
+                        *params[idx : idx + gate.num_params],
+                        time=gate.time,
+                    )
                 )
                 idx += gate.num_params
             else:

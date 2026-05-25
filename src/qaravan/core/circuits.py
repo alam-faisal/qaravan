@@ -1,4 +1,5 @@
 """Circuit class and gate-embedding helpers."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -60,7 +61,7 @@ class Circuit:
 
     def to_matrix(self) -> np.ndarray:
         """Full unitary matrix of the circuit. For debugging; real backends never build this."""
-        dim = self.local_dim ** self.num_sites
+        dim = self.local_dim**self.num_sites
         result = np.eye(dim, dtype=complex)
         for gate in self.gates:
             full = _embed_gate(gate, self.num_sites, self.local_dim)
@@ -69,7 +70,9 @@ class Circuit:
 
     def copy(self) -> Circuit:
         """Shallow copy of gate list; layers reset to None."""
-        return Circuit(list(self.gates), num_sites=self.num_sites, local_dim=self.local_dim)
+        return Circuit(
+            list(self.gates), num_sites=self.num_sites, local_dim=self.local_dim
+        )
 
     def __add__(self, other: Circuit) -> Circuit:
         if not isinstance(other, Circuit):
@@ -83,7 +86,9 @@ class Circuit:
     def __mul__(self, n: int) -> Circuit:
         if not isinstance(n, int) or n < 0:
             return NotImplemented
-        return Circuit(self.gates * n, num_sites=self.num_sites, local_dim=self.local_dim)
+        return Circuit(
+            self.gates * n, num_sites=self.num_sites, local_dim=self.local_dim
+        )
 
     def __rmul__(self, n: int) -> Circuit:
         return self.__mul__(n)
@@ -94,7 +99,9 @@ class Circuit:
     def __getitem__(self, key: int | slice) -> Gate | Circuit:
         if isinstance(key, int):
             return self.gates[key]
-        return Circuit(self.gates[key], num_sites=self.num_sites, local_dim=self.local_dim)
+        return Circuit(
+            self.gates[key], num_sites=self.num_sites, local_dim=self.local_dim
+        )
 
     def __str__(self) -> str:
         return f"Circuit(num_sites={self.num_sites}, gates={self.gates})"
@@ -117,7 +124,7 @@ def _embed_gate(gate: Gate, num_sites: int, local_dim: int) -> np.ndarray:
         return np.kron(np.kron(np.eye(left_dim), gate.matrix), np.eye(right_dim))
 
     # non-contiguous sites: permute basis, apply gate on leading sites, permute back
-    dim = local_dim ** num_sites
+    dim = local_dim**num_sites
     perm = sorted_indices + [i for i in range(num_sites) if i not in sorted_indices]
     perm_mat = np.zeros((dim, dim))
     for i in range(dim):

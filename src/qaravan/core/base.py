@@ -1,7 +1,5 @@
-"""Core abstractions: Gate, State, Simulator, Observable, NoiseModel.
+"""Core abstractions: Gate, State, Simulator, Observable, NoiseModel."""
 
-Circuit lives in core.circuits and is re-exported here for convenience.
-"""
 from __future__ import annotations
 import copy
 from abc import ABC, abstractmethod
@@ -12,8 +10,10 @@ import numpy as np
 # Exceptions
 # ---------------------------------------------------------------------------
 
+
 class IncompatibleNoiseError(Exception):
     pass
+
 
 class IncompatibleStateError(TypeError):
     pass
@@ -22,6 +22,7 @@ class IncompatibleStateError(TypeError):
 # ---------------------------------------------------------------------------
 # Gate
 # ---------------------------------------------------------------------------
+
 
 class Gate:
     """A named operation with site indices and a matrix representation.
@@ -66,6 +67,7 @@ class Gate:
 # State (ABC)
 # ---------------------------------------------------------------------------
 
+
 class State(ABC):
     """Evolving data structure owned by a backend."""
 
@@ -94,6 +96,7 @@ class State(ABC):
 # Observable (ABC)
 # ---------------------------------------------------------------------------
 
+
 class Observable(ABC):
     """Descriptor for a measurable quantity: name and site indices.
 
@@ -114,15 +117,17 @@ class Observable(ABC):
 # NoiseModel (ABC)
 # ---------------------------------------------------------------------------
 
+
 class NoiseModel(ABC):
     """Base noise model. Subclasses implement get_kraus and optionally sample_error."""
+
     @property
     @abstractmethod
     def gate_dependent(self) -> bool: ...
 
     def get_kraus(self, *args, **kwargs) -> list[np.ndarray]:
         """Kraus operators for the noise channel following gate.
-        kwargs can include gate-dependence say for thermal noise, """
+        kwargs can include gate-dependence say for thermal noise,"""
         raise NotImplementedError("subclass must implement `get_kraus`")
 
     def get_superop(self, *args, **kwargs) -> np.ndarray:
@@ -139,6 +144,7 @@ class NoiseModel(ABC):
 # ---------------------------------------------------------------------------
 # Simulator (ABC)
 # ---------------------------------------------------------------------------
+
 
 class Simulator(ABC):
     """Takes (circuit, initial_state, noise_model), compiles, evolves, returns State."""
@@ -193,8 +199,3 @@ class Simulator(ABC):
                 "use DensityMatrixSimulator or MonteCarloSimulator"
             )
         return circuit
-
-
-# Re-export Circuit here so `from qaravan.core.base import Circuit` keeps working.
-# Gate is fully defined above before this import, so the circular reference resolves cleanly.
-from qaravan.core.circuits import Circuit  # noqa: E402

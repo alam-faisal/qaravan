@@ -2,24 +2,26 @@ import numpy as np
 import itertools
 import re
 
-pauli_I = np.array([[1,0],[0,1]], dtype=complex)
-pauli_X = np.array([[0,1],[1,0]], dtype=complex)
-pauli_Y = np.array([[0,-1.j],[1.j,0]], dtype=complex)
-pauli_Z = np.array([[1,0],[0,-1]], dtype=complex)
-pauli_mapping = {'i': pauli_I, 'x': pauli_X, 'y': pauli_Y, 'z': pauli_Z}
+pauli_I = np.array([[1, 0], [0, 1]], dtype=complex)
+pauli_X = np.array([[0, 1], [1, 0]], dtype=complex)
+pauli_Y = np.array([[0, -1.0j], [1.0j, 0]], dtype=complex)
+pauli_Z = np.array([[1, 0], [0, -1]], dtype=complex)
+pauli_mapping = {"i": pauli_I, "x": pauli_X, "y": pauli_Y, "z": pauli_Z}
+
 
 def pauli_commute(pauli1, pauli2):
     anticommute_count = 0
     for p1, p2 in zip(pauli1, pauli2):
-        if p1 == 'i' or p2 == 'i':
-            continue  
+        if p1 == "i" or p2 == "i":
+            continue
         if p1 != p2:
             anticommute_count += 1
     return anticommute_count % 2 == 0
 
+
 def pauli_multiply(pauli1, pauli2):
-    pauli_dict = {'i': 0, 'x': 1, 'y': 2, 'z': 3}
-    inverse_pauli_dict = {0: 'i', 1: 'x', 2: 'y', 3: 'z'}
+    pauli_dict = {"i": 0, "x": 1, "y": 2, "z": 3}
+    inverse_pauli_dict = {0: "i", 1: "x", 2: "y", 3: "z"}
 
     epsilon = np.zeros((4, 4, 4), dtype=int)
     epsilon[1, 2, 3] = epsilon[2, 3, 1] = epsilon[3, 1, 2] = 1
@@ -31,14 +33,16 @@ def pauli_multiply(pauli1, pauli2):
     for p1, p2 in zip(pauli1, pauli2):
         i, j = pauli_dict[p1], pauli_dict[p2]
 
-        if i == 0: 
+        if i == 0:
             result_pauli.append(p2)
         elif j == 0:
             result_pauli.append(p1)
-        elif i == j:  
-            result_pauli.append('i')
+        elif i == j:
+            result_pauli.append("i")
         else:
-            k = 6 - (i + j)  # Ensures X(1), Y(2), Z(3) → 1+2+3 = 6, so k = the missing index
+            k = 6 - (
+                i + j
+            )  # Ensures X(1), Y(2), Z(3) → 1+2+3 = 6, so k = the missing index
             sign = epsilon[i, j, k]  # Get the correct sign
             result_pauli.append(inverse_pauli_dict[k])
 
@@ -46,47 +50,57 @@ def pauli_multiply(pauli1, pauli2):
 
     return "".join(result_pauli), phase
 
+
 def pauli_strings(n):
-    pauli_ops = 'ixyz'
-    return [''.join(p) for p in itertools.product(pauli_ops, repeat=n)]
+    pauli_ops = "ixyz"
+    return ["".join(p) for p in itertools.product(pauli_ops, repeat=n)]
+
 
 def random_pauli_string(n):
-    chars = 'ixyz'
-    out = ''
+    chars = "ixyz"
+    out = ""
     for i in range(n):
         out += chars[np.random.choice(len(chars))]
     return out
 
+
 def subsystem_zstrings(n, sites):
     zstrings = []
-    for bits in itertools.product([0,1], repeat=len(sites)):   # 2^len(sites) combinations
-        zstring = ['i']*n
+    for bits in itertools.product(
+        [0, 1], repeat=len(sites)
+    ):  # 2^len(sites) combinations
+        zstring = ["i"] * n
         for site, bit in zip(sites, bits):
             if bit == 1:
-                zstring[site] = 'z'
-        zstrings.append(''.join(zstring))
+                zstring[site] = "z"
+        zstrings.append("".join(zstring))
     return zstrings
 
-def fixed_weight_zstrings(n, weight): 
+
+def fixed_weight_zstrings(n, weight):
     zstrings = []
     for sites in itertools.combinations(range(n), weight):
-        zstring = ['i']*n
+        zstring = ["i"] * n
         for site in sites:
-            zstring[site] = 'z'
-        zstrings.append(''.join(zstring))
+            zstring[site] = "z"
+        zstrings.append("".join(zstring))
     return zstrings
 
-def random_hermitian_op(n): 
+
+def random_hermitian_op(n):
     dim = 2**n
     rand_mat = np.random.randn(dim, dim) + 1j * np.random.randn(dim, dim)
     hermitian_op = (rand_mat + rand_mat.conj().T) / 2
     return hermitian_op
 
-def support(pstr): 
-    return tuple(i for i, p in enumerate(pstr) if p != 'i')
 
-def count_weight(pstr): 
+def support(pstr):
+    return tuple(i for i, p in enumerate(pstr) if p != "i")
+
+
+def count_weight(pstr):
     return len(support(pstr))
+
 
 def simple_pstr(spec: str, n: int, base: int = 0) -> str:
     """
@@ -94,20 +108,24 @@ def simple_pstr(spec: str, n: int, base: int = 0) -> str:
     spec like 'z2z10y3' means put 'z' at 2, 'z' at 10, 'y' at 3.
     Indices are 0-based by default; set base=1 if your spec is 1-based.
     """
-    chars = ['i'] * n
-    pattern = re.compile(r'([ixyzIXYZ])(\d+)')  # letter + digits
-    
+    chars = ["i"] * n
+    pattern = re.compile(r"([ixyzIXYZ])(\d+)")  # letter + digits
+
     pos = 0
     for m in pattern.finditer(spec):
         if m.start() != pos:
-            raise ValueError(f"Unparsed chunk in spec at {pos}: {spec[pos:m.start()]!r}")
+            raise ValueError(
+                f"Unparsed chunk in spec at {pos}: {spec[pos : m.start()]!r}"
+            )
         pauli, idx = m.group(1).lower(), int(m.group(2)) - base
         if not (0 <= idx < n):
-            raise IndexError(f"site {idx+base} out of bounds for n={n} with base={base}")
-        if chars[idx] != 'i':
-            raise ValueError(f"duplicate assignment to site {idx+base}")
+            raise IndexError(
+                f"site {idx + base} out of bounds for n={n} with base={base}"
+            )
+        if chars[idx] != "i":
+            raise ValueError(f"duplicate assignment to site {idx + base}")
         chars[idx] = pauli
         pos = m.end()
     if pos != len(spec):
         raise ValueError(f"Trailing garbage in spec: {spec[pos:]!r}")
-    return ''.join(chars)
+    return "".join(chars)

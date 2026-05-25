@@ -4,26 +4,7 @@ This file is the active task list for the v0.2 rewrite. Entries are roughly
 ordered; each has explicit acceptance criteria. Treat the criteria as the
 definition of done.
 
-Before implementing each task, write a short proposal to the `proposals/YYYY-MM-DD-task-name.md` file with your proposed approach, what classes/methods/functions you want to write and their constructors and signatures, how you plan to handle any complications, edge cases you want to ensure are implemented correctly. This proposal will be short for the first few tasks but detailed for the later tasks. After writing the proposal ask user for approval, and then then start implementing. 
-
-After attempting each task, write a report to the `reports/YYYY-MM-DD-task-name.md` file with a statement of whether or not you've succeeded, a short summary of what you've accomplished (signatures of functions and classes you wrote) or of why you've failed (some bug you don't understand or some question you are unsure of before you can progress). The report should also make a list of things the user should check himself ("open a notebook and do this ...", "look over this set of tests and see if you agree...", "read over the new README...".). After writing the report, ask user to read it. Once he has told you he's happy, remove the Task from the TODO.md file, run unit test suite, and then push to Github. 
-
-Note that during each task, it's useful to break down the task into sub-tasks. After a few sub-tasks, when it makes sense, run tests and do a git add of the specific files changed and then git commit with a small, atomic commit message (this makes it easy to roll things back later). So each Github push may contain several commits since each task might include several logically distinct changes / feature updates. 
-
-Before pushing to Github, run `uv run ruff check src/ tests/` and fix any issues. Ruff is installed as a dev dependency. Run it before push, not before every commit.
-
----
-
-## Task 4 — Implement `Gate` concrete subclasses in `core/gates.py`
-
-**Goal:** Port the v0.1 gate library to the new abstraction. Gates do not
-know about backends. Each gate is a small class or function. Follow the v0.1
-factory pattern (`H(0)`, `CNOT([0,1])`) — it's good. Add tests.
-
-
-**Acceptance:**
-- All v0.1 gates that we want in v0.2 are ported.
-- All tests pass. 
+Before implementing a task review the "Development protocol" section in CLAUDE.md. 
 
 ---
 
@@ -54,7 +35,10 @@ tests: `PauliString`, `PauliSum`, `LocalOp`, `Magnetization`. Each has a name, i
 ## Task 7 — Implement first backend: `Statevector` and `StatevectorSimulator`
 
 **Goal:** The reference backend. Everything else gets cross-checked against
-this. Located in `backends/statevector.py`. Look at legacy code to understand how this can be done. Note that the contraction code for statevectors, MPS, density matrices, etc have already been worked out in the legacy code and they should NOT be meddled with. Contraction code is VERY easy to get wrong and those codes were written after painstaking hand-written calculations. You should feel free to beautify them, but do not make any changes to the core contraction without asking first. 
+this. Located in `backends/statevector.py`. Look at legacy code to understand how this can be done. Note that the contraction code for statevectors, MPS, density matrices, etc have already been worked out in the legacy code and they should NOT be meddled with. Contraction code is VERY easy to get wrong and those codes were written after painstaking hand-written calculations. You should feel free to beautify them, but do not make any changes to the core contraction without asking first.
+
+**Note on Reset/Measure**: `Reset` and `Measure` are not `Gate` subclasses in v0.2.
+They are methods on concrete `State` subclasses. Implement `Statevector.reset(sites, reset_to)` and `Statevector.measure(sites)` here (the latter is equivalent to `sample_and_collapse`). This replaces the legacy `Reset(Gate)` class.
 
 **Tests first (the hard set):**
 - `test_statevector_init_bitstring`: `Statevector(bitstring="01")` has the

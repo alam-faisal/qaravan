@@ -1,4 +1,5 @@
 """Frozen v0.1 code. Import explicitly via `qaravan.legacy`; not re-exported from the top-level package."""
+
 __version__ = "0.1.7"
 
 # tensorQ modules first (so core modules can override name collisions, matching v0.1 behaviour)

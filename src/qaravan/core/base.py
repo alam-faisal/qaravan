@@ -3,7 +3,11 @@
 from __future__ import annotations
 import copy
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 import numpy as np
+
+if TYPE_CHECKING:
+    from qaravan.core.circuits import Circuit
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +103,7 @@ class State(ABC):
     def apply(self, circuit: Circuit, **kwargs) -> State:
         """Evolve self under circuit using the default simulator."""
         return self.default_simulator(circuit, self, **kwargs).run()
+
 
 # ---------------------------------------------------------------------------
 # Observable (ABC)

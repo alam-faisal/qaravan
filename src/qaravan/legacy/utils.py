@@ -3,54 +3,60 @@ from .circuits import Circuit
 from collections import Counter
 import random
 
+
 def endian_transform(arr):
-    """ only works for qubits now """ 
-    if len(arr.shape) == 1: 
+    """only works for qubits now"""
+    if len(arr.shape) == 1:
         n = int(np.log2(len(arr)))
         new_order = [i for i in range(n)][::-1]
-        return arr.reshape(*[2]*n).transpose(*new_order).reshape(2**n)
+        return arr.reshape(*[2] * n).transpose(*new_order).reshape(2**n)
 
-    elif len(arr.shape) == 2: 
+    elif len(arr.shape) == 2:
         n = int(np.log2(arr.shape[0]))
-        new_order = [i for i in range(n)][::-1]+[i for i in range(n,2*n)][::-1]
-        return arr.reshape(*[2]*2*n).transpose(*new_order).reshape(2**n, 2**n)
+        new_order = [i for i in range(n)][::-1] + [i for i in range(n, 2 * n)][::-1]
+        return arr.reshape(*[2] * 2 * n).transpose(*new_order).reshape(2**n, 2**n)
 
-    else: 
+    else:
         raise ValueError("only works for 1D and 2D arrays")
-    
+
+
 def endian_transform_circ(circ: Circuit) -> Circuit:
-    """ reverse endianness of a circuit """
+    """reverse endianness of a circuit"""
     new_circ = circ.copy()
     n = new_circ.num_sites
     for gate in new_circ.gate_list:
         gate.indices = [(n - 1 - i) for i in gate.indices]
     return new_circ
 
-def base(b,n,length):
-    """ base b representation of number n assuming there are length dits """
-    size = int(np.ceil(np.log(max(1,n))/np.log(b)))
-    listy = [place
-        for i in range(size,-1,-1)
-        if (place := n//b**i%b) or i<size] or [0]
-    for _ in range(length-len(listy)):
+
+def base(b, n, length):
+    """base b representation of number n assuming there are length dits"""
+    size = int(np.ceil(np.log(max(1, n)) / np.log(b)))
+    listy = [
+        place for i in range(size, -1, -1) if (place := n // b**i % b) or i < size
+    ] or [0]
+    for _ in range(length - len(listy)):
         listy.insert(0, 0)
     return listy
 
-def generate_basis(n): 
-    """ generate all possible input strings for n qubits """
+
+def generate_basis(n):
+    """generate all possible input strings for n qubits"""
     basis = []
     for i in range(2**n):
         basis.append(bin(i)[2:].zfill(n))
     return basis
 
-def string_to_sv(string, local_dim=2): 
+
+def string_to_sv(string, local_dim=2):
     n = len(string)
     sv = np.zeros(local_dim**n)
     sv[int(string, local_dim)] = 1.0
     return sv
 
+
 def pretty_print_dm(dmat, local_dim=2, threshold=1e-3):
-    """ prints density matrix as a mixture of quantum states """
+    """prints density matrix as a mixture of quantum states"""
     evals, evecs = np.linalg.eigh(dmat)
     n = dmat.shape[0]
     length = int(np.log(n) / np.log(local_dim))
@@ -66,43 +72,48 @@ def pretty_print_dm(dmat, local_dim=2, threshold=1e-3):
             non_zero_indices = np.where(np.abs(evec) > threshold)[0]
             terms = []
             for idx in non_zero_indices:
-                base_repr = ''.join(map(str, base(local_dim, idx, length)))
+                base_repr = "".join(map(str, base(local_dim, idx, length)))
                 term = f"{evec[idx]:.4f}|{base_repr}⟩"
                 terms.append(term)
             state_repr = " + ".join(terms)
             result.append(f"{eval.real:.4f} * ({state_repr})")
-    
+
     return "\n ".join(result)
-    
+
+
 def pretty_print_sv(sv, local_dim=2, threshold=1e-3):
-    """ prints statevector as a linear combination of computational basis states """
+    """prints statevector as a linear combination of computational basis states"""
     n = sv.shape[0]
     length = round(np.log(n) / np.log(local_dim))
 
     non_zero_indices = np.where(np.abs(sv) > threshold)[0]
     terms = []
     for idx in non_zero_indices:
-        base_repr = ''.join(map(str, base(local_dim, idx, length)))
+        base_repr = "".join(map(str, base(local_dim, idx, length)))
         term = f"{sv[idx]:.4f}|{base_repr}⟩"
         terms.append(term)
     state_repr = " + ".join(terms)
-    
+
     return "".join(state_repr)
-    
+
+
 #################################
 ##### Fidelities ################
 #################################
 
 from scipy.linalg import ishermitian
-def sqrtm(hmat): 
+
+
+def sqrtm(hmat):
     if ishermitian(hmat, atol=1e-8):
         evals, evecs = np.linalg.eigh(hmat)
         evals[evals < 0] = 0.0
         return evecs @ np.diag(np.sqrt(evals.real)) @ evecs.conj().T
-    else: 
+    else:
         raise ValueError("provided matrix is not Hermitian to tolerance 1e-12")
 
-def fidelity(rho1, rho2): 
+
+def fidelity(rho1, rho2):
     if len(rho1.shape) == 1:
         rho1 = np.outer(rho1, rho1.conj())
     if len(rho2.shape) == 1:
@@ -111,40 +122,46 @@ def fidelity(rho1, rho2):
     rho1_sq = sqrtm(rho1)
     arg = rho1_sq @ rho2 @ rho1_sq
     arg_sq = sqrtm(arg)
-    return np.trace(arg_sq).real**2
+    return np.trace(arg_sq).real ** 2
+
 
 def hellinger_fidelity(rho1, rho2):
     rho1 = np.asarray(rho1)
     rho2 = np.asarray(rho2)
     if rho1.ndim == 1:
-        return np.sum(np.sqrt(rho1 * rho2))**2
+        return np.sum(np.sqrt(rho1 * rho2)) ** 2
     elif rho1.ndim == 2:
-        return np.sum(np.sqrt(np.diag(rho1) * np.diag(rho2))).real**2
+        return np.sum(np.sqrt(np.diag(rho1) * np.diag(rho2))).real ** 2
     else:
         raise ValueError("Input arrays must be either 1D or 2D.")
 
-    
-def vN_entropy(dm): 
-    evals = np.linalg.eigvals(dm)
-    return sum([-e*np.log(e) for e in evals if e > 0])
 
-#=========== iterative runs metadata ===========#
+def vN_entropy(dm):
+    evals = np.linalg.eigvals(dm)
+    return sum([-e * np.log(e) for e in evals if e > 0])
+
+
+# =========== iterative runs metadata ===========#
 
 import sys
 import os
 import pickle
 import datetime
+
+
 class RunContext:
-    def __init__(self,
-                 progress_interval=10,
-                 max_iter=1000,
-                 checkpoint_file=None,
-                 checkpoint_interval=50,
-                 resume=False,
-                 convergence_check=False, 
-                 stop_ratio=1e-6,
-                 stop_absolute=None,
-                 quiet=False): 
+    def __init__(
+        self,
+        progress_interval=10,
+        max_iter=1000,
+        checkpoint_file=None,
+        checkpoint_interval=50,
+        resume=False,
+        convergence_check=False,
+        stop_ratio=1e-6,
+        stop_absolute=None,
+        quiet=False,
+    ):
 
         self.progress_interval = progress_interval
         self.max_iter = max_iter
@@ -170,26 +187,28 @@ class RunContext:
 
     def save_checkpoint(self):
         if self.checkpoint_file:
-            with open(self.checkpoint_file, 'wb') as f:
+            with open(self.checkpoint_file, "wb") as f:
                 pickle.dump(self.run_state, f)
-            self.log(f"[Checkpoint saved at step {self.step} in file {self.checkpoint_file}]")
+            self.log(
+                f"[Checkpoint saved at step {self.step} in file {self.checkpoint_file}]"
+            )
 
     def load_checkpoint(self):
         if os.path.exists(self.checkpoint_file):
-            with open(self.checkpoint_file, 'rb') as f:
+            with open(self.checkpoint_file, "rb") as f:
                 self.run_state = pickle.load(f)
                 if isinstance(self.run_state, dict):
-                    self.step = self.run_state.get('step', 0)
+                    self.step = self.run_state.get("step", 0)
             self.log(f"[Resuming from checkpoint: step {self.step}]")
 
     def step_update(self, run_state):
         self.run_state = run_state
-        self.step = run_state.get('step', self.step)
+        self.step = run_state.get("step", self.step)
 
-        timestamp = datetime.datetime.now().isoformat(timespec='seconds')
+        timestamp = datetime.datetime.now().isoformat(timespec="seconds")
         if self.step % self.progress_interval == 0:
             l = f"Step {self.step} at {timestamp}"
-            if self.run_state.get('cost_list'):
+            if self.run_state.get("cost_list"):
                 l += f" with cost {self.run_state['cost_list'][-1]}"
             self.log(l)
 
@@ -200,20 +219,22 @@ class RunContext:
             self.term_msg = "Max iterations reached."
             self.log(self.term_msg)
             return True
-        
+
         if self.convergence_check:
             return self.check_convergence()
         return False
 
     def check_convergence(self):
-        cost_list = self.run_state.get('cost_list')
+        cost_list = self.run_state.get("cost_list")
         if len(cost_list) < 2:
             return False
-            
+
         delta = np.abs(cost_list[-1] - cost_list[-2])
         threshold = self.stop_ratio * np.abs(cost_list[-2])
         if delta < threshold:
-            self.term_msg = f"Plateau detected with cost {cost_list[-1]} at step {self.step}"
+            self.term_msg = (
+                f"Plateau detected with cost {cost_list[-1]} at step {self.step}"
+            )
             self.log(self.term_msg)
             return True
 
@@ -223,9 +244,10 @@ class RunContext:
             return True
 
         return False
-    
-def parloop(func, args): 
-    import os 
+
+
+def parloop(func, args):
+    import os
     from multiprocessing import Pool
 
     with Pool(os.cpu_count()) as p:
@@ -233,9 +255,11 @@ def parloop(func, args):
 
     return results
 
-def shots_to_counts(shots): 
+
+def shots_to_counts(shots):
     counts = Counter(shots)
-    return counts 
+    return counts
+
 
 def shots_to_density(shots):
     num_samples = len(shots)
@@ -243,7 +267,8 @@ def shots_to_density(shots):
     density = {k: v / num_samples for k, v in counts.items()}
     return density
 
-def shots_to_density_vec(shots, local_dim=2): 
+
+def shots_to_density_vec(shots, local_dim=2):
     n = len(shots[0])
     density_dict = shots_to_density(shots)
     density_vec = np.zeros(local_dim**n)
@@ -252,19 +277,24 @@ def shots_to_density_vec(shots, local_dim=2):
         density_vec[index] = value
     return density_vec
 
+
 def l2_threshold(num_samples, meas_sys_size, delta=1e-6):
-    """ 
-    returns an upper bound on l2 error in estimating a density vector of size meas_sys_size 
-    from num_samples samples with probability at least 1-delta 
+    """
+    returns an upper bound on l2 error in estimating a density vector of size meas_sys_size
+    from num_samples samples with probability at least 1-delta
     based on Hoeffding + union bound
     """
-    return np.sqrt(meas_sys_size * np.log(2*meas_sys_size/delta) / (2*num_samples))
+    return np.sqrt(
+        meas_sys_size * np.log(2 * meas_sys_size / delta) / (2 * num_samples)
+    )
 
-def subsample(shots, subsample_size): 
+
+def subsample(shots, subsample_size):
     return random.choices(shots, k=subsample_size)
 
+
 def is_eigenstate(vec: np.ndarray, operator: np.ndarray, tol=1e-6) -> bool:
-    """ check if vec is an eigenstate of operator within a given tolerance tol """
+    """check if vec is an eigenstate of operator within a given tolerance tol"""
     rayleigh_quot = (vec.conj().T @ operator @ vec) / (vec.conj().T @ vec)
     res_vec = operator @ vec - rayleigh_quot * vec
     rel_err = np.linalg.norm(res_vec) / np.linalg.norm(operator @ vec)

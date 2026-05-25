@@ -1,8 +1,9 @@
 from tqdm import tqdm
 
+
 class BaseSim:
-    """ 
-    accepts Circuit object and Noise object 
+    """
+    accepts Circuit object and Noise object
     different simulators use different representations of quantum state
     and different methods for applying gates and measurements
     """
@@ -21,9 +22,9 @@ class BaseSim:
 
     def apply_gate(self, gate):
         raise NotImplementedError("must be implemented by child classes.")
-    
-    def apply_reset(self, reset_op): 
-        self.apply_gate(reset_op) 
+
+    def apply_reset(self, reset_op):
+        self.apply_gate(reset_op)
         if reset_op.normalize:
             self.normalize_state()
 
@@ -42,7 +43,7 @@ class BaseSim:
                 self.apply_reset(op) if op.name == "Reset" else self.apply_gate(op)
                 if debug == 2:
                     print(self)
-            
+
             if debug == 1:
                 print(self)
 
@@ -51,12 +52,12 @@ class BaseSim:
 
         self.ran = True
         return self.state
-    
+
     def measure(self, meas_sites):
         raise NotImplementedError("must be implemented by child classes.")
 
     def __str__(self):
-        """ pretty prints the state """
+        """pretty prints the state"""
         raise NotImplementedError("must be implemented by child classes.")
 
     def normalize_state(self):

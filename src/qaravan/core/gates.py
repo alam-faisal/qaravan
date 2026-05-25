@@ -32,7 +32,9 @@ class MatrixGate(Gate):
         return self._matrix
 
     def dagger(self) -> MatrixGate:
-        return MatrixGate(self.name + "†", self.indices, self._matrix.conj().T, self.time)
+        return MatrixGate(
+            self.name + "†", self.indices, self._matrix.conj().T, self.time
+        )
 
 
 class ParametricGate(Gate, ABC):
@@ -60,7 +62,7 @@ class ParametricGate(Gate, ABC):
         return self._build_matrix()
 
     def dagger(self) -> ParametricGate:
-        return type(self)(self.indices, *(-p for p in self.params), self.time)
+        return type(self)(self.indices, *(-p for p in self.params), time=self.time)
 
     def __str__(self) -> str:
         params_str = ", ".join(f"{p:.4g}" for p in self.params)
@@ -118,7 +120,9 @@ class Sdg(MatrixGate):
 
 class T(MatrixGate):
     def __init__(self, indices: int | list[int], time: float | None = None):
-        super().__init__("T", indices, np.array([[1, 0], [0, np.exp(1j * np.pi / 4)]]), time)
+        super().__init__(
+            "T", indices, np.array([[1, 0], [0, np.exp(1j * np.pi / 4)]]), time
+        )
 
     def dagger(self) -> Tdg:
         return Tdg(self.indices, self.time)
@@ -126,7 +130,9 @@ class T(MatrixGate):
 
 class Tdg(MatrixGate):
     def __init__(self, indices: int | list[int], time: float | None = None):
-        super().__init__("Tdg", indices, np.array([[1, 0], [0, np.exp(-1j * np.pi / 4)]]), time)
+        super().__init__(
+            "Tdg", indices, np.array([[1, 0], [0, np.exp(-1j * np.pi / 4)]]), time
+        )
 
     def dagger(self) -> T:
         return T(self.indices, self.time)
@@ -148,7 +154,9 @@ class SX(MatrixGate):
 class RX(ParametricGate):
     """exp(-i θ X) = cos(θ)I - i sin(θ)X."""
 
-    def __init__(self, indices: int | list[int], theta: float, time: float | None = None):
+    def __init__(
+        self, indices: int | list[int], theta: float, time: float | None = None
+    ):
         super().__init__("RX", indices, (theta,), time)
 
     def _build_matrix(self) -> np.ndarray:
@@ -159,7 +167,9 @@ class RX(ParametricGate):
 class RY(ParametricGate):
     """exp(-i θ Y) = cos(θ)I - i sin(θ)Y."""
 
-    def __init__(self, indices: int | list[int], theta: float, time: float | None = None):
+    def __init__(
+        self, indices: int | list[int], theta: float, time: float | None = None
+    ):
         super().__init__("RY", indices, (theta,), time)
 
     def _build_matrix(self) -> np.ndarray:
@@ -170,7 +180,9 @@ class RY(ParametricGate):
 class RZ(ParametricGate):
     """exp(-i θ Z) = diag(e^{-iθ}, e^{iθ})."""
 
-    def __init__(self, indices: int | list[int], theta: float, time: float | None = None):
+    def __init__(
+        self, indices: int | list[int], theta: float, time: float | None = None
+    ):
         super().__init__("RZ", indices, (theta,), time)
 
     def _build_matrix(self) -> np.ndarray:
@@ -230,10 +242,12 @@ class RXX(ParametricGate):
     def _build_matrix(self) -> np.ndarray:
         c, s = np.cos(self.params[0]), np.sin(self.params[0])
         return np.array(
-            [[c, 0, 0, -1j * s],
-             [0, c, -1j * s, 0],
-             [0, -1j * s, c, 0],
-             [-1j * s, 0, 0, c]],
+            [
+                [c, 0, 0, -1j * s],
+                [0, c, -1j * s, 0],
+                [0, -1j * s, c, 0],
+                [-1j * s, 0, 0, c],
+            ],
         )
 
 
@@ -247,10 +261,12 @@ class RYY(ParametricGate):
         c, s = np.cos(self.params[0]), np.sin(self.params[0])
         # Y⊗Y = [[0,0,0,-1],[0,0,1,0],[0,1,0,0],[-1,0,0,0]]
         return np.array(
-            [[c, 0, 0, 1j * s],
-             [0, c, -1j * s, 0],
-             [0, -1j * s, c, 0],
-             [1j * s, 0, 0, c]],
+            [
+                [c, 0, 0, 1j * s],
+                [0, c, -1j * s, 0],
+                [0, -1j * s, c, 0],
+                [1j * s, 0, 0, c],
+            ],
         )
 
 
@@ -262,7 +278,9 @@ class RZZ(ParametricGate):
 
     def _build_matrix(self) -> np.ndarray:
         t = self.params[0]
-        return np.diag([np.exp(-1j * t), np.exp(1j * t), np.exp(1j * t), np.exp(-1j * t)])
+        return np.diag(
+            [np.exp(-1j * t), np.exp(1j * t), np.exp(1j * t), np.exp(-1j * t)]
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -272,23 +290,31 @@ class RZZ(ParametricGate):
 
 class X01(MatrixGate):
     def __init__(self, indices: int | list[int], time: float | None = None):
-        super().__init__("X01", indices, np.array([[0, -1j, 0], [-1j, 0, 0], [0, 0, 1]]), time)
+        super().__init__(
+            "X01", indices, np.array([[0, -1j, 0], [-1j, 0, 0], [0, 0, 1]]), time
+        )
 
 
 class SX01(MatrixGate):
     def __init__(self, indices: int | list[int], time: float | None = None):
-        mat = (1 / np.sqrt(2)) * np.array([[1, -1j, 0], [-1j, 1, 0], [0, 0, np.sqrt(2)]])
+        mat = (1 / np.sqrt(2)) * np.array(
+            [[1, -1j, 0], [-1j, 1, 0], [0, 0, np.sqrt(2)]]
+        )
         super().__init__("SX01", indices, mat, time)
 
 
 class X12(MatrixGate):
     def __init__(self, indices: int | list[int], time: float | None = None):
-        super().__init__("X12", indices, np.array([[1, 0, 0], [0, 0, -1j], [0, -1j, 0]]), time)
+        super().__init__(
+            "X12", indices, np.array([[1, 0, 0], [0, 0, -1j], [0, -1j, 0]]), time
+        )
 
 
 class SX12(MatrixGate):
     def __init__(self, indices: int | list[int], time: float | None = None):
-        mat = (1 / np.sqrt(2)) * np.array([[np.sqrt(2), 0, 0], [0, 1, -1j], [0, -1j, 1]])
+        mat = (1 / np.sqrt(2)) * np.array(
+            [[np.sqrt(2), 0, 0], [0, 1, -1j], [0, -1j, 1]]
+        )
         super().__init__("SX12", indices, mat, time)
 
 
@@ -301,7 +327,9 @@ class H01(MatrixGate):
 
 class SDG01(MatrixGate):
     def __init__(self, indices: int | list[int], time: float | None = None):
-        super().__init__("SDG01", indices, np.array([[1, 0, 0], [0, -1j, 0], [0, 0, 1]]), time)
+        super().__init__(
+            "SDG01", indices, np.array([[1, 0, 0], [0, -1j, 0], [0, 0, 1]]), time
+        )
 
 
 class SWAP3(MatrixGate):
@@ -309,15 +337,17 @@ class SWAP3(MatrixGate):
 
     def __init__(self, indices: list[int], time: float | None = None):
         mat = np.array(
-            [[1., 0., 0., 0., 0., 0., 0., 0., 0.],
-             [0., 0., 0., 1., 0., 0., 0., 0., 0.],
-             [0., 0., 0., 0., 0., 0., 1., 0., 0.],
-             [0., 1., 0., 0., 0., 0., 0., 0., 0.],
-             [0., 0., 0., 0., 1., 0., 0., 0., 0.],
-             [0., 0., 0., 0., 0., 0., 0., 1., 0.],
-             [0., 0., 1., 0., 0., 0., 0., 0., 0.],
-             [0., 0., 0., 0., 0., 1., 0., 0., 0.],
-             [0., 0., 0., 0., 0., 0., 0., 0., 1.]]
+            [
+                [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+            ]
         )
         super().__init__("SWAP3", indices, mat, time)
 
@@ -326,26 +356,30 @@ class SWAP3(MatrixGate):
 # v0.2 (control, target) matrix = SWAP3 @ M_legacy_final @ SWAP3.T
 # where M_legacy_final is the literal from legacy/gates.py transposed.
 _SWAP3_M = np.array(
-    [[1., 0., 0., 0., 0., 0., 0., 0., 0.],
-     [0., 0., 0., 1., 0., 0., 0., 0., 0.],
-     [0., 0., 0., 0., 0., 0., 1., 0., 0.],
-     [0., 1., 0., 0., 0., 0., 0., 0., 0.],
-     [0., 0., 0., 0., 1., 0., 0., 0., 0.],
-     [0., 0., 0., 0., 0., 0., 0., 1., 0.],
-     [0., 0., 1., 0., 0., 0., 0., 0., 0.],
-     [0., 0., 0., 0., 0., 1., 0., 0., 0.],
-     [0., 0., 0., 0., 0., 0., 0., 0., 1.]]
+    [
+        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+    ]
 )
 _CNOT3_LEGACY_T = np.array(
-    [[1.,           0.,           0.,           0., 0.,           0., 0.,  0.,  0.],
-     [0.,           0.,           0.,           0., 1.,           0., 0.,  0.,  0.],
-     [0.,           0.,  1/np.sqrt(2),           0., 0., -1/np.sqrt(2), 0.,  0.,  0.],
-     [0.,           0.,           0.,           1., 0.,           0., 0.,  0.,  0.],
-     [0.,           1.,           0.,           0., 0.,           0., 0.,  0.,  0.],
-     [0.,           0.,  1/np.sqrt(2),           0., 0.,  1/np.sqrt(2), 0.,  0.,  0.],
-     [0.,           0.,           0.,           0., 0.,           0., 1.,  0.,  0.],
-     [0.,           0.,           0.,           0., 0.,           0., 0., 1j,   0.],
-     [0.,           0.,           0.,           0., 0.,           0., 0.,  0.,  1.]]
+    [
+        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 1 / np.sqrt(2), 0.0, 0.0, -1 / np.sqrt(2), 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 1 / np.sqrt(2), 0.0, 0.0, 1 / np.sqrt(2), 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1j, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+    ]
 )
 _CNOT3_M = _SWAP3_M @ _CNOT3_LEGACY_T @ _SWAP3_M.T
 

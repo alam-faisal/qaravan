@@ -135,7 +135,7 @@ something in this protocol conflicts with a faster path, follow the protocol.
 ### Finishing a task
 
 6. **Write an example notebook.** Add a nicely named `.ipynb` under
-   `examples/` walking the user through the newly added features —
+   `examples/devbooks/` walking the user through the newly added features —
    specifically the ones the user should familiarize themselves with and
    check by hand. Some content may overlap with tests you wrote, but the
    notebook should focus on *physics correctness* checks that unit tests

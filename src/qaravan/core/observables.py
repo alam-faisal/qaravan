@@ -64,9 +64,10 @@ class PauliString(Observable):
 class PauliSum(Observable):
     """Linear combination of PauliStrings. All terms must have the same length."""
 
-    def __init__(self, terms: list[PauliString]):
+    def __init__(self, terms: list[PauliString] | list[str]):
         if not terms:
             raise ValueError("PauliSum requires at least one term.")
+        terms = [t if isinstance(t, PauliString) else PauliString(t) for t in terms]
         lengths = {len(t.string) for t in terms}
         if len(lengths) > 1:
             raise ValueError(

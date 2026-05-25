@@ -3,9 +3,10 @@ import numpy as np
 import pytest
 
 from qaravan.core.base import (
-    Gate, MatrixGate, ParametricGate, State, Simulator, Observable, NoiseModel,
+    Gate, State, Simulator, Observable, NoiseModel,
     IncompatibleNoiseError, IncompatibleStateError,
 )
+from qaravan.core.gates import MatrixGate
 from qaravan.core.circuits import Circuit, _embed_gate
 
 # ---------------------------------------------------------------------------

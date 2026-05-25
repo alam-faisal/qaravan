@@ -2,9 +2,10 @@
 import numpy as np
 import pytest
 
-from qaravan.core.base import Gate, MatrixGate, ParametricGate, State, Simulator, IncompatibleStateError
+from qaravan.core.base import Gate, State, Simulator, IncompatibleStateError
 from qaravan.core.circuits import Circuit
 from qaravan.core.gates import (
+    MatrixGate, ParametricGate,
     I, X, Y, Z, H, S, Sdg, T, Tdg, SX,
     RX, RY, RZ,
     CNOT, CZ, SWAP, iSWAP,

@@ -22,6 +22,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
+    "pytest-cov>=5.0",
     "scienceplots",
     "ipykernel",
     "ipywidgets",
@@ -30,6 +31,15 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "--cov=src/qaravan --cov-report=term-missing"
+
+[tool.coverage.run]
+omit = ["src/qaravan/legacy/*"]
+
+[tool.coverage.report]
+exclude_lines = ["if TYPE_CHECKING:"]
 
 [tool.ruff]
 exclude = ["src/qaravan/legacy", "tests/test_legacy"]

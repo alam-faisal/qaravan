@@ -2,7 +2,7 @@ name: Run Tests
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, "rewrite/v0.2"]
   pull_request:
     branches: [main, master]
 
@@ -23,7 +23,7 @@ jobs:
 
     - name: Run tests with coverage
       run: |
-        uv run pytest --cov=qaravan tests/
+        uv run pytest tests/
         uv run coverage xml
 
     - name: Check for coverage.xml

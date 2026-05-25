@@ -1,6 +1,6 @@
 # Qaravan
 
-[![codecov](https://codecov.io/gh/alam-faisal/qaravan/branch/master/graph/badge.svg)](https://codecov.io/gh/alam-faisal/qaravan)
+[![codecov](https://codecov.io/gh/alam-faisal/qaravan/branch/rewrite%2Fv0.2/graph/badge.svg)](https://codecov.io/gh/alam-faisal/qaravan/branch/rewrite%2Fv0.2)
 
 **Qaravan** is a Python library for classical simulation of quantum circuits. It is designed for rapid prototyping of near-term quantum algorithms, error mitigation techniques, and mid-circuit measurement applications.
 

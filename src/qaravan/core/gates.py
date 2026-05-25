@@ -53,6 +53,7 @@ class ParametricGate(Gate, ABC):
     ):
         super().__init__(name, indices, time)
         self.params = params
+        self.num_params = len(params)
 
     @abstractmethod
     def _build_matrix(self) -> np.ndarray: ...

@@ -3,10 +3,10 @@ import numpy as np
 import pytest
 
 from qaravan.core.base import (
-    Gate, Circuit, State, Simulator, Observable, NoiseModel,
+    Gate, State, Simulator, Observable, NoiseModel,
     IncompatibleNoiseError, IncompatibleStateError,
 )
-from qaravan.core.circuits import _embed_gate
+from qaravan.core.circuits import Circuit, _embed_gate
 
 # ---------------------------------------------------------------------------
 # Helpers — minimal concrete subclasses for abstract class tests

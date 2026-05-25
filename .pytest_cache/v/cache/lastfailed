@@ -1,3 +1,4 @@
 {
-  "tests/test_core/test_base.py::test_observable_cannot_instantiate": true
+  "tests/test_core/test_base.py::test_observable_cannot_instantiate": true,
+  "tests/test_core/test_base.py::test_circuit_n_inferred": true
 }

@@ -8,16 +8,6 @@ Before implementing a task review the "Development protocol" section in CLAUDE.m
 
 ---
 
-## Task 5 — Implement functions to generate common circuits in `core/circuits.py`
-
-**Goal:** Any part of the old circuits.py that didn't end up in base.py should be in this file. Add tests.
-
-**Acceptance:**
-- All tests pass.
-- No `meas_sites` attribute — terminal measurements should be a method in State output but Simulator. 
----
-
-
 ## Task 6 — Concrete `Observable` subclasses in `core/observables.py`
 
 **Goal:** Implement the observables needed for the cross-check and workflow

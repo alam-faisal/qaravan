@@ -14,7 +14,7 @@ from qaravan.applications.circuit_library import (
     ryy_layer,
     rzz_layer,
 )
-from qaravan.core.gates import CNOT, H, MatrixGate, RX, RY, RZ, RXX, RYY, RZZ
+from qaravan.core.gates import CNOT, H, RX, RY, RXX, RYY, RZZ
 
 H_MATRIX = np.array([[1, 1], [1, -1]]) / np.sqrt(2)
 
@@ -216,7 +216,12 @@ def test_rzz_layer_diagonal():
     circ = rzz_layer([[0, 1]], params=[theta])
     diag = np.diag(circ.to_matrix())
     expected = np.array(
-        [np.exp(-1j * theta), np.exp(1j * theta), np.exp(1j * theta), np.exp(-1j * theta)]
+        [
+            np.exp(-1j * theta),
+            np.exp(1j * theta),
+            np.exp(1j * theta),
+            np.exp(-1j * theta),
+        ]
     )
     assert np.allclose(diag, expected)
 

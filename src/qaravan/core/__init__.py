@@ -10,3 +10,9 @@ from qaravan.core.gates import (
     ParametricGate as ParametricGate,
 )
 from qaravan.core.circuits import Circuit as Circuit
+from qaravan.core.observables import (
+    PauliString as PauliString,
+    PauliSum as PauliSum,
+    LocalOp as LocalOp,
+    Magnetization as Magnetization,
+)

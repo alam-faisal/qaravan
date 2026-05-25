@@ -111,16 +111,22 @@ class State(ABC):
 
 
 class Observable(ABC):
-    """Descriptor for a measurable quantity: name and site indices.
+    """Descriptor for a measurable quantity: name, site indices, and local matrix.
 
-    No matrix lives here. State.expectation() dispatches on the concrete
-    subclass and builds whatever representation it needs — same pattern as
+    Backends build their preferred representation from obs.matrix and obs.indices.
+    State.expectation() dispatches on the concrete subclass — same pattern as
     Simulator dispatching on Gate.
     """
 
     def __init__(self, name: str, indices: int | list[int]):
         self.name = name
         self.indices = [indices] if isinstance(indices, int) else list(indices)
+
+    @property
+    @abstractmethod
+    def matrix(self) -> np.ndarray:
+        """Hermitian matrix for this observable (local or full, depending on subclass)."""
+        ...
 
     def __str__(self) -> str:
         return f"{self.name}({self.indices})"

@@ -39,7 +39,9 @@ class MinimalState(State):
 
 
 class MinimalObservable(Observable):
-    pass
+    @property
+    def matrix(self):
+        return np.eye(2, dtype=complex)
 
 
 class MinimalNoiseModel(NoiseModel):

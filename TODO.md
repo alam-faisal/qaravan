@@ -8,35 +8,6 @@ Before implementing a task review the "Development protocol" section in CLAUDE.m
 
 ---
 
-## Task 7 — Implement first backend: `Statevector` and `StatevectorSimulator`
-
-**Goal:** The reference backend. Everything else gets cross-checked against
-this. Located in `backends/statevector.py`. Look at legacy code to understand how this can be done. Note that the contraction code for statevectors, MPS, density matrices, etc have already been worked out in the legacy code and they should NOT be meddled with. Contraction code is VERY easy to get wrong and those codes were written after painstaking hand-written calculations. You should feel free to beautify them, but do not make any changes to the core contraction without asking first.
-
-**Note on Reset/Measure**: `Reset` and `Measure` are not `Gate` subclasses in v0.2.
-They are methods on concrete `State` subclasses. Implement `Statevector.reset(sites, reset_to)` and `Statevector.measure(sites)` here (the latter is equivalent to `sample_and_collapse`). This replaces the legacy `Reset(Gate)` class.
-
-**Tests first (the hard set):**
-- `test_statevector_init_bitstring`: `Statevector(bitstring="01")` has the
-  correct array.
-- `test_statevector_init_random_seed`: reproducible with same seed.
-- `test_statevector_norm`: random Statevectors are normalized.
-- `test_statevector_sim_ghz`: building and running the GHZ circuit gives
-  `(|000⟩ + |111⟩)/√2`.
-- `test_statevector_expectation_pauli`: `<Z>` on `|0⟩` is 1; `<X>` on `|+⟩`
-  is 1; `<ZZ>` on Bell state is 1.
-- `test_statevector_sim_raises_on_noise`: passing any noise model raises
-  `IncompatibleNoiseError`.
-- `test_statevector_sample_and_collapse`: outcome statistics match Born
-  rule over many shots; collapsed state is correct.
-
-**Acceptance:**
-- All tests pass.
-- The workflow examples in CLAUDE.md that involve statevector section directly run as
-  written.
-
----
-
 ## Task 8 — Concrete `NoiseModel` subclasses in `core/noise.py`
 
 **Goal:** Port `ThermalNoise`, `PauliNoise`, `PauliLindbladNoise` to the new

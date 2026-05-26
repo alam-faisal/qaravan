@@ -298,6 +298,9 @@ class _MinState(State):
     def overlap(self, o):
         return 1.0
 
+    def __repr__(self):
+        return "_MinState()"
+
 
 class _MinSim(Simulator):
     def _validate_state(self, state):

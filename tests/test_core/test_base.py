@@ -37,6 +37,9 @@ class MinimalState(State):
     def overlap(self, other):
         return 1.0
 
+    def __repr__(self):
+        return "MinimalState()"
+
 
 class MinimalObservable(Observable):
     @property
@@ -359,6 +362,9 @@ def test_simulator_incompatible_state_raises():
 
         def overlap(self, o):
             return 0.0
+
+        def __repr__(self):
+            return "OtherState()"
 
     circ = _two_qubit_circuit()
     with pytest.raises(IncompatibleStateError):

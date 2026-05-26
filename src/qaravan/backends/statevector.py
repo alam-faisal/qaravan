@@ -13,14 +13,7 @@ from qaravan.core.base import (
     Simulator,
     State,
 )
-from qaravan.core.observables import LocalOp, PauliString, PauliSum
-
-_PAULI_MATRICES = {
-    "I": np.eye(2, dtype=complex),
-    "X": np.array([[0, 1], [1, 0]], dtype=complex),
-    "Y": np.array([[0, -1j], [1j, 0]], dtype=complex),
-    "Z": np.array([[1, 0], [0, -1]], dtype=complex),
-}
+from qaravan.core.observables import PAULI_MATRICES, LocalOp, PauliString, PauliSum
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +103,21 @@ def partial_overlap(
 
 
 # ---------------------------------------------------------------------------
+# Repr helper
+# ---------------------------------------------------------------------------
+
+
+def _fmt_coeff(a: complex, threshold: float = 1e-9) -> str:
+    """Format a complex amplitude for display: real-only, imag-only, or (r+ij)."""
+    r, i = a.real, a.imag
+    if abs(i) < threshold:
+        return f"{r:.4f}"
+    if abs(r) < threshold:
+        return f"{i:.4f}i"
+    return f"({r:.4f}{i:+.4f}i)"
+
+
+# ---------------------------------------------------------------------------
 # Expectation dispatch helpers
 # ---------------------------------------------------------------------------
 
@@ -126,7 +134,7 @@ def _expectation_pauli_string(
     for i, p in enumerate(obs.string):
         if p == "I":
             continue
-        right_tensor = op_action(_PAULI_MATRICES[p], [i], right_tensor, local_dim)
+        right_tensor = op_action(PAULI_MATRICES[p], [i], right_tensor, local_dim)
     result = partial_overlap(right_tensor.reshape(local_dim**n), flat)[0, 0]
     return obs.coeff * result
 
@@ -202,7 +210,7 @@ class Statevector(State):
     # ------------------------------------------------------------------ ABC
 
     @property
-    def default_simulator(self) -> type[StatevectorSimulator]:
+    def default_simulator(self) -> type[Simulator]:
         return StatevectorSimulator
 
     def expectation(self, observable) -> complex:
@@ -300,6 +308,20 @@ class Statevector(State):
     def to_array(self) -> np.ndarray:
         """Flat statevector, shape (local_dim**num_sites,), C-order."""
         return self._tensor.reshape(self.local_dim**self.num_sites)
+
+    def __repr__(self) -> str:
+        d, n = self.local_dim, self.num_sites
+        terms = []
+        for idx, amp in enumerate(self.to_array()):
+            if abs(amp) < 1e-9:
+                continue
+            digits, tmp = [], idx
+            for _ in range(n):
+                digits.append(tmp % d)
+                tmp //= d
+            ket = "".join(map(str, reversed(digits)))
+            terms.append(f"{_fmt_coeff(amp)}|{ket}⟩")
+        return " + ".join(terms) if terms else "0"
 
 
 # ---------------------------------------------------------------------------

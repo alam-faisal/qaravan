@@ -101,6 +101,12 @@ class State(ABC):
         """⟨self|other⟩ (or tr(self† other) for mixed states)."""
         ...
 
+    @abstractmethod
+    def __repr__(self) -> str: ...
+
+    def __str__(self) -> str:
+        return repr(self)
+
     def apply(self, circuit: Circuit, **kwargs) -> State:
         """Evolve self under circuit using the default simulator."""
         return self.default_simulator(circuit, self, **kwargs).run()

@@ -170,6 +170,9 @@ def test_statevector_sim_rejects_wrong_state():
         def overlap(self, o):
             return 0.0
 
+        def __repr__(self):
+            return "OtherState()"
+
     circ = Circuit([H(0)], num_sites=1)
     with pytest.raises(IncompatibleStateError):
         StatevectorSimulator(circ, OtherState())

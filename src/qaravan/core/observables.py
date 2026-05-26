@@ -5,7 +5,7 @@ import numpy as np
 from functools import reduce
 from qaravan.core.base import Observable
 
-_PAULI_MATRICES: dict[str, np.ndarray] = {
+PAULI_MATRICES: dict[str, np.ndarray] = {
     "I": np.eye(2, dtype=complex),
     "X": np.array([[0, 1], [1, 0]], dtype=complex),
     "Y": np.array([[0, -1j], [1j, 0]], dtype=complex),
@@ -21,7 +21,7 @@ class PauliString(Observable):
 
     def __init__(self, string: str, coeff: complex = 1.0):
         self.string = string.upper()
-        if any(c not in _PAULI_MATRICES for c in self.string):
+        if any(c not in PAULI_MATRICES for c in self.string):
             raise ValueError(f"Invalid Pauli characters in '{string}'; use I, X, Y, Z.")
         self.coeff = complex(coeff)
         n = len(self.string)
@@ -30,7 +30,7 @@ class PauliString(Observable):
 
     @property
     def matrix(self) -> np.ndarray:
-        mats = [_PAULI_MATRICES[c] for c in self.string]
+        mats = [PAULI_MATRICES[c] for c in self.string]
         return self.coeff * reduce(np.kron, mats)
 
     def as_pauli_sum(self) -> PauliSum:

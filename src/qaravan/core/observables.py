@@ -25,6 +25,7 @@ class PauliString(Observable):
             raise ValueError(f"Invalid Pauli characters in '{string}'; use I, X, Y, Z.")
         self.coeff = complex(coeff)
         n = len(self.string)
+        self.num_sites = n
         super().__init__(f"P({self.string})", list(range(n)))
 
     @property
@@ -74,6 +75,7 @@ class PauliSum(Observable):
                 f"All PauliString terms must have the same length; got {lengths}."
             )
         n = len(terms[0].string)
+        self.num_sites = n
         self.terms = list(terms)
         super().__init__("PauliSum", list(range(n)))
 

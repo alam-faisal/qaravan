@@ -91,8 +91,9 @@ class State(ABC):
         ...
 
     @abstractmethod
-    def sample_and_collapse(self, sites: list[int]) -> tuple[str, State]:
-        """Measure sites, return (outcome_string, post-measurement state)."""
+    def measure_and_collapse(self, sites: list[int]) -> tuple[State, str]:
+        """Measure sites, collapse state; returns (post-measurement State, outcome_str).
+        Returned State has the same number of sites as the original."""
         ...
 
     @abstractmethod

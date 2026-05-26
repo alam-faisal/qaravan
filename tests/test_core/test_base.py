@@ -31,8 +31,8 @@ class MinimalState(State):
     def sample(self, shots):
         return np.array([])
 
-    def sample_and_collapse(self, sites):
-        return ("0" * len(sites), self)
+    def measure_and_collapse(self, sites):
+        return (self, "0" * len(sites))
 
     def overlap(self, other):
         return 1.0
@@ -354,8 +354,8 @@ def test_simulator_incompatible_state_raises():
         def sample(self, s):
             return np.array([])
 
-        def sample_and_collapse(self, s):
-            return ("0", self)
+        def measure_and_collapse(self, s):
+            return (self, "0")
 
         def overlap(self, o):
             return 0.0

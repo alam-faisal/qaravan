@@ -292,8 +292,8 @@ class _MinState(State):
     def sample(self, s):
         return np.array([])
 
-    def sample_and_collapse(self, s):
-        return ("0" * len(s), self)
+    def measure_and_collapse(self, s):
+        return (self, "0" * len(s))
 
     def overlap(self, o):
         return 1.0

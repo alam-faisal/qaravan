@@ -6,9 +6,9 @@ import pytest
 from qaravan.backends.statevector import Statevector, StatevectorSimulator
 from qaravan.core.base import IncompatibleNoiseError, IncompatibleStateError
 from qaravan.core.circuits import Circuit
-from qaravan.core.gates import H, X, CNOT, Z
+from qaravan.core.gates import H, CNOT
 from qaravan.core.base import NoiseModel
-from qaravan.core.observables import PauliString, PauliSum, LocalOp, Magnetization
+from qaravan.core.observables import PauliString, LocalOp, Magnetization
 
 
 class _MinimalNoise(NoiseModel):
@@ -20,6 +20,7 @@ class _MinimalNoise(NoiseModel):
 
     def get_kraus(self, *args, **kwargs):
         return [np.eye(2, dtype=complex)]
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -348,7 +349,6 @@ def test_statevector_sample_born_rule():
 
 def test_statevector_sample_and_collapse():
     """Measure |+⟩ 1000 times: ~50/50 split and collapsed state correct."""
-    rng = np.random.default_rng(0)
     arr = np.array([1, 1], dtype=complex) / np.sqrt(2)
     sv = Statevector(array=arr)
 

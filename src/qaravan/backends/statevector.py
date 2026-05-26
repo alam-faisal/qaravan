@@ -139,7 +139,9 @@ def _expectation_local_op(
     """⟨ψ|O_sites|ψ⟩ for a LocalOp on obs.indices."""
     n = tensor.ndim
     flat = tensor.reshape(local_dim**n)
-    right_tensor = op_action(obs.matrix, list(obs.indices), copy.deepcopy(tensor), local_dim)
+    right_tensor = op_action(
+        obs.matrix, list(obs.indices), copy.deepcopy(tensor), local_dim
+    )
     return partial_overlap(right_tensor.reshape(local_dim**n), flat)[0, 0]
 
 
@@ -187,9 +189,9 @@ class Statevector(State):
             self.num_sites = num_sites  # type: ignore[assignment]
             if random_seed is not None:
                 rng = np.random.default_rng(random_seed)
-                arr = rng.standard_normal(local_dim**num_sites) + 1j * rng.standard_normal(
+                arr = rng.standard_normal(
                     local_dim**num_sites
-                )
+                ) + 1j * rng.standard_normal(local_dim**num_sites)
                 arr = arr / np.linalg.norm(arr)
                 self._tensor = arr.reshape([local_dim] * num_sites)
             else:

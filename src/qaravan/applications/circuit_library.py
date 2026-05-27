@@ -5,7 +5,47 @@ from __future__ import annotations
 import numpy as np
 
 from qaravan.core.circuits import Circuit
-from qaravan.core.gates import CNOT, H, Gate, RX, RY, RZ, RXX, RYY, RZZ
+from qaravan.core.gates import CNOT, H, Gate, MatrixGate, RX, RY, RZ, RXX, RYY, RZZ, random_unitary
+
+
+def brickwall_skeleton(Lx: int, Ly: int = 1) -> list[list[int]]:
+    """NN edges in brickwall order for Lx×Ly grid (row-major, 0-indexed).
+
+    One pass = even-x horiz, odd-x horiz, even-y vert, odd-y vert.
+    For depth-d circuits: brickwall_skeleton(Lx, Ly) * d.
+    For 1D (Ly=1) gives the standard alternating brickwall.
+    """
+    h_edges: list[tuple[int, int]] = []
+    v_edges: list[tuple[int, int]] = []
+    for y in range(Ly):
+        for x in range(Lx):
+            a = y * Lx + x
+            if x < Lx - 1:
+                h_edges.append((a, a + 1))
+            if y < Ly - 1:
+                v_edges.append((a, a + Lx))
+
+    skeleton: list[list[int]] = []
+    skeleton.extend([list(e) for e in h_edges if (e[0] % Lx) % 2 == 0])
+    skeleton.extend([list(e) for e in h_edges if (e[0] % Lx) % 2 == 1])
+    skeleton.extend([list(e) for e in v_edges if (e[0] // Lx) % 2 == 0])
+    skeleton.extend([list(e) for e in v_edges if (e[0] // Lx) % 2 == 1])
+    return skeleton
+
+
+def two_local_circuit(skeleton: list[list[int]], seed: int | None = None) -> Circuit:
+    """Circuit of Haar-random 4×4 unitaries on each pair in skeleton.
+
+    Each gate gets an independent seed drawn from the top-level RNG,
+    so global reproducibility is preserved without changing random_unitary's signature.
+    """
+    rng = np.random.default_rng(seed)
+    gates = [
+        MatrixGate(f"U{i}", indices, random_unitary(len(indices), seed=int(rng.integers(2**31))))
+        for i, indices in enumerate(skeleton)
+    ]
+    n = max(idx for pair in skeleton for idx in pair) + 1
+    return Circuit(gates, num_sites=n)
 
 
 def nn_pairs(n: int, periodic: bool = False) -> list[list[int]]:

@@ -52,6 +52,7 @@ def nn_pairs(n: int, periodic: bool = False) -> list[list[int]]:
     """Nearest-neighbor index pairs for a 1D chain of n sites.
 
     Returns [[0,1],[1,2],...,[n-2,n-1]], plus [n-1,0] if periodic=True.
+    TODO: generalize to 2D and other geometries.
     """
     pairs = [[i, i + 1] for i in range(n - 1)]
     if periodic and n > 1:

@@ -254,6 +254,45 @@ def test_state_apply():
     assert isinstance(result, State)
 
 
+def test_state_partial_overlap_not_implemented_by_default():
+    """Base-class partial_overlap raises NotImplementedError; same pattern as NoiseModel.get_kraus."""
+    state = MinimalState()
+    with pytest.raises(NotImplementedError):
+        state.partial_overlap(state, skip=[])
+
+
+def test_state_overlap_derived_from_partial_overlap():
+    """A State that implements only partial_overlap gets overlap() for free."""
+
+    class PartialState(State):
+        """Minimal State that implements partial_overlap but not overlap directly."""
+
+        @property
+        def default_simulator(self):
+            return MinimalSimulator
+
+        def expectation(self, o):
+            return 0.0
+
+        def sample(self, s):
+            return np.array([])
+
+        def measure_and_collapse(self, s):
+            return (self, "0" * len(s))
+
+        def partial_overlap(self, other, skip):
+            # returns a (1,1) array with 1.0 for any inputs (trivial mock)
+            return np.array([[1.0 + 0j]])
+
+        def __repr__(self):
+            return "PartialState()"
+
+    s = PartialState()
+    # overlap() should call partial_overlap(other, skip=[])[0,0]
+    result = s.overlap(s)
+    assert np.isclose(result, 1.0 + 0j)
+
+
 # ---------------------------------------------------------------------------
 # Observable (abstract)
 # ---------------------------------------------------------------------------

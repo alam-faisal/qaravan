@@ -300,6 +300,64 @@ def test_statevector_overlap_orthogonal():
     assert np.isclose(abs(sv0.overlap(sv1)), 0.0)
 
 
+# ---------------------------------------------------------------------------
+# partial_overlap
+# ---------------------------------------------------------------------------
+
+
+def test_partial_overlap_full_returns_1x1():
+    """partial_overlap with skip=[] returns shape (1,1)."""
+    sv = Statevector(3, random_seed=7)
+    mat = sv.partial_overlap(sv, skip=[])
+    assert mat.shape == (1, 1)
+
+
+def test_partial_overlap_full_equals_overlap():
+    """partial_overlap(skip=[])[0,0].conj() == overlap() for two different states.
+
+    partial_overlap[0,0] = ⟨other|self⟩; overlap = ⟨self|other⟩ = conj of that.
+    Using two distinct states so the imaginary part is non-trivial.
+    """
+    sv1 = Statevector(4, random_seed=7)
+    sv2 = Statevector(4, random_seed=11)
+    mat = sv1.partial_overlap(sv2, skip=[])
+    assert mat.shape == (1, 1)
+    assert np.isclose(mat[0, 0].conj(), sv1.overlap(sv2))
+
+
+def test_partial_overlap_equals_rdm_single_site():
+    """partial_overlap(sv, sv, skip=[0]) == rdm([0])."""
+    sv = Statevector(4, random_seed=13)
+    po = sv.partial_overlap(sv, skip=[0])
+    assert np.allclose(po, sv.rdm([0]), atol=1e-12)
+
+
+def test_partial_overlap_equals_rdm_two_sites():
+    """partial_overlap(sv, sv, skip=[0, 2]) == rdm([0, 2])."""
+    sv = Statevector(4, random_seed=21)
+    po = sv.partial_overlap(sv, skip=[0, 2])
+    assert np.allclose(po, sv.rdm([0, 2]), atol=1e-12)
+
+
+def test_partial_overlap_cross_state_shape():
+    """partial_overlap of two different states with skip=[1] returns (2,2)."""
+    sv1 = Statevector(3, random_seed=1)
+    sv2 = Statevector(3, random_seed=2)
+    po = sv1.partial_overlap(sv2, skip=[1])
+    assert po.shape == (2, 2)
+
+
+def test_partial_overlap_cross_state_manual():
+    """result[i,j] = ⟨sv2[j]|sv1[i]⟩ = sum_{a,b} sv1[a,i,b] * conj(sv2[a,j,b]) for skip=[1]."""
+    sv1 = Statevector(3, random_seed=1)
+    sv2 = Statevector(3, random_seed=2)
+    po = sv1.partial_overlap(sv2, skip=[1])
+    # Convention: sv1=self is in ket position (index i), sv2=other is in bra position (index j)
+    # result[i,j] = sum_{a,b} sv1._tensor[a,i,b] * conj(sv2._tensor[a,j,b])
+    manual = np.einsum("aib,ajb->ij", sv1._tensor, sv2._tensor.conj())
+    assert np.allclose(po, manual, atol=1e-12)
+
+
 def test_statevector_project_and_renorm():
     """Project |+⟩ onto '0' → |0⟩."""
     arr = np.array([1, 1], dtype=complex) / np.sqrt(2)

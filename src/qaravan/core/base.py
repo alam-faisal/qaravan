@@ -96,10 +96,20 @@ class State(ABC):
         Returned State has the same number of sites as the original."""
         ...
 
-    @abstractmethod
+    def partial_overlap(self, other: State, skip: list[int]) -> np.ndarray:
+        """Partial ⟨self|other⟩ keeping sites in skip uncontracted.
+
+        Returns (local_dim^|skip| × local_dim^|skip|) matrix.
+        skip=[] returns (1,1) full overlap; result[i,j] = ⟨other[j-block]|self[i-block]⟩.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement partial_overlap"
+        )
+
     def overlap(self, other: State) -> complex:
-        """⟨self|other⟩ (or tr(self† other) for mixed states)."""
-        ...
+        """⟨self|other⟩. Concrete default via partial_overlap; backends need not override."""
+        # partial_overlap[0,0] = ⟨other|self⟩; conjugate to get ⟨self|other⟩
+        return self.partial_overlap(other, skip=[])[0, 0].conj()
 
     @abstractmethod
     def __repr__(self) -> str: ...

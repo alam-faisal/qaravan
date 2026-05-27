@@ -251,9 +251,13 @@ class Statevector(State):
         outcome_str = format(outcome_idx, f"0{len(sites)}b")
         return self.project_and_renorm(sorted_sites, outcome_str), outcome_str
 
-    def overlap(self, other: Statevector) -> complex:
-        """⟨self|other⟩."""
-        return partial_overlap(other.to_array(), self.to_array(), self.local_dim)[0, 0]
+    def partial_overlap(self, other: Statevector, skip: list[int]) -> np.ndarray:
+        """result[i,j] = ⟨other[j]|self[i]⟩ in the skip subspace.
+
+        Wraps module-level partial_overlap (resolved via global scope, not class namespace).
+        For self==other: equals rdm(skip). Full overlap: [0,0].conj() == overlap(other).
+        """
+        return partial_overlap(self.to_array(), other.to_array(), local_dim=self.local_dim, skip=skip)
 
     # ------------------------------------------------------------------ Extra public
 

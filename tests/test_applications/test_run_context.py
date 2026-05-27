@@ -1,7 +1,5 @@
 """Tests for RunContext in applications/run_context.py."""
 
-import pytest
-
 from qaravan.applications.run_context import RunContext
 
 

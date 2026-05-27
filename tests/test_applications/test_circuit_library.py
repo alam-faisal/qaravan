@@ -1,7 +1,6 @@
 """Tests for brickwall_skeleton and two_local_circuit in applications/circuit_library.py."""
 
 import numpy as np
-import pytest
 
 from qaravan.applications.circuit_library import brickwall_skeleton, two_local_circuit
 from qaravan.core.gates import is_unitary

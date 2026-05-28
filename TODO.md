@@ -8,112 +8,6 @@ Before implementing a task review the "Development protocol" and "Coding style" 
 
 ---
 
-## v0.2.2 — Track A: Dynamic Quantum Circuits (current priority)
-
----
-
-## Task 13 — `DynamicCircuit` abstraction
-
-**Goal:** Design a container for multi-round DQC protocols that is ergonomic for the
-GHZ use case, natural for future environment-sweep optimization, and consistent with the
-`API_VISION.md` loop pattern. This task is informed by Task 12 — do not start it before
-the GHZ example is working, because the abstraction should grow out of the concrete idiom.
-
-**Design (to be refined in proposal — these are constraints, not a final design):**
-
-The raw DQC loop from the API vision is already usable, so `DynamicCircuit` is a
-*convenience wrapper*, not a requirement. Its value is enabling optimization (Task 14): you
-need named handles on the pre-circuit and each round's decoder to replace them during sweeps.
-
-```python
-@dataclass
-class DynamicRound:
-    meas_sites: list[int]
-    decoder: Callable[[str, int], Circuit]   # (outcome_str, round_idx) -> correction circuit
-
-@dataclass
-class DynamicCircuit:
-    pre_circuit: Circuit            # applied once before any measurements
-    rounds: list[DynamicRound]      # one entry per measurement round
-
-    def run(self, init_state: State, sim_cls=StatevectorSimulator) -> State:
-        ...  # executes the standard DQC loop
-```
-
-Key design questions to settle in the proposal:
-1. Should `pre_circuit` be a special case of round 0 (with empty `meas_sites`) or kept
-   separate? Separate is cleaner for optimization, since the pre-circuit is the variational
-   parameter and the decoder is classical logic.
-2. Should `run()` also return the per-round outcome history (yes — needed for debugging and
-   for the environment-sweep optimization in Task 14)?
-3. Is `Callable[[str, int], Circuit]` the right decoder signature, or should it be
-   `Callable[[dict[int, int], int], Circuit]` for clarity with multi-qubit outcomes?
-   Recommendation: `str` is compact and already matches `measure_and_collapse`'s return type.
-4. For Task 14: the `DynamicCircuit` must support replacing `pre_circuit` with an optimized
-   copy without mutating the original (same `circuit.copy()` convention as `environment_state_prep`).
-
-**Tests:**
-- `test_dynamic_circuit_run_matches_manual_loop`: construct a `DynamicCircuit` for GHZ-4 from
-  clusters; verify `run()` output matches a manually-written DQC loop on the same seeds.
-- `test_dynamic_circuit_does_not_mutate_pre_circuit`: pre_circuit matrices unchanged after `run()`.
-- `test_dynamic_circuit_run_returns_outcome_history`: outcome history has the right length and
-  each entry is a string of the right length.
-
----
-
-## Task 14 — Environment sweep for DQCs
-
-**Goal:** Extend `environment_state_prep` to handle `DynamicCircuit` targets: optimize the
-pre-measurement circuit via environment updates, holding the decoder fixed. Single-round
-measurement only; decoder is a fixed lookup table.
-
-**Background — how the environment changes:**
-
-For a DQC with one round of measurements at sites S, and target state `|target⟩` (the
-desired final state for each measurement outcome m):
-
-The cost is the average infidelity over Born-weighted outcomes:
-
-```
-C = 1 - Σ_m p_m * |⟨target_m | U_post_m P_m U_pre | init⟩|
-```
-
-where `p_m = |P_m U_pre|init⟩|²` is the Born probability of outcome m, `P_m` is the projector
-onto outcome m, and `U_post_m` is the (fixed) decoder circuit for outcome m.
-
-For pre-circuit gate k, the effective environment is:
-
-```
-E_k = Σ_m (1/√p_m) * partial_overlap(pre_state_m, post_state_m, skip=indices_k)
-```
-
-where:
-- `pre_state_m = G_{k-1}...G_0 |init⟩` (incremental, same as single-state)
-- `post_state_m = G_{k+1}†...U_pre† P_m† U_post_m† |target_m⟩` (one per outcome)
-
-The `1/√p_m` weight comes from the fact that the projected state `P_m U_pre|init⟩` has norm
-`√p_m`, which must be divided out before computing the overlap with `|target_m⟩`. The Julia
-reference code handles this as `inner(mps, t_mps)/renorm` where `renorm = √p_m`.
-
-The key subtlety vs. multi-state prep: `p_m` depends on the current pre-circuit and changes
-as gates are updated. In the Julia code this is handled by recomputing `p_m` once per sweep
-(not per gate), which is a consistent and stable approximation.
-
-**Functions:**
-- `dqc_environment_state_prep(target_ensemble: list[State], dqc: DynamicCircuit, context=None)`
-  — returns `(optimised_DynamicCircuit, cost_list)`. `target_ensemble[m]` is the target state
-  for measurement outcome m; ordering must match `measure_and_collapse` outcome indexing.
-- Private helper `_dqc_environment_update(...)` — same interface as `_environment_update` but
-  sums over outcomes with Born weights.
-
-**Do NOT start this task without the Julia code as reference** — the normalization subtleties
-are easy to get wrong. The Julia code is in `legacy/julia/train_dqc.jl` (or wherever it ends up).
-
-**Acceptance:** Notebook shows `dqc_environment_state_prep` learning the correct decoder
-circuit for GHZ-from-clusters for a 4-qubit target.
-
----
-
 ## v0.2.2 — Track B: Hamiltonians and Fermions (current priority)
 
 ---
@@ -209,6 +103,63 @@ is the output of `FermiHubbard1D.as_pauli_sum()` and is used for:
 - The `PauliSum` backend (Task 12+ in the original list) may not be implemented yet. If so,
   `as_pauli_sum()` can return a `list[tuple[complex, PauliString]]` as an interim format and
   be upgraded when `PauliSum` lands.
+
+---
+
+## v0.2.2 — Track A: Dynamic Quantum Circuits (deferred until Track B complete)
+
+---
+
+## Task 14 — Environment sweep for DQCs
+
+**Goal:** Extend `environment_state_prep` to handle `DynamicCircuit` targets: optimize the
+pre-measurement circuit via environment updates, holding the decoder fixed. Single-round
+measurement only; decoder is a fixed lookup table.
+
+**Background — how the environment changes:**
+
+For a DQC with one round of measurements at sites S, and target state `|target⟩` (the
+desired final state for each measurement outcome m):
+
+The cost is the average infidelity over Born-weighted outcomes:
+
+```
+C = 1 - Σ_m p_m * |⟨target_m | U_post_m P_m U_pre | init⟩|
+```
+
+where `p_m = |P_m U_pre|init⟩|²` is the Born probability of outcome m, `P_m` is the projector
+onto outcome m, and `U_post_m` is the (fixed) decoder circuit for outcome m.
+
+For pre-circuit gate k, the effective environment is:
+
+```
+E_k = Σ_m (1/√p_m) * partial_overlap(pre_state_m, post_state_m, skip=indices_k)
+```
+
+where:
+- `pre_state_m = G_{k-1}...G_0 |init⟩` (incremental, same as single-state)
+- `post_state_m = G_{k+1}†...U_pre† P_m† U_post_m† |target_m⟩` (one per outcome)
+
+The `1/√p_m` weight comes from the fact that the projected state `P_m U_pre|init⟩` has norm
+`√p_m`, which must be divided out before computing the overlap with `|target_m⟩`. The Julia
+reference code handles this as `inner(mps, t_mps)/renorm` where `renorm = √p_m`.
+
+The key subtlety vs. multi-state prep: `p_m` depends on the current pre-circuit and changes
+as gates are updated. In the Julia code this is handled by recomputing `p_m` once per sweep
+(not per gate), which is a consistent and stable approximation.
+
+**Functions:**
+- `dqc_environment_state_prep(target_ensemble: list[State], dqc: DynamicCircuit, context=None)`
+  — returns `(optimised_DynamicCircuit, cost_list)`. `target_ensemble[m]` is the target state
+  for measurement outcome m; ordering must match `measure_and_collapse` outcome indexing.
+- Private helper `_dqc_environment_update(...)` — same interface as `_environment_update` but
+  sums over outcomes with Born weights.
+
+**Do NOT start this task without the Julia code as reference** — the normalization subtleties
+are easy to get wrong. The Julia code is in `legacy/julia/train_dqc.jl` (or wherever it ends up).
+
+**Acceptance:** Notebook shows `dqc_environment_state_prep` learning the correct decoder
+circuit for GHZ-from-clusters for a 4-qubit target.
 
 ---
 

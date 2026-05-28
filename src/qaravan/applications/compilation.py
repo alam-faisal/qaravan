@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from typing import Callable
+
 from qaravan.applications.circuit_library import (
     bell_basis_circuit,
     ghz_cluster_prep_circuit,
@@ -128,6 +130,27 @@ def _cluster_kept_sites(j: int, k: int, C: int) -> list[int]:
     return list(range(j * k + 1, (j + 1) * k - 1))
 
 
+def ghz_fusion_decoder(
+    j: int, k: int, C: int, total_qubits: int
+) -> Callable[[str], Circuit]:
+    """Return the Pauli-correction decoder for boundary j of a C-cluster, k-qubit GHZ fusion.
+
+    The returned decoder maps a 2-char outcome string to the correction Circuit:
+      a=1 → Z on qubit 0 (phase anchor)
+      b=1 → X on every kept qubit of clusters j+1 … C-1
+    """
+
+    def decoder(outcome_str: str) -> Circuit:
+        a, b = int(outcome_str[0]), int(outcome_str[1])
+        right_kept = [
+            site for jj in range(j + 1, C) for site in _cluster_kept_sites(jj, k, C)
+        ]
+        gates = ([X(s) for s in right_kept] if b else []) + ([Z(0)] if a else [])
+        return Circuit(gates, num_sites=total_qubits)
+
+    return decoder
+
+
 def ghz_via_fusion(n: int, k: int = 3) -> tuple[Statevector, list[str]]:
     """Prepare n-qubit GHZ via mid-circuit-measurement fusion of k-qubit clusters.
 
@@ -167,17 +190,8 @@ def ghz_via_fusion(n: int, k: int = 3) -> tuple[Statevector, list[str]]:
         sv = sv.apply(bell_basis_circuit(q_L, q_R, total_qubits))
         sv, outcome_str = sv.measure_and_collapse([q_L, q_R])
         outcomes.append(outcome_str)
-
-        a, b = int(outcome_str[0]), int(outcome_str[1])
-        right_kept = [
-            site for jj in range(j + 1, C) for site in _cluster_kept_sites(jj, k, C)
-        ]
-        correction_gates = []
-        if b == 1:
-            correction_gates += [X(s) for s in right_kept]
-        if a == 1:
-            correction_gates += [Z(0)]
-        if correction_gates:
-            sv = sv.apply(Circuit(correction_gates, num_sites=total_qubits))
+        correction = ghz_fusion_decoder(j, k, C, total_qubits)(outcome_str)
+        if correction.gates:
+            sv = sv.apply(correction)
 
     return sv, outcomes

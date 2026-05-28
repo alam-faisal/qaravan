@@ -15,5 +15,6 @@ from qaravan.applications.circuit_library import (
 from qaravan.applications.run_context import RunContext as RunContext
 from qaravan.applications.compilation import (
     environment_state_prep as environment_state_prep,
+    ghz_fusion_decoder as ghz_fusion_decoder,
     ghz_via_fusion as ghz_via_fusion,
 )

@@ -257,7 +257,9 @@ class Statevector(State):
         Wraps module-level partial_overlap (resolved via global scope, not class namespace).
         For self==other: equals rdm(skip). Full overlap: [0,0].conj() == overlap(other).
         """
-        return partial_overlap(self.to_array(), other.to_array(), local_dim=self.local_dim, skip=skip)
+        return partial_overlap(
+            self.to_array(), other.to_array(), local_dim=self.local_dim, skip=skip
+        )
 
     # ------------------------------------------------------------------ Extra public
 
@@ -265,6 +267,24 @@ class Statevector(State):
         """Reduced density matrix for sites; (local_dim**|sites|, local_dim**|sites|)."""
         flat = self.to_array()
         return partial_overlap(flat, flat, local_dim=self.local_dim, skip=sites)
+
+    def drop_sites(self, sites: list[int], outcome: str) -> Statevector:
+        """Return the pure-state factor on remaining qubits given classical values at sites.
+
+        For a product state |ψ⟩_{remaining} ⊗ |outcome⟩_{sites}, returns |ψ⟩_{remaining}
+        as a Statevector with num_sites = self.num_sites - len(sites).
+        sites must be sorted to match the digit order of outcome.
+        """
+        idx: list[int | slice] = [slice(None)] * self.num_sites
+        for site, bit in zip(sorted(sites), outcome):
+            idx[site] = int(bit)
+        sub = self._tensor[tuple(idx)].reshape(-1)
+        norm = np.linalg.norm(sub)
+        if norm < 1e-12:
+            raise ValueError(
+                f"Slice at {sites}='{outcome}' gives zero amplitude — sites may not be in that state."
+            )
+        return Statevector(array=sub / norm, local_dim=self.local_dim)
 
     def project_and_renorm(self, sites: list[int], outcome_str: str) -> Statevector:
         """Apply |bit_i⟩⟨bit_i| projector at each site via op_action, then renorm."""

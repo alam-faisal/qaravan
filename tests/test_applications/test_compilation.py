@@ -182,16 +182,16 @@ def test_environment_state_prep_stops_at_plateau():
 INV_SQRT2 = 1.0 / np.sqrt(2)
 
 
-def test_ghz_via_fusion_raises_for_k_le_2():
-    """k <= 2 raises ValueError (degenerate case, formula undefined)."""
+def test_ghz_via_fusion_raises_for_small_cluster_size():
+    """cluster_size <= 2 raises ValueError (degenerate case, formula undefined)."""
     with pytest.raises(ValueError):
-        ghz_via_fusion(4, k=2)
+        ghz_via_fusion(4, cluster_size=2)
 
 
-def test_ghz_via_fusion_raises_for_non_integer_C():
-    """(n-2) not divisible by (k-2) raises ValueError."""
+def test_ghz_via_fusion_raises_for_non_integer_num_clusters():
+    """(n-2) not divisible by (cluster_size-2) raises ValueError."""
     with pytest.raises(ValueError):
-        ghz_via_fusion(5, k=4)  # C = (5-2)/(4-2) = 1.5
+        ghz_via_fusion(5, cluster_size=4)  # num_clusters = (5-2)/(4-2) = 1.5
 
 
 # ---------------------------------------------------------------------------
@@ -199,15 +199,15 @@ def test_ghz_via_fusion_raises_for_non_integer_C():
 # ---------------------------------------------------------------------------
 
 
-def test_ghz_via_fusion_returns_correct_outcome_list_length():
-    """len(outcomes) == C-1 == (n-2)//(k-2) - 1.
+def test_ghz_via_fusion_returns_correct_outcome_length():
+    """len(full_outcome) == 2*(num_clusters-1).
 
-    Catches: loop-bounds bug (off-by-one in range(C-1)).
+    Catches: loop-bounds bug (off-by-one in boundary range).
     """
-    for n, k in [(4, 3), (6, 3)]:
-        _, outcomes = ghz_via_fusion(n, k)
-        C = (n - 2) // (k - 2)
-        assert len(outcomes) == C - 1
+    for n, cluster_size in [(4, 3), (6, 3)]:
+        _, full_outcome = ghz_via_fusion(n, cluster_size)
+        num_clusters = (n - 2) // (cluster_size - 2)
+        assert len(full_outcome) == 2 * (num_clusters - 1)
 
 
 # ---------------------------------------------------------------------------
@@ -215,38 +215,36 @@ def test_ghz_via_fusion_returns_correct_outcome_list_length():
 # ---------------------------------------------------------------------------
 
 
-def _ghz_fidelity(sv: Statevector, kept_sites: list[int]) -> float:
-    """F = ⟨GHZ_n|ρ_kept|GHZ_n⟩ for the n=len(kept_sites) GHZ state."""
-    n = len(kept_sites)
-    dim = 2**n
-    ghz = np.zeros(dim)
-    ghz[0] = ghz[dim - 1] = INV_SQRT2
-    rdm = sv.rdm(kept_sites)
-    return float(np.real(ghz @ rdm @ ghz))
+def _ghz_fidelity(sv: Statevector, fusion_sites: list[int], full_outcome: str) -> float:
+    """F = |⟨GHZ_n|ψ_kept⟩|² using drop_sites to extract the pure kept-qubit state."""
+    pure_kept = sv.drop_sites(fusion_sites, full_outcome)
+    n = pure_kept.num_sites
+    ghz = np.zeros(2**n)
+    ghz[0] = ghz[-1] = INV_SQRT2
+    return float(abs(np.dot(ghz, pure_kept.to_array())) ** 2)
 
 
 def test_ghz_via_fusion_4qubit_always_succeeds():
-    """ghz_via_fusion(4, k=3): 20 runs, fidelity with |GHZ_4⟩ on kept sites = 1.0.
+    """ghz_via_fusion(4, cluster_size=3): 20 runs, fidelity with |GHZ_4⟩ on kept sites = 1.0.
 
-    4 qubits kept: {0,1} from cluster 0, {4,5} from cluster 1.
+    Fusion sites: {2,3}. Kept: {0,1,4,5}.
     Catches: wrong correction for any of the 4 outcomes.
     Does NOT catch: bugs that only manifest for specific random seeds.
     """
-    kept = [0, 1, 4, 5]
     for _ in range(20):
-        sv, _ = ghz_via_fusion(4, k=3)
-        assert np.isclose(_ghz_fidelity(sv, kept), 1.0, atol=1e-10)
+        sv, full_outcome = ghz_via_fusion(4, cluster_size=3)
+        assert np.isclose(_ghz_fidelity(sv, [2, 3], full_outcome), 1.0, atol=1e-10)
 
 
 def test_ghz_via_fusion_4qubit_all_outcomes_covered():
-    """100 runs of ghz_via_fusion(4, k=3) must yield all 4 outcome strings.
+    """100 runs of ghz_via_fusion(4, cluster_size=3) must yield all 4 outcome strings.
 
     Catches: correction logic that silently breaks for specific outcomes.
     """
     seen: set[str] = set()
     for _ in range(100):
-        _, outcomes = ghz_via_fusion(4, k=3)
-        seen.add(outcomes[0])
+        _, full_outcome = ghz_via_fusion(4, cluster_size=3)
+        seen.add(full_outcome)
     assert seen == {"00", "01", "10", "11"}
 
 
@@ -255,17 +253,18 @@ def test_ghz_via_fusion_4qubit_all_outcomes_covered():
 # ---------------------------------------------------------------------------
 
 
-def test_ghz_via_fusion_6qubit_k3():
-    """n=6, k=3: C=4 clusters, 3 fusions; 20 runs, fidelity 1.0 on kept sites.
+def test_ghz_via_fusion_6qubit_cluster_size_3():
+    """n=6, cluster_size=3: 4 clusters, 3 fusions; 20 runs, fidelity 1.0 on kept sites.
 
-    Kept sites: {0,1} (cluster 0), {4} (cluster 1), {7} (cluster 2), {10,11} (cluster 3).
-    Catches: sequential decoder error for multi-boundary case.
+    Fusion sites: {2,3,5,6,8,9}. Kept: {0,1,4,7,10,11}.
+    Catches: decoder error for multi-boundary case.
     """
-    kept = [0, 1, 4, 7, 10, 11]
     for _ in range(20):
-        sv, outcomes = ghz_via_fusion(6, k=3)
-        assert len(outcomes) == 3
-        assert np.isclose(_ghz_fidelity(sv, kept), 1.0, atol=1e-10)
+        sv, full_outcome = ghz_via_fusion(6, cluster_size=3)
+        assert len(full_outcome) == 6
+        assert np.isclose(
+            _ghz_fidelity(sv, [2, 3, 5, 6, 8, 9], full_outcome), 1.0, atol=1e-10
+        )
 
 
 # ---------------------------------------------------------------------------

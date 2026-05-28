@@ -94,6 +94,9 @@ Whenever you need to know what the API should look like so you can develop the s
 - **Docstrings are one or two lines plus non-obvious notes.** No boilerplate `Args:` blocks that restate type hints. Include non-trivial shapes, axis ordering and other things users calling and developing on the function might care about. 
 - **Functional by default; classes only when state genuinely warrants it.** `Circuit`, `Gate`, simulators, `Hamiltonian`, `MPS`: yes. Random utilities: no.
 - **Short functions.** If a function is over ~40 lines, consider whether it's really one thing.
+- **No nested list comprehensions.** They are hard to read. Use a plain `for` loop, or a `for` loop with a single-level list comprehension inside, or two separate loops. Never nest `[... for ... for ...]` inline.
+- **No single-letter or cryptic abbreviations for domain variables.** Physics-paper notation (`k`, `C`, `j`) is not acceptable in code or explanations. Use `cluster_size`, `num_clusters`, `boundary_idx`, etc. Standard exceptions: `n` for number of qubits/sites as a function parameter, `i` as a generic loop index.
+- **`__init__.py` re-exports: plain imports + `__all__`.** Never use `from x import y as y`. Declare the public API explicitly with `__all__`.
 - **`uv` for package management.** Not pip, not conda.
 - **Use outside-in test driven development** first write structural scaffold, then write extensive tests for correctness of physics and logic, and then write the code to satisfy the tests
 
@@ -112,6 +115,7 @@ something in this protocol conflicts with a faster path, follow the protocol.
    - How you plan to handle complications and edge cases.
    - Anything you are unsure about and want the user's opinion.
    In the proposal phase feel free to read files and do whatever necessary to understand the task but do NOT modify code under src. 
+   - some possible tests you will write
 
 3. **Wait for explicit approval** from the user before writing any implementation code. 
 

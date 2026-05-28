@@ -20,40 +20,39 @@ from qaravan.core.base import State
 
 def _environment_update(
     circ: Circuit,
-    k: int,
+    gate_idx: int,
     pre_state: State,
     post_state: State,
     init_state: State,
     target: State,
     direction: str,
 ) -> tuple[float, State, State]:
-    """Update gate k in-place; return (cost, new_pre_state, new_post_state).
+    """Update gate at gate_idx in-place; return (cost, new_pre_state, new_post_state).
 
     direction: "left" (decreasing k) or "right" (increasing k).
-    circ is owned by the caller (already a copy); mutation is intentional.
     cost = 1 - sum(singular values of environment) = 1 - |⟨target|U|init⟩| after update.
     """
-    indices = circ.gates[k].indices
+    indices = circ.gates[gate_idx].indices
     env = pre_state.partial_overlap(post_state, skip=indices)
 
     x, s, yh = np.linalg.svd(env)
     new_mat = yh.conj().T @ x.conj().T  # polar factor: Y X†
 
-    circ.gates[k] = MatrixGate(circ.gates[k].name, indices, new_mat)
+    circ.gates[gate_idx] = MatrixGate(circ.gates[gate_idx].name, indices, new_mat)
     circ.layers = None  # invalidate layer cache
 
     if direction == "left":
-        if k == 1:
+        if gate_idx == 1:
             pre_state = init_state
         else:
-            pre_state = pre_state.apply(Circuit([circ.gates[k - 1].dagger()]))
-        post_state = post_state.apply(Circuit([circ.gates[k].dagger()]))
+            pre_state = pre_state.apply(Circuit([circ.gates[gate_idx - 1].dagger()]))
+        post_state = post_state.apply(Circuit([circ.gates[gate_idx].dagger()]))
     else:  # "right"
-        pre_state = pre_state.apply(Circuit([circ.gates[k]]))
-        if k == len(circ) - 2:
+        pre_state = pre_state.apply(Circuit([circ.gates[gate_idx]]))
+        if gate_idx == len(circ) - 2:
             post_state = target
         else:
-            post_state = post_state.apply(Circuit([circ.gates[k + 1]]))
+            post_state = post_state.apply(Circuit([circ.gates[gate_idx + 1]]))
 
     cost = 1.0 - float(np.sum(s))
     return cost, pre_state, post_state
@@ -95,17 +94,17 @@ def environment_state_prep(
     sweep_costs: list[float] = []
 
     for sweep in range(context.max_iter):
-        # Left sweep: k from len(circ)-1 down to 1
-        for k in reversed(range(1, len(circ))):
+        # Left sweep: gate_idx from len(circ)-1 down to 1
+        for gate_idx in reversed(range(1, len(circ))):
             cost, pre_state, post_state = _environment_update(
-                circ, k, pre_state, post_state, init_state, target, "left"
+                circ, gate_idx, pre_state, post_state, init_state, target, "left"
             )
             cost_list.append(cost)
 
-        # Right sweep: k from 0 up to len(circ)-2
-        for k in range(len(circ) - 1):
+        # Right sweep: gate_idx from 0 up to len(circ)-2
+        for gate_idx in range(len(circ) - 1):
             cost, pre_state, post_state = _environment_update(
-                circ, k, pre_state, post_state, init_state, target, "right"
+                circ, gate_idx, pre_state, post_state, init_state, target, "right"
             )
             cost_list.append(cost)
 
@@ -121,77 +120,111 @@ def environment_state_prep(
 # ---------------------------------------------------------------------------
 
 
-def _cluster_kept_sites(j: int, k: int, C: int) -> list[int]:
-    """Return the kept (non-fusion) site indices for cluster j."""
-    if j == 0:
-        return list(range(0, k - 1))
-    if j == C - 1:
-        return list(range((C - 1) * k + 1, C * k))
-    return list(range(j * k + 1, (j + 1) * k - 1))
+def _kept_sites(cluster_idx: int, cluster_size: int, num_clusters: int) -> list[int]:
+    """Non-fusion site indices for cluster cluster_idx."""
+    if cluster_idx == 0:
+        return list(range(0, cluster_size - 1))
+    if cluster_idx == num_clusters - 1:
+        return list(
+            range((num_clusters - 1) * cluster_size + 1, num_clusters * cluster_size)
+        )
+    return list(
+        range(cluster_idx * cluster_size + 1, (cluster_idx + 1) * cluster_size - 1)
+    )
 
 
-def ghz_fusion_decoder(
-    j: int, k: int, C: int, total_qubits: int
+def build_ghz_decoder(
+    cluster_size: int,
+    num_clusters: int,
+    total_qubits: int,
+    use_cancellations: bool = False,
 ) -> Callable[[str], Circuit]:
-    """Return the Pauli-correction decoder for boundary j of a C-cluster, k-qubit GHZ fusion.
+    """builds decoder for the GHZ fusion measurement.
 
-    The returned decoder maps a 2-char outcome string to the correction Circuit:
-      a=1 → Z on qubit 0 (phase anchor)
-      b=1 → X on every kept qubit of clusters j+1 … C-1
+    Returns decoder(outcome) → Circuit.
+    outcome: bitstring of length 2*(num_clusters-1); bits 2*i, 2*i+1 are
+    phase_bit and flip_bit for boundary i.
+    use_cancellations: fold repeated Z(0) and X(site) corrections before returning.
     """
+    num_boundaries = num_clusters - 1
 
-    def decoder(outcome_str: str) -> Circuit:
-        a, b = int(outcome_str[0]), int(outcome_str[1])
-        right_kept = [
-            site for jj in range(j + 1, C) for site in _cluster_kept_sites(jj, k, C)
-        ]
-        gates = ([X(s) for s in right_kept] if b else []) + ([Z(0)] if a else [])
+    def decoder(outcome: str) -> Circuit:
+        phase_bits = [int(outcome[2 * i]) for i in range(num_boundaries)]
+        flip_bits = [int(outcome[2 * i + 1]) for i in range(num_boundaries)]
+
+        gates = []
+        if use_cancellations:
+            if sum(phase_bits) % 2 == 1:
+                gates.append(Z(0))
+            for cluster_idx in range(1, num_clusters):
+                if sum(flip_bits[:cluster_idx]) % 2 == 1:
+                    for site in _kept_sites(cluster_idx, cluster_size, num_clusters):
+                        gates.append(X(site))
+        else:
+            for boundary_idx in range(num_boundaries):
+                if flip_bits[boundary_idx]:
+                    for cluster_idx in range(boundary_idx + 1, num_clusters):
+                        for site in _kept_sites(
+                            cluster_idx, cluster_size, num_clusters
+                        ):
+                            gates.append(X(site))
+                if phase_bits[boundary_idx]:
+                    gates.append(Z(0))
+
         return Circuit(gates, num_sites=total_qubits)
 
     return decoder
 
 
-def ghz_via_fusion(n: int, k: int = 3) -> tuple[Statevector, list[str]]:
-    """Prepare n-qubit GHZ via mid-circuit-measurement fusion of k-qubit clusters.
-
-    Returns (final_sv, outcomes) where final_sv spans C*k physical qubits
-    (fusion qubits collapsed to definite states) and outcomes[j] is the 2-char
-    outcome string for boundary j.
-    Requires k > 2 and (n - 2) % (k - 2) == 0.
-    Z corrections always target qubit 0 (anchor; always a kept qubit of cluster 0).
+def ghz_via_fusion(
+    n: int, cluster_size: int = 3, use_cancellations: bool = False
+) -> tuple[Statevector, str]:
+    """Prepare n-qubit GHZ via mid-circuit-measurement fusion of cluster_size clusters.
+    Requires cluster_size > 2 and (n - 2) % (cluster_size - 2) == 0.
+    Z corrections always target qubit 0 (phase anchor).
     """
-    if k <= 2:
-        raise ValueError(f"k must be > 2; got k={k}")
-    if (n - 2) % (k - 2) != 0:
+    if cluster_size <= 2:
+        raise ValueError(f"cluster_size must be > 2; got {cluster_size}")
+    if (n - 2) % (cluster_size - 2) != 0:
         raise ValueError(
-            f"(n-2)={(n - 2)} must be divisible by (k-2)={(k - 2)} for integer C"
+            f"(n-2)={(n - 2)} must be divisible by (cluster_size-2)={(cluster_size - 2)}"
         )
 
-    C = (n - 2) // (k - 2)
-    total_qubits = C * k
+    num_clusters = (n - 2) // (cluster_size - 2)
+    total_qubits = num_clusters * cluster_size
 
-    # Step 1: prepare all clusters simultaneously
-    all_gates = [
-        gate
-        for j in range(C)
-        for gate in ghz_cluster_prep_circuit(
-            list(range(j * k, (j + 1) * k)), total_qubits
-        ).gates
-    ]
-    sv: Statevector = Statevector(bitstring="0" * total_qubits).apply(
-        Circuit(all_gates, num_sites=total_qubits)
+    # prepare GHZ on clusters
+    prep_circuit = Circuit([], num_sites=total_qubits)
+    for cluster_idx in range(num_clusters):
+        cluster_sites = list(
+            range(cluster_idx * cluster_size, (cluster_idx + 1) * cluster_size)
+        )
+        prep_circuit = prep_circuit + ghz_cluster_prep_circuit(
+            cluster_sites, total_qubits
+        )
+
+    sv = Statevector(bitstring="0" * total_qubits).apply(prep_circuit)
+
+    # Bell-measurement of boundary qubit pairs
+    boundary_qubits: list[int] = []
+    bell_circuit = Circuit([], num_sites=total_qubits)
+    for boundary_idx in range(num_clusters - 1):
+        left_qubit = (boundary_idx + 1) * cluster_size - 1
+        right_qubit = (boundary_idx + 1) * cluster_size
+        boundary_qubits.extend([left_qubit, right_qubit])
+        bell_circuit = bell_circuit + bell_basis_circuit(
+            left_qubit, right_qubit, total_qubits
+        )
+
+    sv = sv.apply(bell_circuit)
+    sv, outcome = sv.measure_and_collapse(boundary_qubits)
+
+    # decode outcome → correction circuit
+    decoder = build_ghz_decoder(
+        cluster_size, num_clusters, total_qubits, use_cancellations
     )
+    correction = decoder(outcome)
+    if correction.gates:
+        sv = sv.apply(correction)
 
-    # Step 2: fuse boundaries sequentially with immediate correction
-    outcomes: list[str] = []
-    for j in range(C - 1):
-        q_L = (j + 1) * k - 1
-        q_R = (j + 1) * k
-        sv = sv.apply(bell_basis_circuit(q_L, q_R, total_qubits))
-        sv, outcome_str = sv.measure_and_collapse([q_L, q_R])
-        outcomes.append(outcome_str)
-        correction = ghz_fusion_decoder(j, k, C, total_qubits)(outcome_str)
-        if correction.gates:
-            sv = sv.apply(correction)
-
-    return sv, outcomes
+    return sv, outcome

@@ -2,7 +2,13 @@
 
 import numpy as np
 
-from qaravan.applications.circuit_library import brickwall_skeleton, two_local_circuit
+from qaravan.applications.circuit_library import (
+    bell_basis_circuit,
+    brickwall_skeleton,
+    ghz_cluster_prep_circuit,
+    two_local_circuit,
+)
+from qaravan.backends.statevector import Statevector
 from qaravan.core.gates import is_unitary
 
 
@@ -160,3 +166,78 @@ def test_two_local_circuit_non_contiguous_sites():
     for gate, pair in zip(circ.gates, skel):
         assert gate.indices == pair
         assert is_unitary(gate.matrix)
+
+
+# ---------------------------------------------------------------------------
+# bell_basis_circuit
+# ---------------------------------------------------------------------------
+
+INV_SQRT2 = 1.0 / np.sqrt(2)
+
+# Bell states as flat statevector arrays (index = qubit0*2 + qubit1)
+# |Φ+⟩ = (|00⟩+|11⟩)/√2, |Φ-⟩ = (|00⟩-|11⟩)/√2
+# |Ψ+⟩ = (|01⟩+|10⟩)/√2, |Ψ-⟩ = (|01⟩-|10⟩)/√2
+_BELL_ARRAYS = [
+    np.array([INV_SQRT2, 0, 0, INV_SQRT2]),
+    np.array([INV_SQRT2, 0, 0, -INV_SQRT2]),
+    np.array([0, INV_SQRT2, INV_SQRT2, 0]),
+    np.array([0, INV_SQRT2, -INV_SQRT2, 0]),
+]
+_COMP_BITSTRINGS = ["00", "10", "01", "11"]
+
+
+def test_bell_basis_circuit_maps_bell_states_to_comp_basis():
+    """CNOT(0→1), H(0) maps each Bell state to a definite computational basis state.
+
+    Catches: wrong CNOT/H order, wrong site assignment.
+    Does NOT catch: multi-qubit system qubit-labeling errors (2-qubit test only).
+    """
+    circ = bell_basis_circuit(0, 1, 2)
+    for arr, bs in zip(_BELL_ARRAYS, _COMP_BITSTRINGS):
+        result = Statevector(array=arr).apply(circ)
+        expected = Statevector(bitstring=bs)
+        assert np.isclose(abs(result.overlap(expected)), 1.0, atol=1e-10)
+
+
+def test_bell_basis_circuit_num_sites():
+    """bell_basis_circuit(2, 3, 6) embeds in a 6-qubit register."""
+    circ = bell_basis_circuit(2, 3, 6)
+    assert circ.num_sites == 6
+
+
+# ---------------------------------------------------------------------------
+# ghz_cluster_prep_circuit
+# ---------------------------------------------------------------------------
+
+
+def test_ghz_cluster_prep_circuit_contiguous_gives_ghz_state():
+    """cluster_sites=[0,1,2], num_sites=3 → state (|000⟩+|111⟩)/√2.
+
+    Catches: implementation bugs in ghz_cluster_prep_circuit.
+    """
+    init = Statevector(bitstring="000")
+    sv = init.apply(ghz_cluster_prep_circuit([0, 1, 2], 3))
+    ghz3 = np.zeros(8)
+    ghz3[0] = ghz3[7] = INV_SQRT2
+    assert np.isclose(abs(sv.overlap(Statevector(array=ghz3))), 1.0, atol=1e-10)
+
+
+def test_ghz_cluster_prep_circuit_offset_sites():
+    """cluster_sites=[3,4,5], num_sites=6: qubits 0-2 are |000⟩; qubits 3-5 are GHZ.
+
+    Catches: site-offset errors (applying gate to wrong qubit index).
+    """
+    init = Statevector(bitstring="000000")
+    sv = init.apply(ghz_cluster_prep_circuit([3, 4, 5], 6))
+
+    # qubits 0-2 should be |000⟩
+    rdm_012 = sv.rdm([0, 1, 2])
+    expected_vac = np.zeros((8, 8))
+    expected_vac[0, 0] = 1.0
+    np.testing.assert_allclose(rdm_012, expected_vac, atol=1e-10)
+
+    # qubits 3-5 should be |GHZ_3⟩ = (|000⟩+|111⟩)/√2
+    rdm_345 = sv.rdm([3, 4, 5])
+    ghz3 = np.zeros(8)
+    ghz3[0] = ghz3[7] = INV_SQRT2
+    np.testing.assert_allclose(rdm_345, np.outer(ghz3, ghz3), atol=1e-10)

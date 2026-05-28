@@ -29,24 +29,35 @@ class Circuit:
             self.num_sites = 0
 
     def construct_layers(self) -> None:
-        """Greedy layer packing: assigns each gate to the earliest layer it fits."""
+        """Greedy layer packing: assigns each gate to the earliest layer it fits.
+
+        Respects sequential ordering: a gate cannot be placed in a layer earlier
+        than the layer of any prior gate that touched the same sites.
+        """
         layers: list[list[Gate]] = []
-        occupied: list[set[int]] = []
+        layer_of_site: dict[int, int] = {}
 
         for gate in self.gates:
-            site_set = set(gate.indices)
+            # Must come after every layer that already acted on any of gate's sites
+            start = max((layer_of_site.get(s, -1) + 1 for s in gate.indices), default=0)
             placed = False
-            for i, layer_sites in enumerate(occupied):
-                if layer_sites.isdisjoint(site_set):
+            for i in range(start, len(layers)):
+                occupied = {s for g in layers[i] for s in g.indices}
+                if occupied.isdisjoint(gate.indices):
                     layers[i].append(gate)
-                    layer_sites.update(site_set)
+                    for s in gate.indices:
+                        layer_of_site[s] = i
                     placed = True
                     break
             if not placed:
-                layers.append([gate])
-                occupied.append(set(site_set))
+                target = max(start, len(layers))
+                while len(layers) <= target:
+                    layers.append([])
+                layers[target].append(gate)
+                for s in gate.indices:
+                    layer_of_site[s] = target
 
-        self.layers = layers
+        self.layers = [layer for layer in layers if layer]
 
     def decompose(self, basis: str = "ZSX") -> None:
         """Expand composite gates into basis gates; mutates self.gates."""

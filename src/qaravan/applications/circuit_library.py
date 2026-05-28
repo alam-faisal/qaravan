@@ -5,7 +5,19 @@ from __future__ import annotations
 import numpy as np
 
 from qaravan.core.circuits import Circuit
-from qaravan.core.gates import CNOT, H, Gate, MatrixGate, RX, RY, RZ, RXX, RYY, RZZ, random_unitary
+from qaravan.core.gates import (
+    CNOT,
+    H,
+    Gate,
+    MatrixGate,
+    RX,
+    RY,
+    RZ,
+    RXX,
+    RYY,
+    RZZ,
+    random_unitary,
+)
 
 
 def brickwall_skeleton(Lx: int, Ly: int = 1) -> list[list[int]]:
@@ -41,7 +53,11 @@ def two_local_circuit(skeleton: list[list[int]], seed: int | None = None) -> Cir
     """
     rng = np.random.default_rng(seed)
     gates = [
-        MatrixGate(f"U{i}", indices, random_unitary(len(indices), seed=int(rng.integers(2**31))))
+        MatrixGate(
+            f"U{i}",
+            indices,
+            random_unitary(len(indices), seed=int(rng.integers(2**31))),
+        )
         for i, indices in enumerate(skeleton)
     ]
     n = max(idx for pair in skeleton for idx in pair) + 1
@@ -64,6 +80,22 @@ def ghz_circuit(n: int) -> Circuit:
     """H(0) followed by CNOT(i, i+1) for i in 0..n-2."""
     gates: list[Gate] = [H(0)] + [CNOT([i, i + 1]) for i in range(n - 1)]
     return Circuit(gates, num_sites=n)
+
+
+def bell_basis_circuit(a: int, b: int, num_sites: int) -> Circuit:
+    """CNOT(a→b) then H(a); pre-rotation before Bell-basis measurement of qubits a, b."""
+    return Circuit([CNOT([a, b]), H(a)], num_sites=num_sites)
+
+
+def ghz_cluster_prep_circuit(cluster_sites: list[int], num_sites: int) -> Circuit:
+    """GHZ state on cluster_sites in a num_sites-qubit register.
+
+    H(cluster_sites[0]), CNOT(cluster_sites[0], s) for s in cluster_sites[1:].
+    Generalises ghz_circuit to offset or non-contiguous sites.
+    """
+    root = cluster_sites[0]
+    gates: list[Gate] = [H(root)] + [CNOT([root, s]) for s in cluster_sites[1:]]
+    return Circuit(gates, num_sites=num_sites)
 
 
 def rx_layer(

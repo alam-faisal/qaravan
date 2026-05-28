@@ -56,7 +56,7 @@ def decoder(outcome, sv, round) -> Circuit:
   return Circuit() 
 
 for round in range(n_rounds): 
-  outcome, sv = sv.measure_and_collapse(meas_sites)
+  sv, outcome = sv.measure_and_collapse(meas_sites)
   circ = decoder(outcome, sv, round)
   sv = StatevectorSimulator(circ, sv).run()
 ```

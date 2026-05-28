@@ -88,11 +88,7 @@ def bell_basis_circuit(a: int, b: int, num_sites: int) -> Circuit:
 
 
 def ghz_cluster_prep_circuit(cluster_sites: list[int], num_sites: int) -> Circuit:
-    """GHZ state on cluster_sites in a num_sites-qubit register.
-
-    H(cluster_sites[0]), CNOT(cluster_sites[0], s) for s in cluster_sites[1:].
-    Generalises ghz_circuit to offset or non-contiguous sites.
-    """
+    """Returns a circuit which prepars a GHZ on cluster_sites and zeros elsewhere"""
     root = cluster_sites[0]
     gates: list[Gate] = [H(root)] + [CNOT([root, s]) for s in cluster_sites[1:]]
     return Circuit(gates, num_sites=num_sites)

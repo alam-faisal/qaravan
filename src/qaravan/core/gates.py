@@ -12,10 +12,7 @@ from qaravan.core.base import Gate
 
 
 class MatrixGate(Gate):
-    """Concrete Gate with a fixed matrix stored at construction.
-
-    Use for ad-hoc gates: MatrixGate("U", [0, 1], some_4x4).
-    """
+    """Concrete Gate with a fixed matrix stored at construction"""
 
     def __init__(
         self,
@@ -38,7 +35,7 @@ class MatrixGate(Gate):
 
 
 class ParametricGate(Gate, ABC):
-    """Abstract gate whose matrix is computed from continuous parameters.
+    """Abstract gate whose matrix is computed from parameters.
 
     Subclasses implement _build_matrix(). params is a tuple of floats.
     dagger() negates all params — correct for all exp(-i θ P) rotation gates.

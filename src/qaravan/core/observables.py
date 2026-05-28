@@ -15,7 +15,6 @@ PAULI_MATRICES: dict[str, np.ndarray] = {
 
 class PauliString(Observable):
     """Weighted tensor product of single-qubit Paulis, e.g. PauliString("XZI", coeff=0.5).
-
     Indices are [0, ..., len(string)-1]. Accepts upper or lower case.
     """
 
@@ -114,7 +113,7 @@ class LocalOp(Observable):
     """Generic local Hermitian operator on specified sites.
 
     matrix is returned as-is (no embedding). Backends use obs.indices to
-    embed it into the full Hilbert space.
+    figure out how to contract
     """
 
     def __init__(self, mat: np.ndarray, indices: int | list[int]):

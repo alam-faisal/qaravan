@@ -207,8 +207,6 @@ class Statevector(State):
                 arr[0] = 1.0
                 self._tensor = arr.reshape([local_dim] * num_sites)
 
-    # ------------------------------------------------------------------ ABC
-
     @property
     def default_simulator(self) -> type[Simulator]:
         return StatevectorSimulator
@@ -260,8 +258,6 @@ class Statevector(State):
         return partial_overlap(
             self.to_array(), other.to_array(), local_dim=self.local_dim, skip=skip
         )
-
-    # ------------------------------------------------------------------ Extra public
 
     def rdm(self, sites: list[int]) -> np.ndarray:
         """Reduced density matrix for sites; (local_dim**|sites|, local_dim**|sites|)."""

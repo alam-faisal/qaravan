@@ -1,9 +1,8 @@
-"""Tests for Circuit.bind/num_params and circuit generation functions."""
+"""Tests for Circuit.bind/num_params, construct_layers, and circuit generation functions."""
 
 import numpy as np
 import pytest
 
-from qaravan.core.circuits import Circuit
 from qaravan.applications.circuit_library import (
     ghz_circuit,
     nn_pairs,
@@ -13,10 +12,193 @@ from qaravan.applications.circuit_library import (
     rxx_layer,
     ryy_layer,
     rzz_layer,
+    two_local_circuit,
 )
-from qaravan.core.gates import CNOT, H, RX, RY, RXX, RYY, RZZ
+from qaravan.backends.statevector import Statevector
+from qaravan.core.circuits import Circuit
+from qaravan.core.gates import CNOT, H, RX, RY, RXX, RYY, RZZ, X, Z
 
 H_MATRIX = np.array([[1, 1], [1, -1]]) / np.sqrt(2)
+INV_SQRT2 = 1.0 / np.sqrt(2)
+
+
+# ---------------------------------------------------------------------------
+# construct_layers — structural tests
+# ---------------------------------------------------------------------------
+
+
+def test_construct_layers_empty():
+    """Empty circuit → empty layer list."""
+    circ = Circuit([], num_sites=4)
+    circ.construct_layers()
+    assert circ.layers == []
+
+
+def test_construct_layers_single_gate():
+    """Single gate → one layer containing that gate."""
+    circ = Circuit([H(0)], num_sites=2)
+    circ.construct_layers()
+    assert len(circ.layers) == 1
+    assert len(circ.layers[0]) == 1
+
+
+def test_construct_layers_fully_disjoint_packs_into_one_layer():
+    """Three gates on disjoint sites → all in one layer."""
+    circ = Circuit([H(0), H(2), H(4)], num_sites=6)
+    circ.construct_layers()
+    assert len(circ.layers) == 1
+    assert len(circ.layers[0]) == 3
+
+
+def test_construct_layers_same_site_gates_are_sequential():
+    """Three gates on the same site → three separate layers."""
+    circ = Circuit([H(0), X(0), Z(0)], num_sites=1)
+    circ.construct_layers()
+    assert len(circ.layers) == 3
+
+
+def test_construct_layers_chain_topology():
+    """H(0), CNOT(0→1), CNOT(1→2) must occupy three layers, not two.
+
+    Regression test for the bug where CNOT([1,2]) was placed in layer 0 alongside
+    H([0]) because they don't share sites, ignoring the sequential dependency
+    through CNOT([0,1]).
+    """
+    circ = Circuit([H(0), CNOT([0, 1]), CNOT([1, 2])], num_sites=3)
+    circ.construct_layers()
+    assert len(circ.layers) == 3
+    assert circ.layers[0][0].name == "H"
+    assert circ.layers[1][0].indices == [0, 1]
+    assert circ.layers[2][0].indices == [1, 2]
+
+
+def test_construct_layers_star_topology():
+    """H(0), CNOT(0,1), CNOT(0,2): root 0 is touched every gate → 3 sequential layers."""
+    circ = Circuit([H(0), CNOT([0, 1]), CNOT([0, 2])], num_sites=3)
+    circ.construct_layers()
+    assert len(circ.layers) == 3
+    assert circ.layers[0][0].name == "H"
+    assert circ.layers[1][0].indices == [0, 1]
+    assert circ.layers[2][0].indices == [0, 2]
+
+
+def test_construct_layers_brickwall_4site():
+    """Standard brickwall (0,1),(2,3),(1,2),(3,4) packs into exactly 2 layers."""
+    skel = [[0, 1], [2, 3], [1, 2], [3, 4]]
+    circ = two_local_circuit(skel, seed=0)
+    circ.construct_layers()
+    assert len(circ.layers) == 2
+    layer0_idx = sorted(tuple(g.indices) for g in circ.layers[0])
+    layer1_idx = sorted(tuple(g.indices) for g in circ.layers[1])
+    assert layer0_idx == [(0, 1), (2, 3)]
+    assert layer1_idx == [(1, 2), (3, 4)]
+
+
+def test_construct_layers_transitive_dependency():
+    """A→{0}, B→{0,1}, C→{1,2}: C must land in layer 2, not layer 0.
+
+    A and C share no sites, but C has a transitive dependency on A through B.
+    """
+    circ = Circuit([H(0), CNOT([0, 1]), CNOT([1, 2])], num_sites=3)
+    circ.construct_layers()
+    assert len(circ.layers) == 3
+    # CNOT([1,2]) must be in the last layer
+    assert circ.layers[-1][0].indices == [1, 2]
+
+
+def test_construct_layers_two_independent_chains_interleave():
+    """Two independent 3-deep chains can be packed into depth 3, not 6."""
+    gates = [H(0), H(3), CNOT([0, 1]), CNOT([3, 4]), CNOT([1, 2]), CNOT([4, 5])]
+    circ = Circuit(gates, num_sites=6)
+    circ.construct_layers()
+    assert len(circ.layers) == 3
+    assert len(circ.layers[0]) == 2  # H(0), H(3)
+    assert len(circ.layers[1]) == 2  # CNOT(0→1), CNOT(3→4)
+    assert len(circ.layers[2]) == 2  # CNOT(1→2), CNOT(4→5)
+
+
+def test_construct_layers_idempotent():
+    """Calling construct_layers twice produces the same layer structure."""
+    circ = Circuit([H(0), CNOT([0, 1]), CNOT([1, 2])], num_sites=3)
+    circ.construct_layers()
+    first = [[g.indices for g in layer] for layer in circ.layers]
+    circ.construct_layers()
+    second = [[g.indices for g in layer] for layer in circ.layers]
+    assert first == second
+
+
+def test_construct_layers_no_empty_layers():
+    """No layer should ever be empty."""
+    cases = [
+        [H(0), CNOT([0, 1]), CNOT([1, 2])],
+        [H(0), H(2), CNOT([0, 1])],
+        [H(0), H(1), H(2), H(3)],
+        [H(0), X(0), Z(0), H(1)],
+    ]
+    for gates_list in cases:
+        circ = Circuit(gates_list, num_sites=4)
+        circ.construct_layers()
+        assert all(len(layer) > 0 for layer in circ.layers)
+
+
+def test_construct_layers_preserves_gate_order_within_layer():
+    """Gates assigned to the same layer keep their original left-to-right order."""
+    circ = Circuit([H(0), H(2), H(4)], num_sites=6)
+    circ.construct_layers()
+    indices = [g.indices[0] for g in circ.layers[0]]
+    assert indices == [0, 2, 4]
+
+
+def test_construct_layers_all_gates_present_exactly_once():
+    """Every gate appears exactly once across all layers (no duplicates, no drops)."""
+    gates = [H(0), CNOT([0, 1]), H(2), CNOT([1, 2])]
+    circ = Circuit(gates, num_sites=3)
+    circ.construct_layers()
+    flat = [g for layer in circ.layers for g in layer]
+    assert len(flat) == 4
+    for g in circ.gates:
+        assert g in flat  # same object, not a copy
+
+
+def test_construct_layers_non_contiguous_sites():
+    """Gates on non-contiguous or reversed site indices get correct ordering."""
+    # CNOT([2,0]) touches {0,2}; CNOT([0,1]) touches {0,1} — share site 0 → sequential
+    circ = Circuit([CNOT([2, 0]), CNOT([0, 1])], num_sites=3)
+    circ.construct_layers()
+    assert len(circ.layers) == 2
+
+
+# ---------------------------------------------------------------------------
+# construct_layers — physics correctness
+# ---------------------------------------------------------------------------
+
+
+def test_construct_layers_chain_ghz_correct_state():
+    """Chain GHZ via StatevectorSimulator produces (|000⟩+|111⟩)/√2 after fix.
+
+    Before the fix, CNOT([1,2]) was reordered to layer 0, giving (|000⟩+|110⟩)/√2.
+    This is the direct physics regression test.
+    """
+    circ = Circuit([H(0), CNOT([0, 1]), CNOT([1, 2])], num_sites=3)
+    sv = Statevector(bitstring="000").apply(circ)
+    arr = sv.to_array()
+    assert np.isclose(arr[0], INV_SQRT2, atol=1e-10)  # |000⟩ amplitude
+    assert np.isclose(arr[7], INV_SQRT2, atol=1e-10)  # |111⟩ amplitude
+    assert np.isclose(
+        arr[6], 0.0, atol=1e-10
+    )  # |110⟩ must be zero (was non-zero before fix)
+
+
+def test_construct_layers_deep_chain_correct_state():
+    """5-qubit chain GHZ: H(0), CNOT(0,1), ..., CNOT(3,4) → (|00000⟩+|11111⟩)/√2."""
+    n = 5
+    gates = [H(0)] + [CNOT([i, i + 1]) for i in range(n - 1)]
+    circ = Circuit(gates, num_sites=n)
+    sv = Statevector(bitstring="0" * n).apply(circ)
+    arr = sv.to_array()
+    assert np.isclose(arr[0], INV_SQRT2, atol=1e-10)  # |00000⟩
+    assert np.isclose(arr[2**n - 1], INV_SQRT2, atol=1e-10)  # |11111⟩
+    assert np.isclose(np.sum(np.abs(arr) ** 2), 1.0, atol=1e-10)
 
 
 # ---------------------------------------------------------------------------

@@ -29,10 +29,8 @@ class IncompatibleStateError(TypeError):
 
 
 class Gate(ABC):
-    """Named quantum operation with site indices.
-
+    """Backends build their preferred representation of each Gate
     time: gate duration; only meaningful for noise-aware backends.
-    MatrixGate and ParametricGate (concrete subclasses) live in core/gates.py.
     """
 
     def __init__(
@@ -72,7 +70,7 @@ class Gate(ABC):
 
 
 class State(ABC):
-    """Evolving data structure owned by a backend."""
+    """The data structure being evolved during a simulation."""
 
     @property
     @abstractmethod
@@ -80,10 +78,12 @@ class State(ABC):
         """Simulator class used by apply(). Each concrete State subclass sets this."""
         ...
 
+    def apply(self, circuit: Circuit, **kwargs) -> State:
+        """Evolve self under circuit using the default simulator."""
+        return self.default_simulator(circuit, self, **kwargs).run()
+
     @abstractmethod
-    def expectation(self, observable: Observable) -> complex:
-        """Expected value of observable in this state."""
-        ...
+    def expectation(self, observable: Observable) -> complex: ...
 
     @abstractmethod
     def sample(self, num_shots: int) -> np.ndarray:
@@ -98,9 +98,8 @@ class State(ABC):
 
     def partial_overlap(self, other: State, skip: list[int]) -> np.ndarray:
         """Partial ⟨self|other⟩ keeping sites in skip uncontracted.
-
         Returns (local_dim^|skip| × local_dim^|skip|) matrix.
-        skip=[] returns (1,1) full overlap; result[i,j] = ⟨other[j-block]|self[i-block]⟩.
+        skip=[] returns (1,1) full overlap;
         """
         raise NotImplementedError(
             f"{type(self).__name__} does not implement partial_overlap"
@@ -117,10 +116,6 @@ class State(ABC):
     def __str__(self) -> str:
         return repr(self)
 
-    def apply(self, circuit: Circuit, **kwargs) -> State:
-        """Evolve self under circuit using the default simulator."""
-        return self.default_simulator(circuit, self, **kwargs).run()
-
 
 # ---------------------------------------------------------------------------
 # Observable (ABC)
@@ -128,12 +123,7 @@ class State(ABC):
 
 
 class Observable(ABC):
-    """Descriptor for a measurable quantity: name, site indices, and local matrix.
-
-    Backends build their preferred representation from obs.matrix and obs.indices.
-    State.expectation() dispatches on the concrete subclass — same pattern as
-    Simulator dispatching on Gate.
-    """
+    """Backends build their preferred representation of each Observable"""
 
     def __init__(self, name: str, indices: int | list[int]):
         self.name = name
@@ -142,7 +132,7 @@ class Observable(ABC):
     @property
     @abstractmethod
     def matrix(self) -> np.ndarray:
-        """Hermitian matrix for this observable (local or full, depending on subclass)."""
+        """Hermitian matrix for this observable"""
         ...
 
     def __str__(self) -> str:
@@ -155,7 +145,7 @@ class Observable(ABC):
 
 
 class NoiseModel(ABC):
-    """Base noise model. Subclasses implement get_kraus and optionally sample_error."""
+    """Backends will either use get_superop or sample_error"""
 
     @property
     @abstractmethod

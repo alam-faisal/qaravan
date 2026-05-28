@@ -13,10 +13,10 @@ from qaravan.applications.circuit_library import (
     two_local_circuit,
 )
 from qaravan.applications.run_context import RunContext
-from qaravan.applications.compilation import (
-    environment_state_prep,
+from qaravan.applications.compilation import environment_state_prep
+from qaravan.applications.dynamic_circuit_library import (
     build_ghz_decoder,
-    ghz_via_fusion,
+    ghz_fusion_dqc,
 )
 
 __all__ = [
@@ -35,5 +35,5 @@ __all__ = [
     "RunContext",
     "environment_state_prep",
     "build_ghz_decoder",
-    "ghz_via_fusion",
+    "ghz_fusion_dqc",
 ]

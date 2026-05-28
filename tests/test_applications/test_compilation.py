@@ -1,14 +1,13 @@
-"""Tests for environment_state_prep and ghz_via_fusion in applications/compilation.py."""
+"""Tests for environment_state_prep in applications/compilation.py."""
 
 import numpy as np
 import pytest
 
 from qaravan.applications.circuit_library import (
     brickwall_skeleton,
-    ghz_cluster_prep_circuit,
     two_local_circuit,
 )
-from qaravan.applications.compilation import environment_state_prep, ghz_via_fusion
+from qaravan.applications.compilation import environment_state_prep
 from qaravan.applications.run_context import RunContext
 from qaravan.backends.statevector import Statevector
 from qaravan.core.gates import is_unitary
@@ -173,118 +172,3 @@ def test_environment_state_prep_stops_at_plateau():
     n_gates = len(skel)
     max_possible = 1 + 1000 * 2 * (n_gates - 1)
     assert len(cost_list) < max_possible
-
-
-# ---------------------------------------------------------------------------
-# ghz_via_fusion — input validation
-# ---------------------------------------------------------------------------
-
-INV_SQRT2 = 1.0 / np.sqrt(2)
-
-
-def test_ghz_via_fusion_raises_for_small_cluster_size():
-    """cluster_size <= 2 raises ValueError (degenerate case, formula undefined)."""
-    with pytest.raises(ValueError):
-        ghz_via_fusion(4, cluster_size=2)
-
-
-def test_ghz_via_fusion_raises_for_non_integer_num_clusters():
-    """(n-2) not divisible by (cluster_size-2) raises ValueError."""
-    with pytest.raises(ValueError):
-        ghz_via_fusion(5, cluster_size=4)  # num_clusters = (5-2)/(4-2) = 1.5
-
-
-# ---------------------------------------------------------------------------
-# ghz_via_fusion — output structure
-# ---------------------------------------------------------------------------
-
-
-def test_ghz_via_fusion_returns_correct_outcome_length():
-    """len(full_outcome) == 2*(num_clusters-1).
-
-    Catches: loop-bounds bug (off-by-one in boundary range).
-    """
-    for n, cluster_size in [(4, 3), (6, 3)]:
-        _, full_outcome = ghz_via_fusion(n, cluster_size)
-        num_clusters = (n - 2) // (cluster_size - 2)
-        assert len(full_outcome) == 2 * (num_clusters - 1)
-
-
-# ---------------------------------------------------------------------------
-# ghz_via_fusion — physics correctness (4-qubit)
-# ---------------------------------------------------------------------------
-
-
-def _ghz_fidelity(sv: Statevector, fusion_sites: list[int], full_outcome: str) -> float:
-    """F = |⟨GHZ_n|ψ_kept⟩|² using drop_sites to extract the pure kept-qubit state."""
-    pure_kept = sv.drop_sites(fusion_sites, full_outcome)
-    n = pure_kept.num_sites
-    ghz = np.zeros(2**n)
-    ghz[0] = ghz[-1] = INV_SQRT2
-    return float(abs(np.dot(ghz, pure_kept.to_array())) ** 2)
-
-
-def test_ghz_via_fusion_4qubit_always_succeeds():
-    """ghz_via_fusion(4, cluster_size=3): 20 runs, fidelity with |GHZ_4⟩ on kept sites = 1.0.
-
-    Fusion sites: {2,3}. Kept: {0,1,4,5}.
-    Catches: wrong correction for any of the 4 outcomes.
-    Does NOT catch: bugs that only manifest for specific random seeds.
-    """
-    for _ in range(20):
-        sv, full_outcome = ghz_via_fusion(4, cluster_size=3)
-        assert np.isclose(_ghz_fidelity(sv, [2, 3], full_outcome), 1.0, atol=1e-10)
-
-
-def test_ghz_via_fusion_4qubit_all_outcomes_covered():
-    """100 runs of ghz_via_fusion(4, cluster_size=3) must yield all 4 outcome strings.
-
-    Catches: correction logic that silently breaks for specific outcomes.
-    """
-    seen: set[str] = set()
-    for _ in range(100):
-        _, full_outcome = ghz_via_fusion(4, cluster_size=3)
-        seen.add(full_outcome)
-    assert seen == {"00", "01", "10", "11"}
-
-
-# ---------------------------------------------------------------------------
-# ghz_via_fusion — physics correctness (6-qubit, multi-boundary)
-# ---------------------------------------------------------------------------
-
-
-def test_ghz_via_fusion_6qubit_cluster_size_3():
-    """n=6, cluster_size=3: 4 clusters, 3 fusions; 20 runs, fidelity 1.0 on kept sites.
-
-    Fusion sites: {2,3,5,6,8,9}. Kept: {0,1,4,7,10,11}.
-    Catches: decoder error for multi-boundary case.
-    """
-    for _ in range(20):
-        sv, full_outcome = ghz_via_fusion(6, cluster_size=3)
-        assert len(full_outcome) == 6
-        assert np.isclose(
-            _ghz_fidelity(sv, [2, 3, 5, 6, 8, 9], full_outcome), 1.0, atol=1e-10
-        )
-
-
-# ---------------------------------------------------------------------------
-# ghz_via_fusion — cluster independence (pre-fusion)
-# ---------------------------------------------------------------------------
-
-
-def test_ghz_cluster_prep_circuits_are_independent():
-    """Before fusion: each cluster's rdm is the pure |GHZ_3⟩ state (no cross-entanglement).
-
-    Catches: cross-cluster entanglement in the prep step (would give mixed rdm per cluster).
-    """
-    init = Statevector(bitstring="000000")
-    sv = init.apply(
-        ghz_cluster_prep_circuit([0, 1, 2], 6) + ghz_cluster_prep_circuit([3, 4, 5], 6)
-    )
-
-    ghz3 = np.zeros(8)
-    ghz3[0] = ghz3[7] = INV_SQRT2
-    expected_rdm = np.outer(ghz3, ghz3)
-
-    np.testing.assert_allclose(sv.rdm([0, 1, 2]), expected_rdm, atol=1e-10)
-    np.testing.assert_allclose(sv.rdm([3, 4, 5]), expected_rdm, atol=1e-10)

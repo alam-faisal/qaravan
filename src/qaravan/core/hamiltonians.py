@@ -12,6 +12,7 @@ from qaravan.core.circuit import Circuit
 from qaravan.core.gates import MatrixGate
 from qaravan.core.lattices import LinearLattice
 from qaravan.core.observables import PauliString, PauliSum
+from qaravan.backends.statevector import Statevector
 
 
 @dataclass
@@ -85,10 +86,8 @@ class Hamiltonian:
         """Full 2^n × 2^n Hamiltonian matrix."""
         return self.as_observable().matrix
 
-    def ground_state(self, method: str = "exact"):
+    def ground_state(self, method: str = "exact") -> Statevector:
         """Ground state via exact diagonalization (numpy.linalg.eigh). Returns Statevector."""
-        from qaravan.backends.statevector import Statevector
-
         evals, evecs = np.linalg.eigh(self.as_matrix())
         _ = evals  # ascending; evecs[:,0] is the ground state
         return Statevector(array=evecs[:, 0])
@@ -171,29 +170,43 @@ def _build_fh_terms(
     """
     L = num_fermions
 
-    onsite_local = PauliSum([
-        PauliString("II", U / 4 + mu),
-        PauliString("ZI", -U / 4 - mu / 2),
-        PauliString("IZ", -U / 4 - mu / 2),
-        PauliString("ZZ", U / 4),
-    ])
+    onsite_local = PauliSum(
+        [
+            PauliString("II", U / 4 + mu),
+            PauliString("ZI", -U / 4 - mu / 2),
+            PauliString("IZ", -U / 4 - mu / 2),
+            PauliString("ZZ", U / 4),
+        ]
+    )
 
     if ordering == "stacked":
         # Adjacent modes in each spin sector are adjacent in the register — string-free (weight-2).
         hopping_local = PauliSum([PauliString("XX", -t / 2), PauliString("YY", -t / 2)])
         up_bonds = [HamiltonianTerm([j, j + 1], hopping_local) for j in range(L - 1)]
-        down_bonds = [HamiltonianTerm([L + j, L + j + 1], hopping_local) for j in range(L - 1)]
+        down_bonds = [
+            HamiltonianTerm([L + j, L + j + 1], hopping_local) for j in range(L - 1)
+        ]
         onsite = [HamiltonianTerm([j, L + j], onsite_local) for j in range(L)]
 
     elif ordering == "interleaved":
         # Same-spin adjacent sites are 2 apart in mode ordering, leaving one residual Z (weight-3).
-        hopping_local = PauliSum([PauliString("XZX", -t / 2), PauliString("YZY", -t / 2)])
-        up_bonds = [HamiltonianTerm([2 * j, 2 * j + 1, 2 * j + 2], hopping_local) for j in range(L - 1)]
-        down_bonds = [HamiltonianTerm([2 * j + 1, 2 * j + 2, 2 * j + 3], hopping_local) for j in range(L - 1)]
+        hopping_local = PauliSum(
+            [PauliString("XZX", -t / 2), PauliString("YZY", -t / 2)]
+        )
+        up_bonds = [
+            HamiltonianTerm([2 * j, 2 * j + 1, 2 * j + 2], hopping_local)
+            for j in range(L - 1)
+        ]
+        down_bonds = [
+            HamiltonianTerm([2 * j + 1, 2 * j + 2, 2 * j + 3], hopping_local)
+            for j in range(L - 1)
+        ]
         onsite = [HamiltonianTerm([2 * j, 2 * j + 1], onsite_local) for j in range(L)]
 
     else:
-        raise ValueError(f"Unknown ordering '{ordering}'; expected 'stacked' or 'interleaved'.")
+        raise ValueError(
+            f"Unknown ordering '{ordering}'; expected 'stacked' or 'interleaved'."
+        )
 
     trotter_groups = [
         up_bonds[::2],
@@ -234,9 +247,8 @@ class FermiHubbard1D(Hamiltonian):
         self,
         n_electrons: int | None = None,
         method: str = "exact",
-    ) -> "Statevector":
+    ) -> Statevector:
         """Ground state via exact diag. n_electrons restricts to the fixed-N sector."""
-        from qaravan.backends.statevector import Statevector
 
         if n_electrons is None:
             return super().ground_state(method=method)

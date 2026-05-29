@@ -1,7 +1,6 @@
 """Tests for FermiHubbard1D with Jordan-Wigner encoding."""
 
 import numpy as np
-import pytest
 from scipy.linalg import expm
 
 from qaravan.core.hamiltonians import FermiHubbard1D
@@ -14,7 +13,11 @@ from qaravan.core.hamiltonians import FermiHubbard1D
 
 def test_fh_as_matrix_is_hermitian_stacked():
     rng = np.random.default_rng(0)
-    t, U, mu = float(rng.uniform(0.5, 2.0)), float(rng.uniform(0, 3.0)), float(rng.uniform(-0.5, 0.5))
+    t, U, mu = (
+        float(rng.uniform(0.5, 2.0)),
+        float(rng.uniform(0, 3.0)),
+        float(rng.uniform(-0.5, 0.5)),
+    )
     fh = FermiHubbard1D(3, t=t, U=U, mu=mu, ordering="stacked")
     H = fh.as_matrix()
     assert np.allclose(H, H.conj().T, atol=1e-12)
@@ -22,7 +25,11 @@ def test_fh_as_matrix_is_hermitian_stacked():
 
 def test_fh_as_matrix_is_hermitian_interleaved():
     rng = np.random.default_rng(1)
-    t, U, mu = float(rng.uniform(0.5, 2.0)), float(rng.uniform(0, 3.0)), float(rng.uniform(-0.5, 0.5))
+    t, U, mu = (
+        float(rng.uniform(0.5, 2.0)),
+        float(rng.uniform(0, 3.0)),
+        float(rng.uniform(-0.5, 0.5)),
+    )
     fh = FermiHubbard1D(3, t=t, U=U, mu=mu, ordering="interleaved")
     H = fh.as_matrix()
     assert np.allclose(H, H.conj().T, atol=1e-12)
@@ -37,7 +44,9 @@ def test_fh_encoding_agreement():
     """Both orderings must give the same full spectrum for the same physical params."""
     for num_fermions in [3, 4]:
         fh_s = FermiHubbard1D(num_fermions, t=1.0, U=2.0, mu=0.5, ordering="stacked")
-        fh_i = FermiHubbard1D(num_fermions, t=1.0, U=2.0, mu=0.5, ordering="interleaved")
+        fh_i = FermiHubbard1D(
+            num_fermions, t=1.0, U=2.0, mu=0.5, ordering="interleaved"
+        )
         E_s = np.linalg.eigvalsh(fh_s.as_matrix())[0]
         E_i = np.linalg.eigvalsh(fh_i.as_matrix())[0]
         assert abs(E_s - E_i) < 1e-10, (
@@ -75,12 +84,17 @@ def test_fh_free_fermion_ground_energy():
     num_fermions = 4
     t = 1.0
     # Open-chain tight-binding: ε_k = -2t cos(πk/(L+1)), k=1,...,L
-    tb_evals = sorted(-2 * t * np.cos(np.pi * k / (num_fermions + 1)) for k in range(1, num_fermions + 1))
+    tb_evals = sorted(
+        -2 * t * np.cos(np.pi * k / (num_fermions + 1))
+        for k in range(1, num_fermions + 1)
+    )
     n_fill = num_fermions // 2  # electrons per spin at half-filling
     expected = 2 * sum(tb_evals[:n_fill])
 
     for ordering in ["stacked", "interleaved"]:
-        fh = FermiHubbard1D(num_fermions=num_fermions, t=t, U=0.0, mu=0.0, ordering=ordering)
+        fh = FermiHubbard1D(
+            num_fermions=num_fermions, t=t, U=0.0, mu=0.0, ordering=ordering
+        )
         E0 = np.linalg.eigvalsh(fh.as_matrix())[0]
         assert abs(E0 - expected) < 1e-8, (
             f"ordering={ordering}: got {E0:.8f}, expected {expected:.8f}"
@@ -92,7 +106,9 @@ def test_fh_free_fermion_stacked_spin_decoupling():
     The reduced density matrix of qubits L..2L-1 (down sector) must be pure: Tr[ρ²] = 1.
     """
     num_fermions = 4
-    fh = FermiHubbard1D(num_fermions=num_fermions, t=1.0, U=0.0, mu=0.0, ordering="stacked")
+    fh = FermiHubbard1D(
+        num_fermions=num_fermions, t=1.0, U=0.0, mu=0.0, ordering="stacked"
+    )
     sv = fh.ground_state()
     down_sites = list(range(num_fermions, 2 * num_fermions))
     rho = sv.rdm(down_sites)
@@ -114,7 +130,9 @@ def test_fh_electron_number_conservation():
     n_op = np.diag([float(bin(i).count("1")) for i in range(2**num_qubits)])
 
     for ordering in ["stacked", "interleaved"]:
-        fh = FermiHubbard1D(num_fermions=num_fermions, t=1.0, U=2.0, mu=0.0, ordering=ordering)
+        fh = FermiHubbard1D(
+            num_fermions=num_fermions, t=1.0, U=2.0, mu=0.0, ordering=ordering
+        )
         for n_elec in [2, 3, 4]:
             sv = fh.ground_state(n_electrons=n_elec)
             arr = sv.to_array()
@@ -131,7 +149,9 @@ def test_fh_electron_number_conservation():
 
 def test_fh_trotter_vs_propagator_stacked():
     num_fermions, dt = 3, 0.01
-    fh = FermiHubbard1D(num_fermions=num_fermions, t=1.0, U=2.0, mu=0.0, ordering="stacked")
+    fh = FermiHubbard1D(
+        num_fermions=num_fermions, t=1.0, U=2.0, mu=0.0, ordering="stacked"
+    )
     circ = fh.trotter_circuit(dt, order=2)
     trotter_mat = circ.to_matrix()
     exact_mat = expm(-1j * dt * fh.as_matrix())
@@ -141,7 +161,9 @@ def test_fh_trotter_vs_propagator_stacked():
 
 def test_fh_trotter_vs_propagator_interleaved():
     num_fermions, dt = 3, 0.01
-    fh = FermiHubbard1D(num_fermions=num_fermions, t=1.0, U=2.0, mu=0.0, ordering="interleaved")
+    fh = FermiHubbard1D(
+        num_fermions=num_fermions, t=1.0, U=2.0, mu=0.0, ordering="interleaved"
+    )
     circ = fh.trotter_circuit(dt, order=2)
     trotter_mat = circ.to_matrix()
     exact_mat = expm(-1j * dt * fh.as_matrix())
@@ -154,12 +176,16 @@ def test_fh_trotter_error_scaling_order1():
     num_fermions = 3
     dt_values = [0.1, 0.05, 0.02, 0.01]
     for ordering in ["stacked", "interleaved"]:
-        fh = FermiHubbard1D(num_fermions=num_fermions, t=1.0, U=2.0, mu=0.0, ordering=ordering)
+        fh = FermiHubbard1D(
+            num_fermions=num_fermions, t=1.0, U=2.0, mu=0.0, ordering=ordering
+        )
         errors = []
         for dt in dt_values:
             circ = fh.trotter_circuit(dt, order=1)
             errors.append(
-                np.linalg.norm(circ.to_matrix() - expm(-1j * dt * fh.as_matrix()), ord="fro")
+                np.linalg.norm(
+                    circ.to_matrix() - expm(-1j * dt * fh.as_matrix()), ord="fro"
+                )
             )
         slope = np.polyfit(np.log(dt_values), np.log(errors), 1)[0]
         assert 1.8 < slope < 2.2, (

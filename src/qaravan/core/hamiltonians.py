@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.linalg import expm
 
+from qaravan.core.base import Observable
 from qaravan.core.circuit import Circuit
 from qaravan.core.gates import MatrixGate
 from qaravan.core.lattices import LinearLattice
@@ -15,7 +16,7 @@ from qaravan.core.observables import PauliString, PauliSum
 
 @dataclass
 class HamiltonianTerm:
-    """A local interaction: a PauliSum on len(sites) qubits, pinned to specific sites in the full system.
+    """A local interaction: an Observable on len(sites) qubits, pinned to specific sites in the full system.
 
     Kept separate from PauliString/PauliSum deliberately. PauliString/PauliSum are
     full-system observables (string length == system size) used for expectation values,
@@ -24,24 +25,34 @@ class HamiltonianTerm:
     patching _expectation_pauli_string — complicating a clean, well-tested abstraction
     for a use case (Hamiltonian construction) that is better served by a dedicated type.
 
-    local_pauli_sum lives in the SMALL space of the term itself (1- or 2-qubit).
+    local_obs lives in the SMALL space of the term itself (1- or 2-qubit).
     sites records where in the full system it acts — needed for Trotter gate placement
     and for I-padding when building the global PauliSum in as_observable().
+    local_obs must be a PauliString or PauliSum for as_observable() to work.
     """
 
     sites: list[int]
-    local_pauli_sum: PauliSum
+    local_obs: Observable
 
 
-def _embed_pauli_string(ps: PauliString, sites: list[int], n: int) -> PauliString:
-    """Embed a local PauliString into the n-qubit full-system space by padding with I's.
+def _embed_local_obs(obs: Observable, sites: list[int], n: int) -> list[PauliString]:
+    """Embed a local PauliString or PauliSum into the n-qubit space by I-padding.
 
-    sites must match len(ps.string). E.g. sites=[1,2], "ZZ", n=4 → "IZZI".
+    sites must match the number of qubits in obs. E.g. PauliString("ZZ"), sites=[1,2], n=4 → ["IZZI"].
     """
-    chars = ["I"] * n
-    for site, op in zip(sites, ps.string):
-        chars[site] = op
-    return PauliString("".join(chars), ps.coeff)
+    if isinstance(obs, PauliSum):
+        embedded = []
+        for ps in obs.terms:
+            embedded.extend(_embed_local_obs(ps, sites, n))
+        return embedded
+    if isinstance(obs, PauliString):
+        chars = ["I"] * n
+        for site, op in zip(sites, obs.string):
+            chars[site] = op
+        return [PauliString("".join(chars), obs.coeff)]
+    raise TypeError(
+        f"local_obs must be PauliString or PauliSum; got {type(obs).__name__}"
+    )
 
 
 class Hamiltonian:
@@ -65,8 +76,9 @@ class Hamiltonian:
         """Embed all local terms into the full n-qubit space and sum."""
         embedded: list[PauliString] = []
         for term in self.terms:
-            for ps in term.local_pauli_sum.terms:
-                embedded.append(_embed_pauli_string(ps, term.sites, self.num_sites))
+            embedded.extend(
+                _embed_local_obs(term.local_obs, term.sites, self.num_sites)
+            )
         return PauliSum(embedded)
 
     def as_matrix(self) -> np.ndarray:
@@ -100,7 +112,7 @@ class Hamiltonian:
         groups = [g for g in self.trotter_groups if g]  # skip empty groups
 
         if order == 1:
-            gates = _trotter_layer(groups, dt)
+            gates = _trotter_order1(groups, dt)
         elif order == 2:
             gates = _trotter_order2(groups, dt)
         else:
@@ -109,12 +121,12 @@ class Hamiltonian:
         return Circuit(gates, num_sites=self.num_sites)
 
 
-def _trotter_layer(groups: list[list[HamiltonianTerm]], dt: float) -> list[MatrixGate]:
+def _trotter_order1(groups: list[list[HamiltonianTerm]], dt: float) -> list[MatrixGate]:
     """Apply each group once at step size dt."""
     gates: list[MatrixGate] = []
     for group in groups:
         for term in group:
-            mat = expm(-1j * dt * term.local_pauli_sum.matrix)
+            mat = expm(-1j * dt * term.local_obs.matrix)
             gates.append(MatrixGate("Trotter", term.sites, mat))
     return gates
 
@@ -129,16 +141,16 @@ def _trotter_order2(groups: list[list[HamiltonianTerm]], dt: float) -> list[Matr
     # forward half-steps: all but last group
     for group in groups[:-1]:
         for term in group:
-            mat = expm(-1j * half_dt * term.local_pauli_sum.matrix)
+            mat = expm(-1j * half_dt * term.local_obs.matrix)
             gates.append(MatrixGate("Trotter", term.sites, mat))
     # last group: full step
     for term in groups[-1]:
-        mat = expm(-1j * dt * term.local_pauli_sum.matrix)
+        mat = expm(-1j * dt * term.local_obs.matrix)
         gates.append(MatrixGate("Trotter", term.sites, mat))
     # backward half-steps: reverse of all but last group
     for group in reversed(groups[:-1]):
         for term in group:
-            mat = expm(-1j * half_dt * term.local_pauli_sum.matrix)
+            mat = expm(-1j * half_dt * term.local_obs.matrix)
             gates.append(MatrixGate("Trotter", term.sites, mat))
     return gates
 
@@ -168,12 +180,10 @@ class TFI(Hamiltonian):
 
         lattice = LinearLattice(n, periodic=periodic)
         bond_terms = [
-            HamiltonianTerm([i, j], PauliSum([PauliString("ZZ", -J)]))
+            HamiltonianTerm([i, j], PauliString("ZZ", -J))
             for i, j in lattice.nn_pairs()
         ]
-        field_terms = [
-            HamiltonianTerm([i], PauliSum([PauliString("X", -h)])) for i in range(n)
-        ]
+        field_terms = [HamiltonianTerm([i], PauliString("X", -h)) for i in range(n)]
 
         even_bonds = bond_terms[::2]
         odd_bonds = bond_terms[1::2]
@@ -217,9 +227,7 @@ class Heisenberg1D(Hamiltonian):
             )
             for i, j in lattice.nn_pairs()
         ]
-        field_terms = [
-            HamiltonianTerm([i], PauliSum([PauliString("Z", -h)])) for i in range(n)
-        ]
+        field_terms = [HamiltonianTerm([i], PauliString("Z", -h)) for i in range(n)]
 
         even_bonds = bond_terms[::2]
         odd_bonds = bond_terms[1::2]

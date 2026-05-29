@@ -7,35 +7,45 @@ from scipy.linalg import expm
 from qaravan.core.hamiltonians import (
     Heisenberg1D,
     TFI,
-    _embed_pauli_string,
+    _embed_local_obs,
 )
 from qaravan.core.observables import PauliString
 
 
 # ---------------------------------------------------------------------------
-# _embed_pauli_string
+# _embed_local_obs
 # ---------------------------------------------------------------------------
 
 
-def test_embed_pauli_string_interior_sites():
+def test_embed_local_obs_pauli_string_interior():
     ps = PauliString("ZZ", -1.0)
-    embedded = _embed_pauli_string(ps, [1, 2], 4)
+    [embedded] = _embed_local_obs(ps, [1, 2], 4)
     assert embedded.string == "IZZI"
     assert embedded.coeff == -1.0
 
 
-def test_embed_pauli_string_boundary_site():
+def test_embed_local_obs_pauli_string_boundary():
     ps = PauliString("X", -0.5)
-    embedded = _embed_pauli_string(ps, [0], 3)
+    [embedded] = _embed_local_obs(ps, [0], 3)
     assert embedded.string == "XII"
     assert embedded.coeff == -0.5
 
 
-def test_embed_pauli_string_last_site():
+def test_embed_local_obs_pauli_string_last_site():
     ps = PauliString("Z", 2.0)
-    embedded = _embed_pauli_string(ps, [3], 4)
+    [embedded] = _embed_local_obs(ps, [3], 4)
     assert embedded.string == "IIIZ"
     assert embedded.coeff == 2.0
+
+
+def test_embed_local_obs_pauli_sum():
+    from qaravan.core.observables import PauliSum
+
+    obs = PauliSum([PauliString("XX", 1.0), PauliString("YY", 1.0)])
+    result = _embed_local_obs(obs, [1, 2], 4)
+    assert len(result) == 2
+    assert result[0].string == "IXXI"
+    assert result[1].string == "IYYI"
 
 
 # ---------------------------------------------------------------------------

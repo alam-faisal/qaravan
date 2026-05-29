@@ -172,8 +172,7 @@ class TFI(Hamiltonian):
             for i, j in lattice.nn_pairs()
         ]
         field_terms = [
-            HamiltonianTerm([i], PauliSum([PauliString("X", -h)]))
-            for i in range(n)
+            HamiltonianTerm([i], PauliSum([PauliString("X", -h)])) for i in range(n)
         ]
 
         even_bonds = bond_terms[::2]
@@ -212,13 +211,14 @@ class Heisenberg1D(Hamiltonian):
         bond_terms = [
             HamiltonianTerm(
                 [i, j],
-                PauliSum([PauliString("XX", J), PauliString("YY", J), PauliString("ZZ", J)]),
+                PauliSum(
+                    [PauliString("XX", J), PauliString("YY", J), PauliString("ZZ", J)]
+                ),
             )
             for i, j in lattice.nn_pairs()
         ]
         field_terms = [
-            HamiltonianTerm([i], PauliSum([PauliString("Z", -h)]))
-            for i in range(n)
+            HamiltonianTerm([i], PauliSum([PauliString("Z", -h)])) for i in range(n)
         ]
 
         even_bonds = bond_terms[::2]

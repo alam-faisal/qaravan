@@ -5,12 +5,11 @@ import pytest
 from scipy.linalg import expm
 
 from qaravan.core.hamiltonians import (
-    HamiltonianTerm,
     Heisenberg1D,
     TFI,
     _embed_pauli_string,
 )
-from qaravan.core.observables import PauliString, PauliSum
+from qaravan.core.observables import PauliString
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +69,9 @@ def test_tfi_ground_state_energy_h0():
         sv = tfi.ground_state()
         energy = sv.expectation(tfi.as_observable()).real
         expected = -(n - 1)
-        assert abs(energy - expected) < 1e-9, f"n={n}: got {energy}, expected {expected}"
+        assert abs(energy - expected) < 1e-9, (
+            f"n={n}: got {energy}, expected {expected}"
+        )
 
 
 def test_tfi_ground_state_against_exact_diag():
@@ -114,7 +115,11 @@ def test_tfi_trotter_error_scaling_order1():
     errors = []
     for dt in dt_values:
         circ = tfi.trotter_circuit(dt, order=1)
-        errors.append(np.linalg.norm(circ.to_matrix() - expm(-1j * dt * tfi.as_matrix()), ord="fro"))
+        errors.append(
+            np.linalg.norm(
+                circ.to_matrix() - expm(-1j * dt * tfi.as_matrix()), ord="fro"
+            )
+        )
     slope = np.polyfit(np.log(dt_values), np.log(errors), 1)[0]
     assert 1.8 < slope < 2.2, f"Order-1 slope={slope:.3f} (expected ~2)"
 
@@ -127,7 +132,11 @@ def test_tfi_trotter_error_scaling_order2():
     errors = []
     for dt in dt_values:
         circ = tfi.trotter_circuit(dt, order=2)
-        errors.append(np.linalg.norm(circ.to_matrix() - expm(-1j * dt * tfi.as_matrix()), ord="fro"))
+        errors.append(
+            np.linalg.norm(
+                circ.to_matrix() - expm(-1j * dt * tfi.as_matrix()), ord="fro"
+            )
+        )
     slope = np.polyfit(np.log(dt_values), np.log(errors), 1)[0]
     assert 2.7 < slope < 3.3, f"Order-2 slope={slope:.3f} (expected ~3)"
 
@@ -144,7 +153,9 @@ def test_heisenberg_ground_state_energy_j0():
         sv = heis.ground_state()
         energy = sv.expectation(heis.as_observable()).real
         expected = -float(n)
-        assert abs(energy - expected) < 1e-9, f"n={n}: got {energy}, expected {expected}"
+        assert abs(energy - expected) < 1e-9, (
+            f"n={n}: got {energy}, expected {expected}"
+        )
 
 
 def test_heisenberg_ground_state_against_exact_diag():
@@ -185,4 +196,6 @@ def test_heisenberg_xx_model_ground_energy():
         evals = np.linalg.eigvalsh(heis.as_matrix())
         sv = heis.ground_state()
         energy = sv.expectation(heis.as_observable()).real
-        assert abs(energy - evals[0]) < 1e-9, f"n={n}: got {energy}, expected {evals[0]}"
+        assert abs(energy - evals[0]) < 1e-9, (
+            f"n={n}: got {energy}, expected {evals[0]}"
+        )

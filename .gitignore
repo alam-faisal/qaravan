@@ -20,3 +20,11 @@ notebooks/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Private working files (not for public repo)
+TODO.md
+FEATURES.md
+DAY.md
+CLAUDE.md
+proposals/
+reports/

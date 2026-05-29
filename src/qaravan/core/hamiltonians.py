@@ -156,6 +156,107 @@ def _trotter_order2(groups: list[list[HamiltonianTerm]], dt: float) -> list[Matr
 
 
 # ---------------------------------------------------------------------------
+# FermiHubbard1D
+# ---------------------------------------------------------------------------
+
+
+def _build_fh_terms(
+    num_fermions: int, t: float, U: float, mu: float, ordering: str
+) -> tuple[list[HamiltonianTerm], list[list[HamiltonianTerm]]]:
+    """Build HamiltonianTerm list and Trotter groups for the given JW ordering.
+
+    Returns (all_terms, trotter_groups) where trotter_groups has 5 entries:
+    [H_↑,even, H_↑,odd, H_↓,even, H_↓,odd, H_onsite].
+    See docs/jw_fermi_hubbard_1d.md for the derivation of each term.
+    """
+    L = num_fermions
+
+    onsite_local = PauliSum([
+        PauliString("II", U / 4 + mu),
+        PauliString("ZI", -U / 4 - mu / 2),
+        PauliString("IZ", -U / 4 - mu / 2),
+        PauliString("ZZ", U / 4),
+    ])
+
+    if ordering == "stacked":
+        # Adjacent modes in each spin sector are adjacent in the register — string-free (weight-2).
+        hopping_local = PauliSum([PauliString("XX", -t / 2), PauliString("YY", -t / 2)])
+        up_bonds = [HamiltonianTerm([j, j + 1], hopping_local) for j in range(L - 1)]
+        down_bonds = [HamiltonianTerm([L + j, L + j + 1], hopping_local) for j in range(L - 1)]
+        onsite = [HamiltonianTerm([j, L + j], onsite_local) for j in range(L)]
+
+    elif ordering == "interleaved":
+        # Same-spin adjacent sites are 2 apart in mode ordering, leaving one residual Z (weight-3).
+        hopping_local = PauliSum([PauliString("XZX", -t / 2), PauliString("YZY", -t / 2)])
+        up_bonds = [HamiltonianTerm([2 * j, 2 * j + 1, 2 * j + 2], hopping_local) for j in range(L - 1)]
+        down_bonds = [HamiltonianTerm([2 * j + 1, 2 * j + 2, 2 * j + 3], hopping_local) for j in range(L - 1)]
+        onsite = [HamiltonianTerm([2 * j, 2 * j + 1], onsite_local) for j in range(L)]
+
+    else:
+        raise ValueError(f"Unknown ordering '{ordering}'; expected 'stacked' or 'interleaved'.")
+
+    trotter_groups = [
+        up_bonds[::2],
+        up_bonds[1::2],
+        down_bonds[::2],
+        down_bonds[1::2],
+        onsite,
+    ]
+    return up_bonds + down_bonds + onsite, trotter_groups
+
+
+class FermiHubbard1D(Hamiltonian):
+    """1D Fermi-Hubbard model: H = -t Σ_{j,σ}(c†c + h.c.) + U Σ_j n↑n↓ + μ Σ_{j,σ} n_{j,σ}.
+
+    ordering='stacked': qubits [↑_0..↑_{L-1}, ↓_0..↓_{L-1}]; weight-2 hopping, long-range ZZ interaction.
+    ordering='interleaved': qubits [↑_0,↓_0,↑_1,↓_1,...]; weight-3 XZX/YZY hopping, local ZZ interaction.
+    Total qubits: 2 * num_fermions for both orderings.
+    See docs/jw_fermi_hubbard_1d.md for derivations and hardware tradeoffs.
+    """
+
+    def __init__(
+        self,
+        num_fermions: int,
+        t: float = 1.0,
+        U: float = 1.0,
+        mu: float = 0.0,
+        ordering: str = "stacked",
+    ):
+        self.num_fermions = num_fermions
+        self.t = t
+        self.U = U
+        self.mu = mu
+        self.ordering = ordering
+        terms, trotter_groups = _build_fh_terms(num_fermions, t, U, mu, ordering)
+        super().__init__(2 * num_fermions, terms, trotter_groups)
+
+    def ground_state(
+        self,
+        n_electrons: int | None = None,
+        method: str = "exact",
+    ) -> "Statevector":
+        """Ground state via exact diag. n_electrons restricts to the fixed-N sector."""
+        from qaravan.backends.statevector import Statevector
+
+        if n_electrons is None:
+            return super().ground_state(method=method)
+
+        num_qubits = 2 * self.num_fermions
+        sector = [i for i in range(2**num_qubits) if bin(i).count("1") == n_electrons]
+        H_mat = self.as_matrix()
+        H_sector = H_mat[np.ix_(sector, sector)]
+        evals, evecs = np.linalg.eigh(H_sector)
+        _ = evals
+        gs_sector = evecs[:, 0]
+
+        full_vec = np.zeros(2**num_qubits, dtype=complex)
+        for local_idx, global_idx in enumerate(sector):
+            full_vec[global_idx] = gs_sector[local_idx]
+
+        return Statevector(array=full_vec)
+
+
+# ---------------------------------------------------------------------------
 # TFI
 # ---------------------------------------------------------------------------
 

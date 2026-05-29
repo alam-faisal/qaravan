@@ -5,11 +5,14 @@ computes the ground state at fixed n_electrons, records entanglement depth
 and (optionally) preparation depth via environment sweep, then saves data
 and a plot to the same directory as this script.
 
-Estimated wall-clock at t=U=1, half-filling, both orderings:
-  max_nf=5  ~10 min  (ent + prep depth up to nf=5)
-  max_nf=6  ~30 min  (ent depth all; prep depth up to nf=5)
-  max_nf=7  ~20 min  (ent depth only, no prep sweep)
-  max_nf=8  ~90 min  (ent depth only — exceeds 30 min budget)
+Measured wall-clock at t=U=1, half-filling, both orderings (MacBook, numpy):
+  Profile time per ordering: nf=5 ~0.3s, nf=6 ~6s, nf=7 ~390s (6.5 min)
+  The n=12→n=14 jump is ~64× (cache overflow), not the ~10× seen at smaller n.
+
+  Recommended budgets:
+    30 min, ent + prep depth  → max_nf=6  (~25 min)
+    30 min, ent depth only    → max_nf=7  (~14 min both orderings)
+    nf=8 (n=16) ent depth     → ~many hours — do not attempt
 
 Usage:
   uv run python scripts/fh_entanglement.py [options]

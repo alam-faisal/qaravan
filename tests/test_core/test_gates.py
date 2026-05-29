@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from qaravan.core.base import State, Simulator, IncompatibleStateError
-from qaravan.core.circuits import Circuit
+from qaravan.core.circuit import Circuit
 from qaravan.core.gates import (
     I,
     X,

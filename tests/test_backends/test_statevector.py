@@ -5,7 +5,7 @@ import pytest
 
 from qaravan.backends.statevector import Statevector, StatevectorSimulator
 from qaravan.core.base import IncompatibleNoiseError, IncompatibleStateError
-from qaravan.core.circuits import Circuit
+from qaravan.core.circuit import Circuit
 from qaravan.core.gates import H, CNOT
 from qaravan.core.base import NoiseModel
 from qaravan.core.observables import PauliString, LocalOp, Magnetization

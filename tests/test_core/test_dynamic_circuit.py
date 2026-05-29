@@ -3,7 +3,7 @@
 import numpy as np
 
 from qaravan.backends.statevector import Statevector
-from qaravan.core.circuits import Circuit
+from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
 from qaravan.core.gates import H, X
 

@@ -9,7 +9,7 @@ from qaravan.core.gates import (
     MatrixGate,
     ParametricGate,
 )
-from qaravan.core.circuits import Circuit
+from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicRound, DynamicCircuit
 from qaravan.core.observables import (
     PauliString,

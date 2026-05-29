@@ -15,7 +15,7 @@ from qaravan.applications.circuit_library import (
     two_local_circuit,
 )
 from qaravan.backends.statevector import Statevector
-from qaravan.core.circuits import Circuit
+from qaravan.core.circuit import Circuit
 from qaravan.core.gates import CNOT, H, RX, RY, RXX, RYY, RZZ, X, Z
 
 H_MATRIX = np.array([[1, 1], [1, -1]]) / np.sqrt(2)

@@ -6,7 +6,7 @@ import numpy as np
 
 from qaravan.applications.circuit_library import two_local_circuit
 from qaravan.applications.run_context import RunContext
-from qaravan.core.circuits import Circuit
+from qaravan.core.circuit import Circuit
 from qaravan.core.gates import MatrixGate
 from qaravan.core.base import State
 

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from qaravan.core.base import State
-from qaravan.core.circuits import Circuit
+from qaravan.core.circuit import Circuit
 
 
 @dataclass

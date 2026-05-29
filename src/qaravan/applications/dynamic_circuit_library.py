@@ -8,7 +8,7 @@ from qaravan.applications.circuit_library import (
     bell_basis_circuit,
     ghz_cluster_prep_circuit,
 )
-from qaravan.core.circuits import Circuit
+from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
 from qaravan.core.gates import X, Z
 

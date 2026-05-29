@@ -13,7 +13,7 @@ from qaravan.core.base import (
     IncompatibleStateError,
 )
 from qaravan.core.gates import MatrixGate
-from qaravan.core.circuits import Circuit, _embed_gate
+from qaravan.core.circuit import Circuit, _embed_gate
 
 # ---------------------------------------------------------------------------
 # Helpers — minimal concrete subclasses for abstract class tests

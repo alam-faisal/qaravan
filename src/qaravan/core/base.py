@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from qaravan.core.circuits import Circuit
+    from qaravan.core.circuit import Circuit
 
 
 # ---------------------------------------------------------------------------

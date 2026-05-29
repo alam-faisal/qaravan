@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from qaravan.core.circuits import Circuit
+from qaravan.core.circuit import Circuit
 from qaravan.core.gates import (
     CNOT,
     H,

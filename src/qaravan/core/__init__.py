@@ -17,6 +17,8 @@ from qaravan.core.observables import (
     LocalOp,
     Magnetization,
 )
+from qaravan.core.lattices import LinearLattice
+from qaravan.core.hamiltonians import HamiltonianTerm, Hamiltonian, TFI, Heisenberg1D
 
 __all__ = [
     "Gate",
@@ -33,4 +35,9 @@ __all__ = [
     "PauliSum",
     "LocalOp",
     "Magnetization",
+    "LinearLattice",
+    "HamiltonianTerm",
+    "Hamiltonian",
+    "TFI",
+    "Heisenberg1D",
 ]

@@ -173,7 +173,7 @@ def _embed_gate(gate: Gate, num_sites: int, local_dim: int) -> np.ndarray:
         j = _digits_to_int([digits[p] for p in perm], local_dim)
         perm_mat[i, j] = 1.0
     gate_full = np.kron(gate.matrix, np.eye(local_dim ** (num_sites - k)))
-    return perm_mat.T @ gate_full @ perm_mat
+    return perm_mat @ gate_full @ perm_mat.T
 
 
 def _int_to_digits(i: int, base: int, n: int) -> list[int]:

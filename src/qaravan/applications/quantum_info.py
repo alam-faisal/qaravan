@@ -25,7 +25,9 @@ def entanglement_profile(sv: Statevector) -> np.ndarray:
     Returns array of length n-1.
     """
     n = sv.num_sites
-    return np.array([entanglement_entropy(sv, list(range(k + 1))) for k in range(n - 1)])
+    return np.array(
+        [entanglement_entropy(sv, list(range(k + 1))) for k in range(n - 1)]
+    )
 
 
 def entanglement_depth(sv: Statevector) -> int:

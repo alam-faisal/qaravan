@@ -13,22 +13,6 @@ in CLAUDE.md.
 
 ---
 
-### Task 18 — Periodic boundary conditions for `FermiHubbard1D`
-
-**Goal:** Add `periodic: bool = False` to `FermiHubbard1D.__init__`, mirroring `TFI` and
-`Heisenberg1D`. PBC adds two wrap-around hopping terms (one per spin species) connecting
-site L-1 back to site 0 via the full JW string.
-
-**Acceptance:**
-- `FermiHubbard1D(L, periodic=True).as_matrix()` is Hermitian.
-- Stacked and interleaved orderings give the same spectrum for PBC (spectrum ordering
-  agreement test).
-- At U=0 with PBC, ground energy matches the free PBC tight-binding dispersion.
-- PBC and OBC spectra differ for L >= 3 (sanity check that something actually changed).
-- `periodic=True` with L=1 raises `ValueError`.
-
----
-
 ### Task 14 — Environment sweep for DQCs
 
 **Goal:** Extend `environment_state_prep` to handle `DynamicCircuit` targets: optimise the

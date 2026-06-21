@@ -160,7 +160,12 @@ def _trotter_order2(groups: list[list[HamiltonianTerm]], dt: float) -> list[Matr
 
 
 def _build_fh_terms(
-    num_fermions: int, t: float, U: float, mu: float, ordering: str
+    num_fermions: int,
+    t: float,
+    U: float,
+    mu: float,
+    ordering: str,
+    periodic: bool = False,
 ) -> tuple[list[HamiltonianTerm], list[list[HamiltonianTerm]]]:
     """Build HamiltonianTerm list and Trotter groups for the given JW ordering.
 
@@ -208,14 +213,44 @@ def _build_fh_terms(
             f"Unknown ordering '{ordering}'; expected 'stacked' or 'interleaved'."
         )
 
+    if periodic:
+        if num_fermions < 2:
+            raise ValueError("periodic=True requires num_fermions >= 2.")
+        L = num_fermions
+        if ordering == "stacked":
+            pbc_local = PauliSum(
+                [
+                    PauliString("X" + "Z" * (L - 2) + "X", -t / 2),
+                    PauliString("Y" + "Z" * (L - 2) + "Y", -t / 2),
+                ]
+            )
+            boundary_bonds = [
+                HamiltonianTerm(list(range(L)), pbc_local),
+                HamiltonianTerm(list(range(L, 2 * L)), pbc_local),
+            ]
+        else:  # interleaved
+            pbc_local = PauliSum(
+                [
+                    PauliString("X" + "Z" * (2 * L - 3) + "X", -t / 2),
+                    PauliString("Y" + "Z" * (2 * L - 3) + "Y", -t / 2),
+                ]
+            )
+            boundary_bonds = [
+                HamiltonianTerm(list(range(2 * L - 1)), pbc_local),
+                HamiltonianTerm(list(range(1, 2 * L)), pbc_local),
+            ]
+    else:
+        boundary_bonds = []
+
     trotter_groups = [
         up_bonds[::2],
         up_bonds[1::2],
         down_bonds[::2],
         down_bonds[1::2],
         onsite,
+        boundary_bonds,
     ]
-    return up_bonds + down_bonds + onsite, trotter_groups
+    return up_bonds + down_bonds + onsite + boundary_bonds, trotter_groups
 
 
 class FermiHubbard1D(Hamiltonian):
@@ -223,6 +258,9 @@ class FermiHubbard1D(Hamiltonian):
 
     ordering='stacked': qubits [↑_0..↑_{L-1}, ↓_0..↓_{L-1}]; weight-2 hopping, long-range ZZ interaction.
     ordering='interleaved': qubits [↑_0,↓_0,↑_1,↓_1,...]; weight-3 XZX/YZY hopping, local ZZ interaction.
+    periodic=True: adds the two wrap-around hopping terms (one per spin species) via the full JW string.
+      Stacked ↑ boundary: weight-L string X Z^{L-2} X on qubits [0..L-1].
+      Interleaved ↑ boundary: weight-(2L-1) string on qubits [0..2L-2].
     Total qubits: 2 * num_fermions for both orderings.
     See docs/jw_fermi_hubbard_1d.md for derivations and hardware tradeoffs.
     """
@@ -234,13 +272,17 @@ class FermiHubbard1D(Hamiltonian):
         U: float = 1.0,
         mu: float = 0.0,
         ordering: str = "stacked",
+        periodic: bool = False,
     ):
         self.num_fermions = num_fermions
         self.t = t
         self.U = U
         self.mu = mu
         self.ordering = ordering
-        terms, trotter_groups = _build_fh_terms(num_fermions, t, U, mu, ordering)
+        self.periodic = periodic
+        terms, trotter_groups = _build_fh_terms(
+            num_fermions, t, U, mu, ordering, periodic
+        )
         super().__init__(2 * num_fermions, terms, trotter_groups)
 
     def ground_state(

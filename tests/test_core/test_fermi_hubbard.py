@@ -171,6 +171,80 @@ def test_fh_trotter_vs_propagator_interleaved():
     assert frob_err < 1e-5, f"Frobenius error {frob_err:.2e}"
 
 
+# ---------------------------------------------------------------------------
+# Periodic boundary conditions
+# ---------------------------------------------------------------------------
+
+
+def test_fh_pbc_l1_raises():
+    """periodic=True with num_fermions=1 must raise ValueError."""
+    import pytest
+
+    with pytest.raises(ValueError, match="periodic"):
+        FermiHubbard1D(1, periodic=True)
+
+
+def test_fh_pbc_matrix_hermitian():
+    """PBC Hamiltonian is Hermitian for both orderings at random parameters."""
+    rng = np.random.default_rng(42)
+    t, U, mu = (
+        float(rng.uniform(0.5, 2.0)),
+        float(rng.uniform(0, 3.0)),
+        float(rng.uniform(-0.5, 0.5)),
+    )
+    for ordering in ["stacked", "interleaved"]:
+        H = FermiHubbard1D(
+            3, t=t, U=U, mu=mu, ordering=ordering, periodic=True
+        ).as_matrix()
+        assert np.allclose(H, H.conj().T, atol=1e-12), (
+            f"{ordering} PBC Hamiltonian not Hermitian"
+        )
+
+
+def test_fh_pbc_spectrum_ordering_agreement():
+    """PBC stacked and interleaved must give the same spectrum."""
+    for num_fermions in [3, 4]:
+        fh_s = FermiHubbard1D(
+            num_fermions, t=1.0, U=2.0, mu=0.5, ordering="stacked", periodic=True
+        )
+        fh_i = FermiHubbard1D(
+            num_fermions, t=1.0, U=2.0, mu=0.5, ordering="interleaved", periodic=True
+        )
+        E_s = np.linalg.eigvalsh(fh_s.as_matrix())[0]
+        E_i = np.linalg.eigvalsh(fh_i.as_matrix())[0]
+        assert abs(E_s - E_i) < 1e-10, (
+            f"num_fermions={num_fermions}: stacked E0={E_s}, interleaved E0={E_i}"
+        )
+
+
+def test_fh_pbc_vs_obc_spectrum_differs():
+    """PBC and OBC give different ground-state energies for L=3."""
+    for ordering in ["stacked", "interleaved"]:
+        fh_obc = FermiHubbard1D(3, t=1.0, U=1.0, ordering=ordering, periodic=False)
+        fh_pbc = FermiHubbard1D(3, t=1.0, U=1.0, ordering=ordering, periodic=True)
+        E_obc = np.linalg.eigvalsh(fh_obc.as_matrix())[0]
+        E_pbc = np.linalg.eigvalsh(fh_pbc.as_matrix())[0]
+        assert abs(E_obc - E_pbc) > 1e-6, (
+            f"{ordering}: OBC and PBC spectra are identical (boundary term has no effect)"
+        )
+
+
+def test_fh_pbc_free_fermion_ground_energy():
+    """At U=0 with PBC and L=4, E0 = -4t (two spins, each filling ε_0=-2t and ε_1=0).
+
+    PBC tight-binding dispersion: ε_k = -2t cos(2πk/L), k=0..L-1.
+    L=4: {-2t, 0, 2t, 0}. Half-filling (2 electrons per spin): fill -2t and 0.
+    """
+    L, t = 4, 1.0
+    expected = -4 * t  # 2 spins × (-2t + 0)
+    for ordering in ["stacked", "interleaved"]:
+        fh = FermiHubbard1D(L, t=t, U=0.0, mu=0.0, ordering=ordering, periodic=True)
+        E0 = np.linalg.eigvalsh(fh.as_matrix())[0]
+        assert abs(E0 - expected) < 1e-8, (
+            f"{ordering}: got E0={E0:.8f}, expected {expected:.8f}"
+        )
+
+
 def test_fh_trotter_error_scaling_order1():
     """Log-log slope of Frobenius error vs dt should be ~2 for order-1 Trotter."""
     num_fermions = 3

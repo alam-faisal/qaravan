@@ -92,8 +92,12 @@ class State(ABC):
 
     @abstractmethod
     def measure_and_collapse(self, sites: list[int]) -> tuple[State, str]:
-        """Measure sites, collapse state; returns (post-measurement State, outcome_str).
-        Returned State has the same number of sites as the original."""
+        """Measure sites under Born rule, collapse to post-measurement state.
+
+        Returns (post-measurement State with same num_sites, outcome bitstring).
+        Unphysical State subclasses (Walkers, PauliSum) do not implement this —
+        they raise NotImplementedError with a message pointing to their simulator.
+        """
         ...
 
     def partial_overlap(self, other: State, skip: list[int]) -> np.ndarray:

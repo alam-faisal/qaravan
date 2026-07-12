@@ -79,7 +79,7 @@ def test_depolarizing_sample_non_identity_rate():
     measured_rate = non_identity / n_samples
     sigma = np.sqrt(p * (1 - p) / n_samples)
     assert abs(measured_rate - p) < 4 * sigma, (
-        f"measured rate = {measured_rate:.4f}, expected {p}, 4σ = {4*sigma:.4f}"
+        f"measured rate = {measured_rate:.4f}, expected {p}, 4σ = {4 * sigma:.4f}"
     )
 
 

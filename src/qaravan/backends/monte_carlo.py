@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 
 import numpy as np
 
@@ -65,11 +64,11 @@ class Walkers(State):
 
     def expectation(self, observable: Observable) -> complex:
         """Average ⟨ψ_i|O|ψ_i⟩ over all walkers."""
-        return complex(
-            np.mean([sv.expectation(observable) for sv in self._walkers])
-        )
+        return complex(np.mean([sv.expectation(observable) for sv in self._walkers]))
 
-    def sample(self, num_shots: int, rng: np.random.Generator | None = None) -> np.ndarray:
+    def sample(
+        self, num_shots: int, rng: np.random.Generator | None = None
+    ) -> np.ndarray:
         """Sample bitstrings from the ensemble.
 
         For each shot: pick a random walker, draw one bitstring from its Born distribution.

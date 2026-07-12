@@ -52,7 +52,9 @@ def test_walkers_num_walkers():
 def test_walkers_rdm_trace_one():
     circ = bell_circuit()
     init = Statevector(bitstring="00")
-    mc = MonteCarloSimulator(circ, init, num_trajectories=10, rng=np.random.default_rng(0))
+    mc = MonteCarloSimulator(
+        circ, init, num_trajectories=10, rng=np.random.default_rng(0)
+    )
     walkers = mc.run()
     rdm = walkers.rdm([0])
     assert abs(np.trace(rdm) - 1.0) < 1e-12
@@ -67,7 +69,9 @@ def test_mc_noiseless_matches_sv():
     """Noiseless MC on Bell state: ⟨ZZ⟩ = 1 (Z⊗Z on (|00⟩+|11⟩)/√2)."""
     circ = bell_circuit()
     init = Statevector(bitstring="00")
-    mc = MonteCarloSimulator(circ, init, num_trajectories=200, rng=np.random.default_rng(0))
+    mc = MonteCarloSimulator(
+        circ, init, num_trajectories=200, rng=np.random.default_rng(0)
+    )
     walkers = mc.run()
     obs = PauliString("ZZ")
     assert abs(walkers.expectation(obs).real - 1.0) < 1e-10
@@ -78,7 +82,9 @@ def test_walkers_expectation_matches_sv_noiseless():
     circ = Circuit([RX(0, 0.7), RX(1, 1.3)], num_sites=2)
     init = Statevector(bitstring="00")
     sv = StatevectorSimulator(circ, init).run()
-    mc = MonteCarloSimulator(circ, init, num_trajectories=1, rng=np.random.default_rng(0))
+    mc = MonteCarloSimulator(
+        circ, init, num_trajectories=1, rng=np.random.default_rng(0)
+    )
     walkers = mc.run()
     obs = PauliString("ZI")
     assert abs(walkers.expectation(obs) - sv.expectation(obs)) < 1e-10
@@ -97,18 +103,22 @@ def test_mc_depolarizing_z_expectation():
     """
     p = 0.3
     expected = 1 - 4 * p / 3  # = 0.6
-    circ = Circuit([ZGate(0)], num_sites=1)  # one layer; Z|0⟩=|0⟩ leaves state unchanged
+    circ = Circuit(
+        [ZGate(0)], num_sites=1
+    )  # one layer; Z|0⟩=|0⟩ leaves state unchanged
     init = Statevector(bitstring="0")
     noise = DepolarizingNoise(num_sites=1, error_rate=p)
     mc = MonteCarloSimulator(
-        circ, init, noise_model=noise, num_trajectories=5000, rng=np.random.default_rng(42)
+        circ,
+        init,
+        noise_model=noise,
+        num_trajectories=5000,
+        rng=np.random.default_rng(42),
     )
     walkers = mc.run()
     z_exp = walkers.expectation(PauliString("Z")).real
     # variance per trajectory ≤ 1, std of mean ≤ 1/sqrt(5000) ≈ 0.014; use 4σ margin
-    assert abs(z_exp - expected) < 0.06, (
-        f"⟨Z⟩ = {z_exp:.4f}, expected {expected:.4f}"
-    )
+    assert abs(z_exp - expected) < 0.06, f"⟨Z⟩ = {z_exp:.4f}, expected {expected:.4f}"
 
 
 def test_mc_depolarizing_decays_zz_bell():
@@ -120,7 +130,11 @@ def test_mc_depolarizing_decays_zz_bell():
     init = Statevector(bitstring="00")
     noise = DepolarizingNoise(num_sites=2, error_rate=0.5)
     mc = MonteCarloSimulator(
-        circ, init, noise_model=noise, num_trajectories=2000, rng=np.random.default_rng(0)
+        circ,
+        init,
+        noise_model=noise,
+        num_trajectories=2000,
+        rng=np.random.default_rng(0),
     )
     walkers = mc.run()
     zz_noisy = walkers.expectation(PauliString("ZZ")).real

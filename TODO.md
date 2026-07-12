@@ -142,9 +142,10 @@ Cross-check against `DensityMatrixSimulator` for noisy circuits.
 
 ---
 
-### Task: Monte Carlo backend with `Walkers`
+### Task: Monte Carlo backend extensions
 
-Implement `Walkers(State)` and `MonteCarloSimulator(Simulator)` in `backends/monte_carlo.py`.
+Extend `Walkers` and `MonteCarloSimulator` (implemented in v0.2.2 Task 19) with
+mid-circuit measurement support and the full `PauliLindbladNoise` sampler.
 
 ---
 

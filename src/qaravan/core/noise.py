@@ -24,9 +24,7 @@ class PauliNoise(NoiseModel):
                 f"got {len(strings)} and {len(probs)}"
             )
         if abs(sum(probs) - 1.0) > 1e-6:
-            raise ValueError(
-                f"Probabilities must sum to 1; got {sum(probs):.8f}"
-            )
+            raise ValueError(f"Probabilities must sum to 1; got {sum(probs):.8f}")
         self.strings = [s.upper() for s in strings]
         self.probs = list(probs)
 
@@ -39,8 +37,7 @@ class PauliNoise(NoiseModel):
     def get_kraus(self, *args, **kwargs) -> list[np.ndarray]:
         """Kraus operators: sqrt(p_i) * Pauli_i matrix for each term."""
         return [
-            np.sqrt(p) * PauliString(s).matrix
-            for s, p in zip(self.strings, self.probs)
+            np.sqrt(p) * PauliString(s).matrix for s, p in zip(self.strings, self.probs)
         ]
 
 
@@ -55,9 +52,7 @@ class DepolarizingNoise(PauliNoise):
 
     def __init__(self, num_sites: int, error_rate: float):
         if not 0.0 <= error_rate <= 1.0:
-            raise ValueError(
-                f"error_rate must be in [0, 1]; got {error_rate}"
-            )
+            raise ValueError(f"error_rate must be in [0, 1]; got {error_rate}")
         self.num_sites = num_sites
         self.error_rate = error_rate
 

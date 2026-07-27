@@ -359,15 +359,31 @@ class MPS(TensorNetwork):
     def to_vector(self):
         return contract_sites(self.sites)[0,0,:].reshape(self.local_dim**self.num_sites)
     
-    def evaluate(self, basis): 
+    def evaluate(self, basis):
         """ basis is a list of 0s and 1s (and higher levels for qudits) """
         mod_sites = [site[:,:,b] for site, b in zip(self.sites, basis)]
         vec = mod_sites[0]
-        for i in range(1, self.num_sites): 
+        for i in range(1, self.num_sites):
             vec = vec @ mod_sites[i]
-        
-        return np.abs(vec[0][0])**2 
-    
+
+        return np.abs(vec[0][0])**2
+
+    def fast_ipr(self):
+        """ exact IPR = sum_y |<y|psi>|^4 via a doubled-MPS (4-copy) contraction;
+        see .dev/Computing IPR of MPS.md for the derivation.
+        cost O(n*chi^5) worst case, empirically closer to chi^3.5 """
+        site0 = self.sites[0]
+        left = sum(ncon([vec, vec, vec.conj(), vec.conj()], ([-1], [-2], [-3], [-4]))
+                   for vec in (site0[0, :, s] for s in range(self.local_dim)))
+
+        for i in range(1, self.num_sites):
+            site = self.sites[i]
+            left = sum(ncon([left, mat, mat, mat.conj(), mat.conj()],
+                             ([1, 2, 3, 4], [1, -1], [2, -2], [3, -3], [4, -4]))
+                       for mat in (site[:, :, s] for s in range(self.local_dim)))
+
+        return float(left[0, 0, 0, 0].real)
+
     def __str__(self):
         desc = "MPS with {} sites, local dim {}, max bond dim {}\n".format(
             self.num_sites, self.local_dim, self.get_max_dim())
@@ -702,23 +718,3 @@ def random_mps(num_sites, max_bond_dim=4, local_dim=2, normalize=True):
     if normalize:
         mps.normalize()
     return mps
-
-def fast_ipr(mps): 
-    site0_up = mps[0][0,:,0]
-    site0_down = mps[0][0,:,1]
-
-    left_up = ncon([site0_up, site0_up, site0_up.conj(), site0_up.conj()], ([-1], [-2], [-3], [-4]))
-    left_down = ncon([site0_down, site0_down, site0_down.conj(), site0_down.conj()], ([-1], [-2], [-3], [-4]))
-
-    left = left_up + left_down
-
-    for i in range(1, n): 
-        site_i_up = mps[i][:,:,0]
-        site_i_down = mps[i][:,:,1]
-
-        next_list = [] # contract with site_i_up 4 times and add to this list, and then contract with site_i_down 4 times and add to this list, and then we will sum them up
-        next_list.append(ncon([left, site_i_up, site_i_up, site_i_up.conj(), site_i_up.conj()], ([1,2,3,4], [1,-1], [2,-2], [3,-3], [4,-4])))
-        next_list.append(ncon([left, site_i_down, site_i_down, site_i_down.conj(), site_i_down.conj()], ([1,2,3,4], [1,-1], [2,-2], [3,-3], [4,-4])))
-        left = sum(next_list)
-
-    return left[0,0,0,0].real

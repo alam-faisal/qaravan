@@ -193,6 +193,9 @@ class Hamiltonian:
 
         return Circuit(gates, num_sites=self.num_sites)
 
+    def __repr__(self) -> str:
+        return repr(self.as_observable())
+
 
 def _trotter_order1(groups: list[list[HamiltonianTerm]], dt: float) -> list[MatrixGate]:
     """Apply each group once at step size dt."""

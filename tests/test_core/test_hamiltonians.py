@@ -69,6 +69,12 @@ def test_heisenberg_as_matrix_is_hermitian():
     assert np.allclose(mat, mat.conj().T, atol=1e-12)
 
 
+def test_hamiltonian_repr_matches_as_observable_repr():
+    tfi = TFI(3, J=1.0, h=0.5)
+    assert repr(tfi) == repr(tfi.as_observable())
+    assert str(tfi) == repr(tfi.as_observable())
+
+
 # ---------------------------------------------------------------------------
 # TFI ground state
 # ---------------------------------------------------------------------------

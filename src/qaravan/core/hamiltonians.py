@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from scipy.linalg import expm
+from scipy.sparse.linalg import eigsh
 
 from qaravan.core.base import Observable
 from qaravan.core.circuit import Circuit
@@ -104,7 +105,17 @@ class Hamiltonian:
         method: str = "exact",
         fixed_particle_number: int | None = None,
     ) -> Statevector:
-        """Ground state via exact diagonalization (numpy.linalg.eigh). Returns Statevector.
+        """Ground state. Returns Statevector.
+
+        method="exact" (default): full dense diagonalization (numpy.linalg.eigh). Computes the
+        whole spectrum even though only the bottom eigenvector is kept -- O(n^3), but robust at
+        any size, including the tiny systems (n<20) most tests use.
+        method="lanczos": scipy.sparse.linalg.eigsh(k=1) -- only the extremal eigenpair,
+        O(n^2) per iteration instead of diagonalizing everything. Much faster once n is large
+        enough that "compute everything" is wasteful; raises ValueError if the (possibly
+        sector-restricted) matrix is too small for that to make sense -- use "exact" there.
+        For a degenerate ground level, either method returns *some* vector spanning the ground
+        subspace, not necessarily the same one run to run.
 
         fixed_particle_number restricts to the popcount-k sector of the computational basis
         before diagonalizing -- meaningful whenever the Hamiltonian conserves total
@@ -112,21 +123,38 @@ class Hamiltonian:
         """
         H = self.as_matrix()
         if fixed_particle_number is None:
-            evals, evecs = np.linalg.eigh(H)
-            _ = evals  # ascending; evecs[:,0] is the ground state
-            return Statevector(array=evecs[:, 0])
+            sector = None
+            H_reduced = H
+        else:
+            sector = [
+                i
+                for i in range(2**self.num_sites)
+                if bin(i).count("1") == fixed_particle_number
+            ]
+            H_reduced = H[np.ix_(sector, sector)]
 
-        sector = [
-            i
-            for i in range(2**self.num_sites)
-            if bin(i).count("1") == fixed_particle_number
-        ]
-        H_sector = H[np.ix_(sector, sector)]
-        evals, evecs = np.linalg.eigh(H_sector)
-        _ = evals
+        if method == "exact":
+            _, evecs = np.linalg.eigh(H_reduced)
+            ground_vec = evecs[:, 0]
+        elif method == "lanczos":
+            n = H_reduced.shape[0]
+            ncv = min(n - 1, max(3, 20))
+            if ncv <= 1:
+                raise ValueError(
+                    f"method='lanczos' needs a larger matrix than {n}x{n}; use method='exact'."
+                )
+            _, evecs = eigsh(H_reduced, k=1, which="SA", ncv=ncv)
+            ground_vec = evecs[:, 0]
+        else:
+            raise ValueError(
+                f"Unknown method {method!r}; expected 'exact' or 'lanczos'."
+            )
+
+        if sector is None:
+            return Statevector(array=ground_vec)
         full_vec = np.zeros(2**self.num_sites, dtype=complex)
         for local_idx, global_idx in enumerate(sector):
-            full_vec[global_idx] = evecs[local_idx, 0]
+            full_vec[global_idx] = ground_vec[local_idx]
         return Statevector(array=full_vec)
 
     def trotter_circuit(self, dt: float, order: int = 2) -> Circuit:

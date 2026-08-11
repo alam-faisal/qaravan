@@ -5,6 +5,8 @@ import pytest
 from scipy.linalg import expm
 
 from qaravan.core.hamiltonians import (
+    Hamiltonian,
+    HamiltonianTerm,
     Heisenberg1D,
     TFI,
     _embed_local_obs,
@@ -93,6 +95,54 @@ def test_tfi_ground_state_against_exact_diag():
         exact_gs = evecs[:, 0]
         fidelity = abs(np.dot(sv.to_array().conj(), exact_gs)) ** 2
         assert fidelity > 1 - 1e-10, f"n={n}: fidelity={fidelity}"
+
+
+# ---------------------------------------------------------------------------
+# ground_state(method="lanczos") -- opt-in scipy.sparse.linalg.eigsh path
+# ---------------------------------------------------------------------------
+
+
+def test_ground_state_lanczos_matches_exact_energy():
+    for n in [3, 4, 5]:
+        tfi = TFI(n, J=1.0, h=0.5, periodic=False)
+        e_exact = tfi.ground_state(method="exact").expectation(tfi.as_observable()).real
+        e_lanczos = (
+            tfi.ground_state(method="lanczos").expectation(tfi.as_observable()).real
+        )
+        assert abs(e_exact - e_lanczos) < 1e-9, (
+            f"n={n}: exact={e_exact}, lanczos={e_lanczos}"
+        )
+
+
+def test_ground_state_lanczos_matches_exact_with_fixed_particle_number():
+    from qaravan.core.hamiltonians import FermiHubbard1D
+    from qaravan.core.fermions import FermionicEncoding
+
+    fh = FermiHubbard1D(num_fermions=3, t=1.0, U=2.0, mu=0.0)
+    ham = fh.encode(FermionicEncoding("jordan_wigner", num_modes=fh.num_modes))
+    e_exact = (
+        ham.ground_state(method="exact", fixed_particle_number=3)
+        .expectation(ham.as_observable())
+        .real
+    )
+    e_lanczos = (
+        ham.ground_state(method="lanczos", fixed_particle_number=3)
+        .expectation(ham.as_observable())
+        .real
+    )
+    assert abs(e_exact - e_lanczos) < 1e-9
+
+
+def test_ground_state_lanczos_raises_for_tiny_matrix():
+    ham = Hamiltonian(1, [HamiltonianTerm([0], PauliString("Z"))])  # 2x2
+    with pytest.raises(ValueError, match="lanczos"):
+        ham.ground_state(method="lanczos")
+
+
+def test_ground_state_unknown_method_raises():
+    tfi = TFI(3)
+    with pytest.raises(ValueError, match="Unknown method"):
+        tfi.ground_state(method="bogus")
 
 
 # ---------------------------------------------------------------------------

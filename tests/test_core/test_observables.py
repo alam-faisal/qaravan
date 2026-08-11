@@ -181,3 +181,73 @@ def test_magnetization_axis_x():
 def test_magnetization_invalid_axis():
     with pytest.raises(ValueError):
         Magnetization(2, axis="W")
+
+
+# ---------------------------------------------------------------------------
+# Operator composition (matrix product, not tensor product)
+# ---------------------------------------------------------------------------
+
+
+def _assert_pauli_string_equal(actual: PauliString, string: str, coeff: complex):
+    assert actual.string == string
+    assert np.isclose(actual.coeff, coeff)
+
+
+def test_compose_single_qubit_identities():
+    _assert_pauli_string_equal(PauliString("X").compose(PauliString("Y")), "Z", 1j)
+    _assert_pauli_string_equal(PauliString("Y").compose(PauliString("X")), "Z", -1j)
+    _assert_pauli_string_equal(PauliString("Y").compose(PauliString("Z")), "X", 1j)
+    _assert_pauli_string_equal(PauliString("Z").compose(PauliString("X")), "Y", 1j)
+    _assert_pauli_string_equal(PauliString("X").compose(PauliString("X")), "I", 1.0)
+
+
+def test_compose_matmul_operator_matches_matrix_product():
+    a, b = PauliString("XZ", coeff=0.5), PauliString("YZ", coeff=2.0)
+    composed = a @ b
+    assert np.allclose(composed.matrix, a.matrix @ b.matrix)
+
+
+def test_compose_associative_on_random_triples():
+    rng = np.random.default_rng(0)
+    letters = "IXYZ"
+    for _ in range(20):
+        a, b, c = (PauliString("".join(rng.choice(list(letters), size=3))) for _ in range(3))
+        left = (a @ b) @ c
+        right = a @ (b @ c)
+        assert np.allclose(left.matrix, right.matrix)
+        assert np.allclose(left.matrix, a.matrix @ b.matrix @ c.matrix)
+
+
+def test_compose_requires_equal_length():
+    with pytest.raises(ValueError):
+        PauliString("X").compose(PauliString("XZ"))
+
+
+def test_compose_pauli_sum_distributes():
+    xx = PauliSum(["XI", "IX"])
+    z = PauliString("ZI")
+    composed = z.compose(xx)
+    assert np.allclose(composed.matrix, z.matrix @ xx.matrix)
+
+
+def test_compose_raising_lowering_gives_number_operator():
+    # (X - iY)/2 @ (X + iY)/2 = (I - Z)/2 -- the number-operator identity (doc eq. 4).
+    lowering = PauliSum([PauliString("X", 0.5), PauliString("Y", 0.5j)])   # (X+iY)/2
+    raising = PauliSum([PauliString("X", 0.5), PauliString("Y", -0.5j)])   # (X-iY)/2
+    number = raising.compose(lowering).simplify()
+    expected = PauliSum([PauliString("I", 0.5), PauliString("Z", -0.5)])
+    assert np.allclose(number.matrix, expected.matrix)
+
+
+def test_simplify_merges_duplicate_strings():
+    ps = PauliSum([PauliString("XI", 1.0), PauliString("XI", 2.0), PauliString("IY", 3.0)])
+    simplified = ps.simplify()
+    assert len(simplified.terms) == 2
+    assert np.allclose(simplified.matrix, ps.matrix)
+
+
+def test_simplify_drops_near_zero_terms():
+    ps = PauliSum([PauliString("XI", 1.0), PauliString("XI", -1.0), PauliString("IY", 3.0)])
+    simplified = ps.simplify()
+    assert len(simplified.terms) == 1
+    assert simplified.terms[0].string == "IY"

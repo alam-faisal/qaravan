@@ -12,6 +12,26 @@ PAULI_MATRICES: dict[str, np.ndarray] = {
     "Z": np.array([[1, 0], [0, -1]], dtype=complex),
 }
 
+_PAULI_MULT: dict[tuple[str, str], tuple[complex, str]] = {
+    ("I", "I"): (1, "I"), ("I", "X"): (1, "X"), ("I", "Y"): (1, "Y"), ("I", "Z"): (1, "Z"),
+    ("X", "I"): (1, "X"), ("Y", "I"): (1, "Y"), ("Z", "I"): (1, "Z"),
+    ("X", "X"): (1, "I"), ("Y", "Y"): (1, "I"), ("Z", "Z"): (1, "I"),
+    ("X", "Y"): (1j, "Z"), ("Y", "X"): (-1j, "Z"),
+    ("Y", "Z"): (1j, "X"), ("Z", "Y"): (-1j, "X"),
+    ("Z", "X"): (1j, "Y"), ("X", "Z"): (-1j, "Y"),
+}
+
+
+def _compose_strings(s1: str, s2: str) -> tuple[complex, str]:
+    """Site-by-site operator product (matrix multiplication) of two equal-length Pauli strings."""
+    phase: complex = 1
+    chars = []
+    for a, b in zip(s1, s2):
+        local_phase, char = _PAULI_MULT[(a, b)]
+        phase *= local_phase
+        chars.append(char)
+    return phase, "".join(chars)
+
 
 class PauliString(Observable):
     """Weighted tensor product of single-qubit Paulis, e.g. PauliString("XZI", coeff=0.5).
@@ -34,6 +54,20 @@ class PauliString(Observable):
 
     def as_pauli_sum(self) -> PauliSum:
         return PauliSum([self])
+
+    def compose(self, other: PauliString | PauliSum) -> PauliString | PauliSum:
+        """Operator product self @ other (matrix multiplication, NOT tensor product). Same length required."""
+        if isinstance(other, PauliSum):
+            return PauliSum([self]).compose(other)
+        if len(self.string) != len(other.string):
+            raise ValueError(
+                f"compose requires equal-length strings; got {len(self.string)} and {len(other.string)}."
+            )
+        phase, string = _compose_strings(self.string, other.string)
+        return PauliString(string, self.coeff * other.coeff * phase)
+
+    def __matmul__(self, other: PauliString | PauliSum) -> PauliString | PauliSum:
+        return self.compose(other)
 
     def __mul__(self, scalar: complex) -> PauliString:
         return PauliString(self.string, self.coeff * scalar)
@@ -84,6 +118,24 @@ class PauliSum(Observable):
 
     def as_pauli_sum(self) -> PauliSum:
         return self
+
+    def compose(self, other: PauliString | PauliSum) -> PauliSum:
+        """Operator product self @ other (matrix multiplication). Distributes over both operands' terms."""
+        other_terms = other.terms if isinstance(other, PauliSum) else [other]
+        return PauliSum([s.compose(o) for s in self.terms for o in other_terms])
+
+    def __matmul__(self, other: PauliString | PauliSum) -> PauliSum:
+        return self.compose(other)
+
+    def simplify(self, atol: float = 1e-12) -> PauliSum:
+        """Merge terms with identical strings (sum coefficients); drop near-zero terms."""
+        merged: dict[str, complex] = {}
+        for term in self.terms:
+            merged[term.string] = merged.get(term.string, 0) + term.coeff
+        kept = [PauliString(string, coeff) for string, coeff in merged.items() if abs(coeff) > atol]
+        if not kept:
+            kept = [PauliString("I" * self.num_sites, 0.0)]
+        return PauliSum(kept)
 
     def __add__(self, other: PauliString | PauliSum) -> PauliSum:
         if isinstance(other, PauliString):

@@ -31,6 +31,47 @@ The work splits into two independent choices that we keep conceptually separate:
 
 The energy spectrum is invariant under (1); only the *qubit-space* structure (operator weights, entanglement, circuit layout) depends on the ordering. We return to this in §6.
 
+### 1.1 Mode labels vs. qubit placement — two separate steps in code
+
+"A linear ordering of the modes" is itself two independent decisions, and `core/fermions.py`
+makes both of them literal, separate steps rather than one combined choice.
+
+**Step A — mode labeling.** Fixed once, not a per-encoding choice. Before any qubit exists,
+every physical fermion gets an integer label. For `FermiHubbard1D` this is fixed inside
+`_fh_terms`:
+
+$$
+\mathrm{mode}(j,\sigma) = \sigma L + j, \qquad \sigma \in \{0=\uparrow,\ 1=\downarrow\}.
+$$
+
+So modes $0,\dots,L-1$ are *always* $\uparrow_0,\dots,\uparrow_{L-1}$ and modes $L,\dots,2L-1$
+are *always* $\downarrow_0,\dots,\downarrow_{L-1}$ — this labeling never changes, regardless of
+"stacked" vs "interleaved" below. It is arbitrary (any bijection between $(j,\sigma)$ pairs and
+$\{0,\dots,2L-1\}$ would do), but it has to be fixed once so that `hopping(a, b, coeff)` /
+`number(mode)` calls refer to definite physical fermions.
+
+**Step B — mode order.** The actual per-encoding choice, `FermionicEncoding.mode_order`.
+`mode_order[qubit] = mode` assigns each already-labeled mode to a qubit. §3 and §4 below are
+exactly the two choices of this permutation:
+
+- **Stacked** = the identity permutation. Because Step A already numbers $\uparrow$ before
+  $\downarrow$, doing nothing (`mode_order=None`) already gives the register
+  $[\uparrow_0,\dots,\uparrow_{L-1},\downarrow_0,\dots,\downarrow_{L-1}]$ of §4 for free.
+- **Interleaved** = `mode_order[2j] = j` (mode $\uparrow_j$), `mode_order[2j+1] = L+j` (mode
+  $\downarrow_j$) — implemented as `interleaved_mode_order(L)`.
+
+The reason stacked is the "free" (identity) case is entirely a consequence of Step A's arbitrary
+choice ($\sigma L + j$, $\uparrow$ before $\downarrow$) — labeling modes as $2j+\sigma$ instead
+would make interleaved the identity and stacked the permutation, with no physical difference
+whatsoever. Neither the spectrum (eq. 20) nor any observable can depend on either step; both are
+unitary relabelings of the same Hilbert space.
+
+In code: `FermiHubbard1D` performs Step A internally and is otherwise bare — no qubits at all
+exist until `.encode(...)` is called. Step B is supplied explicitly and separately, as a
+`FermionicEncoding(name="jordan_wigner", num_modes=2*L, mode_order=...)`, threaded through both
+the Hamiltonian and any observable evaluated against its ground state, so the two can't
+independently drift onto different encodings.
+
 ---
 
 ## 2. The Jordan–Wigner map and its one nontrivial identity

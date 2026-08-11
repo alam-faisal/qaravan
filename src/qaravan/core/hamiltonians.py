@@ -88,13 +88,21 @@ class Hamiltonian:
         self._gate_fusion_applied = _gate_fusion_applied
 
     def as_observable(self) -> PauliSum:
-        """Embed all local terms into the full n-qubit space and sum."""
+        """Embed all local terms into the full n-qubit space, sum, and simplify.
+
+        Simplifying (merging identical strings) matters in practice: a JW-encoded
+        fermionic Hamiltonian's onsite terms each individually pad out to an all-identity
+        string once embedded, so a Hamiltonian with many onsite terms accumulates many
+        separate copies of the same string if they're never merged -- pure waste feeding
+        into as_matrix()'s dense per-string matrix construction. Simplifying never changes
+        .matrix numerically; it just avoids redundant work and gives a smaller __repr__.
+        """
         embedded: list[PauliString] = []
         for term in self.terms:
             embedded.extend(
                 _embed_local_obs(term.local_obs, term.sites, self.num_sites)
             )
-        return PauliSum(embedded)
+        return PauliSum(embedded).simplify()
 
     def as_matrix(self) -> np.ndarray:
         """Full 2^n × 2^n Hamiltonian matrix."""

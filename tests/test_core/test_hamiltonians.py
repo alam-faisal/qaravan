@@ -75,6 +75,25 @@ def test_hamiltonian_repr_matches_as_observable_repr():
     assert str(tfi) == repr(tfi.as_observable())
 
 
+def test_as_observable_merges_duplicate_strings_without_changing_matrix():
+    from qaravan.core.fermions import FermionicEncoding
+    from qaravan.core.hamiltonians import FermiHubbard1D, _embed_local_obs
+    from qaravan.core.observables import PauliSum
+
+    fh = FermiHubbard1D(num_fermions=4, t=1.0, U=2.0, mu=0.3)
+    ham = fh.encode(FermionicEncoding("jordan_wigner", num_modes=fh.num_modes))
+
+    unsimplified = []
+    for term in ham.terms:
+        unsimplified.extend(_embed_local_obs(term.local_obs, term.sites, ham.num_sites))
+
+    simplified = ham.as_observable()
+    assert len(simplified.terms) < len(unsimplified), (
+        "onsite terms should collapse shared identity strings"
+    )
+    assert np.allclose(simplified.matrix, PauliSum(unsimplified).matrix)
+
+
 # ---------------------------------------------------------------------------
 # TFI ground state
 # ---------------------------------------------------------------------------

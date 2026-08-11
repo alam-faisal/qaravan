@@ -211,7 +211,9 @@ def test_compose_associative_on_random_triples():
     rng = np.random.default_rng(0)
     letters = "IXYZ"
     for _ in range(20):
-        a, b, c = (PauliString("".join(rng.choice(list(letters), size=3))) for _ in range(3))
+        a, b, c = (
+            PauliString("".join(rng.choice(list(letters), size=3))) for _ in range(3)
+        )
         left = (a @ b) @ c
         right = a @ (b @ c)
         assert np.allclose(left.matrix, right.matrix)
@@ -232,22 +234,26 @@ def test_compose_pauli_sum_distributes():
 
 def test_compose_raising_lowering_gives_number_operator():
     # (X - iY)/2 @ (X + iY)/2 = (I - Z)/2 -- the number-operator identity (doc eq. 4).
-    lowering = PauliSum([PauliString("X", 0.5), PauliString("Y", 0.5j)])   # (X+iY)/2
-    raising = PauliSum([PauliString("X", 0.5), PauliString("Y", -0.5j)])   # (X-iY)/2
+    lowering = PauliSum([PauliString("X", 0.5), PauliString("Y", 0.5j)])  # (X+iY)/2
+    raising = PauliSum([PauliString("X", 0.5), PauliString("Y", -0.5j)])  # (X-iY)/2
     number = raising.compose(lowering).simplify()
     expected = PauliSum([PauliString("I", 0.5), PauliString("Z", -0.5)])
     assert np.allclose(number.matrix, expected.matrix)
 
 
 def test_simplify_merges_duplicate_strings():
-    ps = PauliSum([PauliString("XI", 1.0), PauliString("XI", 2.0), PauliString("IY", 3.0)])
+    ps = PauliSum(
+        [PauliString("XI", 1.0), PauliString("XI", 2.0), PauliString("IY", 3.0)]
+    )
     simplified = ps.simplify()
     assert len(simplified.terms) == 2
     assert np.allclose(simplified.matrix, ps.matrix)
 
 
 def test_simplify_drops_near_zero_terms():
-    ps = PauliSum([PauliString("XI", 1.0), PauliString("XI", -1.0), PauliString("IY", 3.0)])
+    ps = PauliSum(
+        [PauliString("XI", 1.0), PauliString("XI", -1.0), PauliString("IY", 3.0)]
+    )
     simplified = ps.simplify()
     assert len(simplified.terms) == 1
     assert simplified.terms[0].string == "IY"

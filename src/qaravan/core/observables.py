@@ -13,12 +13,22 @@ PAULI_MATRICES: dict[str, np.ndarray] = {
 }
 
 _PAULI_MULT: dict[tuple[str, str], tuple[complex, str]] = {
-    ("I", "I"): (1, "I"), ("I", "X"): (1, "X"), ("I", "Y"): (1, "Y"), ("I", "Z"): (1, "Z"),
-    ("X", "I"): (1, "X"), ("Y", "I"): (1, "Y"), ("Z", "I"): (1, "Z"),
-    ("X", "X"): (1, "I"), ("Y", "Y"): (1, "I"), ("Z", "Z"): (1, "I"),
-    ("X", "Y"): (1j, "Z"), ("Y", "X"): (-1j, "Z"),
-    ("Y", "Z"): (1j, "X"), ("Z", "Y"): (-1j, "X"),
-    ("Z", "X"): (1j, "Y"), ("X", "Z"): (-1j, "Y"),
+    ("I", "I"): (1, "I"),
+    ("I", "X"): (1, "X"),
+    ("I", "Y"): (1, "Y"),
+    ("I", "Z"): (1, "Z"),
+    ("X", "I"): (1, "X"),
+    ("Y", "I"): (1, "Y"),
+    ("Z", "I"): (1, "Z"),
+    ("X", "X"): (1, "I"),
+    ("Y", "Y"): (1, "I"),
+    ("Z", "Z"): (1, "I"),
+    ("X", "Y"): (1j, "Z"),
+    ("Y", "X"): (-1j, "Z"),
+    ("Y", "Z"): (1j, "X"),
+    ("Z", "Y"): (-1j, "X"),
+    ("Z", "X"): (1j, "Y"),
+    ("X", "Z"): (-1j, "Y"),
 }
 
 
@@ -132,7 +142,11 @@ class PauliSum(Observable):
         merged: dict[str, complex] = {}
         for term in self.terms:
             merged[term.string] = merged.get(term.string, 0) + term.coeff
-        kept = [PauliString(string, coeff) for string, coeff in merged.items() if abs(coeff) > atol]
+        kept = [
+            PauliString(string, coeff)
+            for string, coeff in merged.items()
+            if abs(coeff) > atol
+        ]
         if not kept:
             kept = [PauliString("I" * self.num_sites, 0.0)]
         return PauliSum(kept)

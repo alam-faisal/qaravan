@@ -72,6 +72,11 @@ exist until `.encode(...)` is called. Step B is supplied explicitly and separate
 the Hamiltonian and any observable evaluated against its ground state, so the two can't
 independently drift onto different encodings.
 
+Step A is only a real decision when a model has more than one fermionic mode per site — spin
+here, but equally orbitals, bath levels, etc. For a spinless, single-orbital chain, `mode = site`
+trivially and there is nothing to fix: `num_modes = num_sites`, and only Step B (which qubit
+gets which site) remains a choice at all.
+
 ---
 
 ## 2. The Jordan–Wigner map and its one nontrivial identity

@@ -296,6 +296,178 @@ class FermiHubbard1D(FermionOperator):
 
 
 # ---------------------------------------------------------------------------
+# AndersonImpurity
+# ---------------------------------------------------------------------------
+
+
+def _aim_onsite_terms(
+    eps_d: float, U: float, eps_levels: list[float], num_bath: int, mode
+) -> list:
+    """eps_d/U impurity terms plus per-level (bath or chain) on-site number terms."""
+    onsite = [eps_d * number(mode(0, 0)), eps_d * number(mode(0, 1))]
+    onsite += density_density(mode(0, 0), mode(0, 1), U)
+    for k in range(1, num_bath + 1):
+        level = eps_levels[k - 1]
+        onsite += [level * number(mode(k, 0)), level * number(mode(k, 1))]
+    return onsite
+
+
+def _aim_star_terms(
+    eps_d: float, U: float, eps_bath: list[float], V: list[float]
+) -> tuple[list[int], list]:
+    """Flat AIM (star) FermionTerms, plus the OUTPUT HamiltonianTerm count of each Trotter
+    layer: one layer per bath index (every hybridization bond touches the impurity, so none
+    of them commute with each other), plus a final onsite layer. mode(site, spin) =
+    spin*(num_bath+1) + site, site 0 = impurity, site k = bath k.
+    """
+    if len(eps_bath) != len(V):
+        raise ValueError(
+            f"eps_bath and V must have the same length; got {len(eps_bath)} and {len(V)}."
+        )
+    num_bath = len(eps_bath)
+
+    def mode(site: int, spin: int) -> int:
+        return spin * (num_bath + 1) + site
+
+    hyb_layers = []
+    for k in range(1, num_bath + 1):
+        layer = hopping(mode(0, 0), mode(k, 0), V[k - 1]) + hopping(
+            mode(0, 1), mode(k, 1), V[k - 1]
+        )
+        hyb_layers.append(layer)
+
+    onsite = _aim_onsite_terms(eps_d, U, eps_bath, num_bath, mode)
+
+    layer_sizes = [len(layer) // 2 for layer in hyb_layers] + [len(onsite)]
+    terms = [term for layer in hyb_layers for term in layer] + onsite
+    return layer_sizes, terms
+
+
+def _aim_chain_terms(
+    eps_d: float, U: float, eps_chain: list[float], t_chain: list[float], V: float
+) -> tuple[list[int], list]:
+    """Flat AIM (chain) FermionTerms, plus per-layer OUTPUT HamiltonianTerm counts (up-even,
+    up-odd, down-even, down-odd, onsite) -- structurally identical to _fh_terms, since the
+    impurity is just site 0 of an ordinary open chain of length num_bath+1, with V taking the
+    place of a uniform hopping for the impurity<->first-site bond.
+    """
+    num_bath = len(eps_chain)
+    expected_t_len = max(num_bath - 1, 0)
+    if len(t_chain) != expected_t_len:
+        raise ValueError(
+            f"t_chain must have length num_bath-1={expected_t_len}; got {len(t_chain)}."
+        )
+
+    def mode(site: int, spin: int) -> int:
+        return spin * (num_bath + 1) + site
+
+    bonds = (
+        LinearLattice(num_bath + 1, periodic=False).nn_pairs() if num_bath >= 1 else []
+    )
+    couplings = [V, *t_chain]
+    even_bonds, even_couplings = bonds[::2], couplings[::2]
+    odd_bonds, odd_couplings = bonds[1::2], couplings[1::2]
+
+    def hop_layer(bond_list, coupling_list, spin):
+        return [
+            term
+            for (a, b), coeff in zip(bond_list, coupling_list)
+            for term in hopping(mode(a, spin), mode(b, spin), coeff)
+        ]
+
+    up_even = hop_layer(even_bonds, even_couplings, 0)
+    up_odd = hop_layer(odd_bonds, odd_couplings, 0)
+    down_even = hop_layer(even_bonds, even_couplings, 1)
+    down_odd = hop_layer(odd_bonds, odd_couplings, 1)
+
+    onsite = _aim_onsite_terms(eps_d, U, eps_chain, num_bath, mode)
+
+    layer_sizes = [
+        len(even_bonds),
+        len(odd_bonds),
+        len(even_bonds),
+        len(odd_bonds),
+        len(onsite),
+    ]
+    chunks = [up_even, up_odd, down_even, down_odd, onsite]
+    return layer_sizes, [term for chunk in chunks for term in chunk]
+
+
+def bath_interleaved_mode_order(num_bath: int) -> tuple[int, ...]:
+    """mode_order placing bath modes first (interleaved by spin: bath1_up, bath1_down,
+    bath2_up, bath2_down, ...), impurity last: qubits [b1up,b1down,...,bNup,bNdown,i_up,i_down].
+    """
+    order = []
+    for k in range(1, num_bath + 1):
+        order.append(k)
+        order.append(num_bath + 1 + k)
+    order.append(0)
+    order.append(num_bath + 1)
+    return tuple(order)
+
+
+class AndersonImpurity(FermionOperator):
+    """Single-orbital Anderson impurity model (star or chain geometry). Bare -- no qubit
+    encoding until .encode(encoding) is called, exactly like FermiHubbard1D.
+
+    Build via .star(...) or .chain(...); the plain constructor is for their internal use --
+    the two geometries take different-shaped parameters and there is no conversion between
+    them (the star<->chain Lanczos mapping is not implemented here).
+
+    Canonical mode index: spin*(num_bath+1) + site, site 0 = impurity, sites 1..num_bath =
+    bath/chain sites 1..num_bath (spin 0=up, 1=down). Total modes/qubits: 2*(num_bath+1).
+    """
+
+    def __init__(
+        self,
+        num_bath: int,
+        eps_d: float,
+        U: float,
+        topology: str,
+        terms: list,
+        layer_sizes: list[int],
+    ):
+        self.num_bath = num_bath
+        self.eps_d = eps_d
+        self.U = U
+        self.topology = topology
+        self._layer_sizes = layer_sizes
+        super().__init__(terms, 2 * (num_bath + 1))
+
+    @classmethod
+    def star(
+        cls, eps_d: float, U: float, eps_bath: list[float], V: list[float]
+    ) -> AndersonImpurity:
+        """H = Himp + Hbath + Hhyb: impurity coupled directly to each of len(eps_bath) bath
+        modes via its own V_k; bath modes never couple to each other."""
+        layer_sizes, terms = _aim_star_terms(eps_d, U, eps_bath, V)
+        return cls(len(eps_bath), eps_d, U, "star", terms, layer_sizes)
+
+    @classmethod
+    def chain(
+        cls,
+        eps_d: float,
+        U: float,
+        eps_chain: list[float],
+        t_chain: list[float],
+        V: float,
+    ) -> AndersonImpurity:
+        """H = Himp + chain-mapped Hbath+Hhyb: impurity coupled only to the first of
+        len(eps_chain) nearest-neighbor-hopping chain sites, via a single V."""
+        layer_sizes, terms = _aim_chain_terms(eps_d, U, eps_chain, t_chain, V)
+        return cls(len(eps_chain), eps_d, U, "chain", terms, layer_sizes)
+
+    def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
+        """Same pattern as FermiHubbard1D.encode(): the generic, Trotter-agnostic
+        FermionOperator.encode() runs first; Trotter-layer structure (star: one layer per
+        bath index; chain: even/odd bond splitting) is this model's own business, re-chunked
+        onto the result afterward."""
+        ham = super().encode(encoding)
+        ham.trotter_groups = _chunk(ham.terms, self._layer_sizes)
+        return ham
+
+
+# ---------------------------------------------------------------------------
 # TFI
 # ---------------------------------------------------------------------------
 

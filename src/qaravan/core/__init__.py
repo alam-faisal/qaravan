@@ -25,6 +25,8 @@ from qaravan.core.hamiltonians import (
     Heisenberg1D,
     FermiHubbard1D,
     interleaved_mode_order,
+    AndersonImpurity,
+    bath_interleaved_mode_order,
 )
 from qaravan.core.fermions import (
     FermionTerm,
@@ -66,6 +68,8 @@ __all__ = [
     "Heisenberg1D",
     "FermiHubbard1D",
     "interleaved_mode_order",
+    "AndersonImpurity",
+    "bath_interleaved_mode_order",
     "FermionTerm",
     "FermionOperator",
     "FermionicEncoding",

@@ -25,6 +25,23 @@ from qaravan.core.hamiltonians import (
     Heisenberg1D,
     FermiHubbard1D,
 )
+from qaravan.core.fermions import (
+    FermionTerm,
+    FermionOperator,
+    FermionicEncoding,
+    MajoranaTerm,
+    MajoranaOperator,
+    c,
+    cdag,
+    number,
+    hopping,
+    density_density,
+    jordan_wigner,
+    gamma,
+    majorana_bilinear,
+    majorana_observable,
+    to_majorana,
+)
 
 __all__ = [
     "Gate",
@@ -47,4 +64,19 @@ __all__ = [
     "TFI",
     "Heisenberg1D",
     "FermiHubbard1D",
+    "FermionTerm",
+    "FermionOperator",
+    "FermionicEncoding",
+    "MajoranaTerm",
+    "MajoranaOperator",
+    "c",
+    "cdag",
+    "number",
+    "hopping",
+    "density_density",
+    "jordan_wigner",
+    "gamma",
+    "majorana_bilinear",
+    "majorana_observable",
+    "to_majorana",
 ]

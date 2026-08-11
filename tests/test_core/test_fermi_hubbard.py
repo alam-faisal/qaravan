@@ -279,3 +279,18 @@ def test_fh_trotter_error_scaling_order1():
         assert 1.8 < slope < 2.2, (
             f"ordering={ordering}: order-1 slope={slope:.3f} (expected ~2)"
         )
+
+
+# ---------------------------------------------------------------------------
+# interleaved_mode_order annotation
+# ---------------------------------------------------------------------------
+
+
+def test_interleaved_mode_order_annotate_false_is_unchanged():
+    assert interleaved_mode_order(2, annotate=False) == interleaved_mode_order(2)
+
+
+def test_interleaved_mode_order_annotate_returns_order_and_string():
+    order, annotation = interleaved_mode_order(2, annotate=True)
+    assert order == (0, 2, 1, 3)
+    assert annotation == "q0=↑0 q1=↓0 q2=↑1 q3=↓1"

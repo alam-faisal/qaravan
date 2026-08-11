@@ -198,6 +198,18 @@ def test_bath_interleaved_mode_order_is_a_permutation():
         assert sorted(order) == list(range(2 * (num_bath + 1)))
 
 
+def test_bath_interleaved_mode_order_annotate_false_is_unchanged():
+    assert bath_interleaved_mode_order(
+        2, annotate=False
+    ) == bath_interleaved_mode_order(2)
+
+
+def test_bath_interleaved_mode_order_annotate_returns_order_and_string():
+    order, annotation = bath_interleaved_mode_order(2, annotate=True)
+    assert order == (1, 4, 2, 5, 0, 3)
+    assert annotation == "q0=b1↑ q1=b1↓ q2=b2↑ q3=b2↓ q4=i↑ q5=i↓"
+
+
 def test_bath_interleaved_mode_order_matches_stacked_spectrum():
     # Applying a different mode_order must not change the physics.
     aim = AndersonImpurity.star(eps_d=0.3, U=2.0, eps_bath=[0.1, -0.2], V=[0.5, 0.4])

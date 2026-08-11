@@ -24,6 +24,7 @@ from qaravan.core.hamiltonians import (
     TFI,
     Heisenberg1D,
     FermiHubbard1D,
+    interleaved_mode_order,
 )
 from qaravan.core.fermions import (
     FermionTerm,
@@ -64,6 +65,7 @@ __all__ = [
     "TFI",
     "Heisenberg1D",
     "FermiHubbard1D",
+    "interleaved_mode_order",
     "FermionTerm",
     "FermionOperator",
     "FermionicEncoding",

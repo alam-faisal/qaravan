@@ -1,7 +1,8 @@
-"""Hamiltonian base class, HamiltonianTerm, TFI, Heisenberg1D."""
+"""Hamiltonian base class, HamiltonianTerm, TFI, Heisenberg1D, FermiHubbard1D."""
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -9,6 +10,13 @@ from scipy.linalg import expm
 
 from qaravan.core.base import Observable
 from qaravan.core.circuit import Circuit
+from qaravan.core.fermions import (
+    FermionOperator,
+    FermionicEncoding,
+    density_density,
+    hopping,
+    number,
+)
 from qaravan.core.gates import MatrixGate
 from qaravan.core.lattices import LinearLattice
 from qaravan.core.observables import PauliString, PauliSum
@@ -68,10 +76,15 @@ class Hamiltonian:
         num_sites: int,
         terms: list[HamiltonianTerm],
         trotter_groups: list[list[HamiltonianTerm]] | None = None,
+        _gate_fusion_applied: bool = True,
     ):
         self.num_sites = num_sites
         self.terms = terms
         self.trotter_groups = trotter_groups
+        # Set by FermionOperator.encode() for generically-encoded Hamiltonians, where no
+        # pass has merged commuting same-qubit terms into fewer gates. Hand-built models
+        # (TFI, Heisenberg1D, ...) don't pass this and get no warning.
+        self._gate_fusion_applied = _gate_fusion_applied
 
     def as_observable(self) -> PauliSum:
         """Embed all local terms into the full n-qubit space and sum."""
@@ -86,11 +99,35 @@ class Hamiltonian:
         """Full 2^n × 2^n Hamiltonian matrix."""
         return self.as_observable().matrix
 
-    def ground_state(self, method: str = "exact") -> Statevector:
-        """Ground state via exact diagonalization (numpy.linalg.eigh). Returns Statevector."""
-        evals, evecs = np.linalg.eigh(self.as_matrix())
-        _ = evals  # ascending; evecs[:,0] is the ground state
-        return Statevector(array=evecs[:, 0])
+    def ground_state(
+        self,
+        method: str = "exact",
+        fixed_particle_number: int | None = None,
+    ) -> Statevector:
+        """Ground state via exact diagonalization (numpy.linalg.eigh). Returns Statevector.
+
+        fixed_particle_number restricts to the popcount-k sector of the computational basis
+        before diagonalizing -- meaningful whenever the Hamiltonian conserves total
+        occupation number, e.g. any Jordan-Wigner-encoded fermionic Hamiltonian.
+        """
+        H = self.as_matrix()
+        if fixed_particle_number is None:
+            evals, evecs = np.linalg.eigh(H)
+            _ = evals  # ascending; evecs[:,0] is the ground state
+            return Statevector(array=evecs[:, 0])
+
+        sector = [
+            i
+            for i in range(2**self.num_sites)
+            if bin(i).count("1") == fixed_particle_number
+        ]
+        H_sector = H[np.ix_(sector, sector)]
+        evals, evecs = np.linalg.eigh(H_sector)
+        _ = evals
+        full_vec = np.zeros(2**self.num_sites, dtype=complex)
+        for local_idx, global_idx in enumerate(sector):
+            full_vec[global_idx] = evecs[local_idx, 0]
+        return Statevector(array=full_vec)
 
     def trotter_circuit(self, dt: float, order: int = 2) -> Circuit:
         """Single Trotter step of duration dt.
@@ -103,6 +140,15 @@ class Hamiltonian:
         if self.trotter_groups is None:
             raise NotImplementedError(
                 f"{type(self).__name__} has no trotter_groups defined."
+            )
+        if not self._gate_fusion_applied:
+            warnings.warn(
+                "This Hamiltonian's terms were produced by a generic fermion-to-qubit "
+                "encoding with no gate-fusion optimization pass -- the Trotter circuit may "
+                "use more gates than necessary (e.g. commuting diagonal terms on the same "
+                "qubits are not merged into one gate). Correctness and Trotter error "
+                "scaling are unaffected.",
+                stacklevel=2,
             )
         if self.num_sites <= 2:
             raise ValueError(
@@ -159,109 +205,66 @@ def _trotter_order2(groups: list[list[HamiltonianTerm]], dt: float) -> list[Matr
 # ---------------------------------------------------------------------------
 
 
-def _build_fh_terms(
-    num_fermions: int,
-    t: float,
-    U: float,
-    mu: float,
-    ordering: str,
-    periodic: bool = False,
-) -> tuple[list[HamiltonianTerm], list[list[HamiltonianTerm]]]:
-    """Build HamiltonianTerm list and Trotter groups for the given JW ordering.
-
-    Returns (all_terms, trotter_groups) where trotter_groups has 5 entries:
-    [H_↑,even, H_↑,odd, H_↓,even, H_↓,odd, H_onsite].
-    See docs/jw_fermi_hubbard_1d.md for the derivation of each term.
+def _fh_terms(
+    L: int, t: float, U: float, mu: float, periodic: bool
+) -> tuple[list[int], list]:
+    """Flat FH FermionTerms in canonical mode order (mode = spin*L + site, spin 0=up,
+    1=down), plus the OUTPUT HamiltonianTerm count of each of the 5 Trotter layers
+    (up-even, up-odd, down-even, down-odd, onsite) in the SAME order they appear in the
+    flat list -- so the qubit-space Hamiltonian's terms can be re-chunked into
+    trotter_groups after encoding, with no re-derivation. Hopping bonds contribute 2
+    FermionTerms each but 1 output HamiltonianTerm (jordan_wigner re-pairs the h.c. halves);
+    onsite terms are each individually self-adjoint, 1-to-1. See docs/jw_fermi_hubbard_1d.md.
     """
-    L = num_fermions
+    bonds = LinearLattice(L, periodic=periodic).nn_pairs()
+    even_bonds, odd_bonds = bonds[::2], bonds[1::2]
 
-    onsite_local = PauliSum(
-        [
-            PauliString("II", U / 4 + mu),
-            PauliString("ZI", -U / 4 - mu / 2),
-            PauliString("IZ", -U / 4 - mu / 2),
-            PauliString("ZZ", U / 4),
-        ]
-    )
-
-    if ordering == "stacked":
-        # Adjacent modes in each spin sector are adjacent in the register — string-free (weight-2).
-        hopping_local = PauliSum([PauliString("XX", -t / 2), PauliString("YY", -t / 2)])
-        up_bonds = [HamiltonianTerm([j, j + 1], hopping_local) for j in range(L - 1)]
-        down_bonds = [
-            HamiltonianTerm([L + j, L + j + 1], hopping_local) for j in range(L - 1)
-        ]
-        onsite = [HamiltonianTerm([j, L + j], onsite_local) for j in range(L)]
-
-    elif ordering == "interleaved":
-        # Same-spin adjacent sites are 2 apart in mode ordering, leaving one residual Z (weight-3).
-        hopping_local = PauliSum(
-            [PauliString("XZX", -t / 2), PauliString("YZY", -t / 2)]
-        )
-        up_bonds = [
-            HamiltonianTerm([2 * j, 2 * j + 1, 2 * j + 2], hopping_local)
-            for j in range(L - 1)
-        ]
-        down_bonds = [
-            HamiltonianTerm([2 * j + 1, 2 * j + 2, 2 * j + 3], hopping_local)
-            for j in range(L - 1)
-        ]
-        onsite = [HamiltonianTerm([2 * j, 2 * j + 1], onsite_local) for j in range(L)]
-
-    else:
-        raise ValueError(
-            f"Unknown ordering '{ordering}'; expected 'stacked' or 'interleaved'."
-        )
-
-    if periodic:
-        if num_fermions < 2:
-            raise ValueError("periodic=True requires num_fermions >= 2.")
-        L = num_fermions
-        if ordering == "stacked":
-            pbc_local = PauliSum(
-                [
-                    PauliString("X" + "Z" * (L - 2) + "X", -t / 2),
-                    PauliString("Y" + "Z" * (L - 2) + "Y", -t / 2),
-                ]
-            )
-            boundary_bonds = [
-                HamiltonianTerm(list(range(L)), pbc_local),
-                HamiltonianTerm(list(range(L, 2 * L)), pbc_local),
-            ]
-        else:  # interleaved
-            pbc_local = PauliSum(
-                [
-                    PauliString("X" + "Z" * (2 * L - 3) + "X", -t / 2),
-                    PauliString("Y" + "Z" * (2 * L - 3) + "Y", -t / 2),
-                ]
-            )
-            boundary_bonds = [
-                HamiltonianTerm(list(range(2 * L - 1)), pbc_local),
-                HamiltonianTerm(list(range(1, 2 * L)), pbc_local),
-            ]
-    else:
-        boundary_bonds = []
-
-    trotter_groups = [
-        up_bonds[::2],
-        up_bonds[1::2],
-        down_bonds[::2],
-        down_bonds[1::2],
-        onsite,
-        boundary_bonds,
+    up_even = [term for a, b in even_bonds for term in hopping(a, b, -t)]
+    up_odd = [term for a, b in odd_bonds for term in hopping(a, b, -t)]
+    down_even = [term for a, b in even_bonds for term in hopping(L + a, L + b, -t)]
+    down_odd = [term for a, b in odd_bonds for term in hopping(L + a, L + b, -t)]
+    onsite = [
+        term
+        for j in range(L)
+        for term in [mu * number(j), mu * number(L + j), *density_density(j, L + j, U)]
     ]
-    return up_bonds + down_bonds + onsite + boundary_bonds, trotter_groups
+
+    layer_output_sizes = [
+        len(even_bonds),
+        len(odd_bonds),
+        len(even_bonds),
+        len(odd_bonds),
+        3 * L,
+    ]
+    chunks = [up_even, up_odd, down_even, down_odd, onsite]
+    return layer_output_sizes, [term for chunk in chunks for term in chunk]
 
 
-class FermiHubbard1D(Hamiltonian):
+def interleaved_mode_order(num_fermions: int) -> tuple[int, ...]:
+    """mode_order for FermiHubbard1D's interleaved layout: qubit 2j <- up_j, qubit 2j+1 <- down_j."""
+    order = [0] * (2 * num_fermions)
+    for j in range(num_fermions):
+        order[2 * j], order[2 * j + 1] = j, num_fermions + j
+    return tuple(order)
+
+
+def _chunk(items: list, sizes: list[int]) -> list[list]:
+    """Split a flat list into consecutive chunks of the given sizes."""
+    out, offset = [], 0
+    for size in sizes:
+        out.append(items[offset : offset + size])
+        offset += size
+    return out
+
+
+class FermiHubbard1D(FermionOperator):
     """1D Fermi-Hubbard model: H = -t Σ_{j,σ}(c†c + h.c.) + U Σ_j n↑n↓ + μ Σ_{j,σ} n_{j,σ}.
 
-    ordering='stacked': qubits [↑_0..↑_{L-1}, ↓_0..↓_{L-1}]; weight-2 hopping, long-range ZZ interaction.
-    ordering='interleaved': qubits [↑_0,↓_0,↑_1,↓_1,...]; weight-3 XZX/YZY hopping, local ZZ interaction.
-    periodic=True: adds the two wrap-around hopping terms (one per spin species) via the full JW string.
-      Stacked ↑ boundary: weight-L string X Z^{L-2} X on qubits [0..L-1].
-      Interleaved ↑ boundary: weight-(2L-1) string on qubits [0..2L-2].
-    Total qubits: 2 * num_fermions for both orderings.
+    Bare -- no qubit encoding until .encode(encoding) is called. Canonical mode index is
+    spin*num_fermions + site (spin 0=up, 1=down), chosen so that FermionicEncoding's default
+    (mode_order=None) reproduces the "stacked" register [↑_0..↑_{L-1}, ↓_0..↓_{L-1}];
+    "interleaved" ([↑_0,↓_0,↑_1,↓_1,...]) is FermionicEncoding(..., mode_order=
+    interleaved_mode_order(num_fermions)). Total modes/qubits: 2 * num_fermions.
     See docs/jw_fermi_hubbard_1d.md for derivations and hardware tradeoffs.
     """
 
@@ -271,43 +274,25 @@ class FermiHubbard1D(Hamiltonian):
         t: float = 1.0,
         U: float = 1.0,
         mu: float = 0.0,
-        ordering: str = "stacked",
         periodic: bool = False,
     ):
+        if periodic and num_fermions < 2:
+            raise ValueError("periodic=True requires num_fermions >= 2.")
         self.num_fermions = num_fermions
         self.t = t
         self.U = U
         self.mu = mu
-        self.ordering = ordering
         self.periodic = periodic
-        terms, trotter_groups = _build_fh_terms(
-            num_fermions, t, U, mu, ordering, periodic
-        )
-        super().__init__(2 * num_fermions, terms, trotter_groups)
+        self._layer_output_sizes, terms = _fh_terms(num_fermions, t, U, mu, periodic)
+        super().__init__(terms, 2 * num_fermions)
 
-    def ground_state(
-        self,
-        n_electrons: int | None = None,
-        method: str = "exact",
-    ) -> Statevector:
-        """Ground state via exact diag. n_electrons restricts to the fixed-N sector."""
-
-        if n_electrons is None:
-            return super().ground_state(method=method)
-
-        num_qubits = 2 * self.num_fermions
-        sector = [i for i in range(2**num_qubits) if bin(i).count("1") == n_electrons]
-        H_mat = self.as_matrix()
-        H_sector = H_mat[np.ix_(sector, sector)]
-        evals, evecs = np.linalg.eigh(H_sector)
-        _ = evals
-        gs_sector = evecs[:, 0]
-
-        full_vec = np.zeros(2**num_qubits, dtype=complex)
-        for local_idx, global_idx in enumerate(sector):
-            full_vec[global_idx] = gs_sector[local_idx]
-
-        return Statevector(array=full_vec)
+    def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
+        """Trotter-layer structure (which terms mutually commute) is FH's own business --
+        computed once at construction, re-chunked onto whatever Hamiltonian the generic,
+        Trotter-agnostic FermionOperator.encode() produces."""
+        ham = super().encode(encoding)
+        ham.trotter_groups = _chunk(ham.terms, self._layer_output_sizes)
+        return ham
 
 
 # ---------------------------------------------------------------------------

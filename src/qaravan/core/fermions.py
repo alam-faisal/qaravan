@@ -120,7 +120,7 @@ class FermionOperator:
                 f"Encoding is for {encoding.num_modes} modes; operator has {self.num_modes}."
             )
         terms = encoding.encode_fermion_terms(self.terms)
-        return Hamiltonian(encoding.num_qubits, terms, None)
+        return Hamiltonian(encoding.num_qubits, terms, None, _gate_fusion_applied=False)
 
 
 # ---------------------------------------------------------------------------

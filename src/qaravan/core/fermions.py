@@ -58,6 +58,14 @@ class FermionTerm:
     def __rmul__(self, scalar: complex) -> FermionTerm:
         return self.__mul__(scalar)
 
+    def __repr__(self) -> str:
+        ops_str = " ".join(
+            f"c†_{mode}" if is_dagger else f"c_{mode}" for mode, is_dagger in self.ops
+        )
+        if self.coeff == 1.0:
+            return ops_str
+        return f"{self.coeff} * {ops_str}"
+
 
 def c(mode: int) -> FermionTerm:
     """Annihilation operator on mode, as a length-1 FermionTerm."""
@@ -109,6 +117,9 @@ class FermionOperator:
 
     def dagger(self) -> FermionOperator:
         return FermionOperator([term.dagger() for term in self.terms], self.num_modes)
+
+    def __repr__(self) -> str:
+        return " + ".join(repr(term) for term in self.terms)
 
     def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
         """Apply a fermion-to-qubit encoding. The only qubit-producing method -- everything
@@ -256,6 +267,12 @@ class MajoranaTerm:
     def __rmul__(self, scalar: complex) -> MajoranaTerm:
         return self.__mul__(scalar)
 
+    def __repr__(self) -> str:
+        ops_str = " ".join(f"γ_{i}" for i in self.ops)
+        if self.coeff == 1.0:
+            return ops_str
+        return f"{self.coeff} * {ops_str}"
+
 
 @dataclass
 class MajoranaOperator:
@@ -277,6 +294,9 @@ class MajoranaOperator:
 
     def __rmul__(self, scalar: complex) -> MajoranaOperator:
         return self.__mul__(scalar)
+
+    def __repr__(self) -> str:
+        return " + ".join(repr(term) for term in self.terms)
 
 
 def gamma(index: int) -> MajoranaTerm:

@@ -281,6 +281,29 @@ class RZZ(ParametricGate):
         )
 
 
+class XY(ParametricGate):
+    """exp(-i θ (X⊗X + Y⊗Y)).
+
+    X⊗X + Y⊗Y acts only on the |01>,|10> subspace, with eigenvalues {2,-2} there (and 0 on
+    |00>,|11>) -- so the period is halved relative to RXX/RYY alone (each of which has
+    eigenvalues {1,-1}), hence cos(2θ)/sin(2θ) below, not cos(θ)/sin(θ).
+    """
+
+    def __init__(self, indices: list[int], theta: float, time: float | None = None):
+        super().__init__("XY", indices, (theta,), time)
+
+    def _build_matrix(self) -> np.ndarray:
+        c, s = np.cos(2 * self.params[0]), np.sin(2 * self.params[0])
+        return np.array(
+            [
+                [1, 0, 0, 0],
+                [0, c, -1j * s, 0],
+                [0, -1j * s, c, 0],
+                [0, 0, 0, 1],
+            ],
+        )
+
+
 # ---------------------------------------------------------------------------
 # Qutrit MatrixGate subclasses (local_dim=3, inferred from matrix shape)
 # ---------------------------------------------------------------------------

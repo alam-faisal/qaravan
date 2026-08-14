@@ -26,6 +26,7 @@ from qaravan.core.gates import (
     RXX,
     RYY,
     RZZ,
+    XY,
     X01,
     SX01,
     X12,
@@ -119,6 +120,32 @@ def test_rxx_limit():
 
 def test_ryy_limit():
     assert np.allclose(RYY([0, 1], 0).matrix, np.eye(4))
+
+
+def test_xy_limit():
+    assert np.allclose(XY([0, 1], 0).matrix, np.eye(4))
+
+
+def test_xy_matches_expm():
+    from scipy.linalg import expm
+
+    X_mat = np.array([[0, 1], [1, 0]], dtype=complex)
+    Y_mat = np.array([[0, -1j], [1j, 0]], dtype=complex)
+    xx_plus_yy = np.kron(X_mat, X_mat) + np.kron(Y_mat, Y_mat)
+    for theta in [0.3, 1.0, -0.7, 2.1]:
+        exact = expm(-1j * theta * xx_plus_yy)
+        assert np.allclose(XY([0, 1], theta).matrix, exact)
+
+
+def test_xy_is_unitary():
+    assert is_unitary(XY([0, 1], 0.42).matrix)
+
+
+def test_xy_dagger():
+    g = XY([0, 1], 0.5)
+    gd = g.dagger()
+    assert isinstance(gd, XY)
+    assert np.allclose(gd.matrix, XY([0, 1], -0.5).matrix)
 
 
 # ---------------------------------------------------------------------------

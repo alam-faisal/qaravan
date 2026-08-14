@@ -17,6 +17,7 @@ dependencies = [
     "ncon_torch>=0.3",
     "torch>=2.1",
     "stim>=1.14.0",
+    "protobuf>=5.28,<7",
 ]
 
 [dependency-groups]
@@ -43,7 +44,12 @@ omit = ["src/qaravan/legacy/*"]
 exclude_lines = ["if TYPE_CHECKING:"]
 
 [tool.ruff]
-exclude = ["src/qaravan/legacy", "tests/test_legacy"]
+exclude = [
+    "src/qaravan/legacy",
+    "tests/test_legacy",
+    "src/qaravan/interop/proto/hardware_gates_pb2.py",
+    "src/qaravan/interop/proto/hardware_gates_pb2.pyi",
+]
 
 [tool.ruff.lint]
 select = ["E", "F"]

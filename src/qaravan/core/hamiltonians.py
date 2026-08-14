@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.linalg import expm
@@ -21,7 +22,9 @@ from qaravan.core.fermions import (
 from qaravan.core.gates import MatrixGate
 from qaravan.core.lattices import LinearLattice
 from qaravan.core.observables import PauliString, PauliSum
-from qaravan.backends.statevector import Statevector
+
+if TYPE_CHECKING:
+    from qaravan.backends.statevector import Statevector
 
 
 @dataclass
@@ -129,6 +132,11 @@ class Hamiltonian:
         before diagonalizing -- meaningful whenever the Hamiltonian conserves total
         occupation number, e.g. any Jordan-Wigner-encoded fermionic Hamiltonian.
         """
+        # Local import: core/ must not depend on backends/ at module load time -- backends
+        # import core.base, so a top-level import here is a circular-import trap that only
+        # bites depending on which module a caller happens to import first.
+        from qaravan.backends.statevector import Statevector
+
         H = self.as_matrix()
         if fixed_particle_number is None:
             sector = None

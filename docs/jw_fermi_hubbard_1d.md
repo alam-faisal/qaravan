@@ -38,7 +38,7 @@ makes both of them literal, separate steps rather than one combined choice.
 
 **Step A — mode labeling.** Fixed once, not a per-encoding choice. Before any qubit exists,
 every physical fermion gets an integer label. For `FermiHubbard1D` this is fixed inside
-`_fh_terms`:
+`FermiHubbard1D._terms`:
 
 $$
 \mathrm{mode}(j,\sigma) = \sigma L + j, \qquad \sigma \in \{0=\uparrow,\ 1=\downarrow\}.

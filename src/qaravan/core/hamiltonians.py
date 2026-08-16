@@ -191,41 +191,6 @@ def _chunk(items: list, sizes: list[int]) -> list[list]:
 # ---------------------------------------------------------------------------
 
 
-def _fh_terms(
-    L: int, t: float, U: float, mu: float, periodic: bool
-) -> tuple[list[int], list]:
-    """Flat FH FermionTerms in canonical mode order (mode = spin*L + site, spin 0=up,
-    1=down), plus the OUTPUT HamiltonianTerm count of each of the 5 Trotter layers
-    (up-even, up-odd, down-even, down-odd, onsite) in the SAME order they appear in the
-    flat list -- so the qubit-space Hamiltonian's terms can be re-chunked into
-    trotter_groups after encoding, with no re-derivation. Hopping bonds contribute 2
-    FermionTerms each but 1 output HamiltonianTerm (jordan_wigner re-pairs the h.c. halves);
-    onsite terms are each individually self-adjoint, 1-to-1. See docs/jw_fermi_hubbard_1d.md.
-    """
-    bonds = LinearLattice(L, periodic=periodic).nn_pairs()
-    even_bonds, odd_bonds = bonds[::2], bonds[1::2]
-
-    up_even = [term for a, b in even_bonds for term in hopping(a, b, -t)]
-    up_odd = [term for a, b in odd_bonds for term in hopping(a, b, -t)]
-    down_even = [term for a, b in even_bonds for term in hopping(L + a, L + b, -t)]
-    down_odd = [term for a, b in odd_bonds for term in hopping(L + a, L + b, -t)]
-    onsite = [
-        term
-        for j in range(L)
-        for term in [mu * number(j), mu * number(L + j), *density_density(j, L + j, U)]
-    ]
-
-    layer_output_sizes = [
-        len(even_bonds),
-        len(odd_bonds),
-        len(even_bonds),
-        len(odd_bonds),
-        3 * L,
-    ]
-    chunks = [up_even, up_odd, down_even, down_odd, onsite]
-    return layer_output_sizes, [term for chunk in chunks for term in chunk]
-
-
 def interleaved_mode_order(
     num_fermions: int, annotate: bool = False
 ) -> tuple[int, ...] | tuple[tuple[int, ...], str]:
@@ -274,7 +239,7 @@ class FermiHubbard1D(FermionicHamiltonian):
         self.U = U
         self.mu = mu
         self.periodic = periodic
-        self._layer_output_sizes, terms = _fh_terms(num_fermions, t, U, mu, periodic)
+        self._layer_output_sizes, terms = self._terms(num_fermions, t, U, mu, periodic)
         super().__init__(terms, 2 * num_fermions)
 
     def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
@@ -285,103 +250,50 @@ class FermiHubbard1D(FermionicHamiltonian):
         ham.trotter_groups = _chunk(ham.terms, self._layer_output_sizes)
         return ham
 
+    @staticmethod
+    def _terms(
+        L: int, t: float, U: float, mu: float, periodic: bool
+    ) -> tuple[list[int], list]:
+        """Flat FH FermionTerms in canonical mode order (mode = spin*L + site, spin 0=up,
+        1=down), plus the OUTPUT HamiltonianTerm count of each of the 5 Trotter layers
+        (up-even, up-odd, down-even, down-odd, onsite) in the SAME order they appear in the
+        flat list -- so the qubit-space Hamiltonian's terms can be re-chunked into
+        trotter_groups after encoding, with no re-derivation. Hopping bonds contribute 2
+        FermionTerms each but 1 output HamiltonianTerm (jordan_wigner re-pairs the h.c.
+        halves); onsite terms are each individually self-adjoint, 1-to-1.
+        See docs/jw_fermi_hubbard_1d.md.
+        """
+        bonds = LinearLattice(L, periodic=periodic).nn_pairs()
+        even_bonds, odd_bonds = bonds[::2], bonds[1::2]
+
+        up_even = [term for a, b in even_bonds for term in hopping(a, b, -t)]
+        up_odd = [term for a, b in odd_bonds for term in hopping(a, b, -t)]
+        down_even = [term for a, b in even_bonds for term in hopping(L + a, L + b, -t)]
+        down_odd = [term for a, b in odd_bonds for term in hopping(L + a, L + b, -t)]
+        onsite = [
+            term
+            for j in range(L)
+            for term in [
+                mu * number(j),
+                mu * number(L + j),
+                *density_density(j, L + j, U),
+            ]
+        ]
+
+        layer_output_sizes = [
+            len(even_bonds),
+            len(odd_bonds),
+            len(even_bonds),
+            len(odd_bonds),
+            3 * L,
+        ]
+        chunks = [up_even, up_odd, down_even, down_odd, onsite]
+        return layer_output_sizes, [term for chunk in chunks for term in chunk]
+
 
 # ---------------------------------------------------------------------------
 # AndersonImpurity
 # ---------------------------------------------------------------------------
-
-
-def _aim_onsite_terms(
-    eps_d: float, U: float, eps_levels: list[float], num_bath: int, mode
-) -> list:
-    """eps_d/U impurity terms plus per-level (bath or chain) on-site number terms."""
-    onsite = [eps_d * number(mode(0, 0)), eps_d * number(mode(0, 1))]
-    onsite += density_density(mode(0, 0), mode(0, 1), U)
-    for k in range(1, num_bath + 1):
-        level = eps_levels[k - 1]
-        onsite += [level * number(mode(k, 0)), level * number(mode(k, 1))]
-    return onsite
-
-
-def _aim_star_terms(
-    eps_d: float, U: float, eps_bath: list[float], V: list[float]
-) -> tuple[list[int], list]:
-    """Flat AIM (star) FermionTerms, plus the OUTPUT HamiltonianTerm count of each Trotter
-    layer: one layer per bath index (every hybridization bond touches the impurity, so none
-    of them commute with each other), plus a final onsite layer. mode(site, spin) =
-    spin*(num_bath+1) + site, site 0 = impurity, site k = bath k.
-    """
-    if len(eps_bath) != len(V):
-        raise ValueError(
-            f"eps_bath and V must have the same length; got {len(eps_bath)} and {len(V)}."
-        )
-    num_bath = len(eps_bath)
-
-    def mode(site: int, spin: int) -> int:
-        return spin * (num_bath + 1) + site
-
-    hyb_layers = []
-    for k in range(1, num_bath + 1):
-        layer = hopping(mode(0, 0), mode(k, 0), V[k - 1]) + hopping(
-            mode(0, 1), mode(k, 1), V[k - 1]
-        )
-        hyb_layers.append(layer)
-
-    onsite = _aim_onsite_terms(eps_d, U, eps_bath, num_bath, mode)
-
-    layer_sizes = [len(layer) // 2 for layer in hyb_layers] + [len(onsite)]
-    terms = [term for layer in hyb_layers for term in layer] + onsite
-    return layer_sizes, terms
-
-
-def _aim_chain_terms(
-    eps_d: float, U: float, eps_chain: list[float], t_chain: list[float], V: float
-) -> tuple[list[int], list]:
-    """Flat AIM (chain) FermionTerms, plus per-layer OUTPUT HamiltonianTerm counts (up-even,
-    up-odd, down-even, down-odd, onsite) -- structurally identical to _fh_terms, since the
-    impurity is just site 0 of an ordinary open chain of length num_bath+1, with V taking the
-    place of a uniform hopping for the impurity<->first-site bond.
-    """
-    num_bath = len(eps_chain)
-    expected_t_len = max(num_bath - 1, 0)
-    if len(t_chain) != expected_t_len:
-        raise ValueError(
-            f"t_chain must have length num_bath-1={expected_t_len}; got {len(t_chain)}."
-        )
-
-    def mode(site: int, spin: int) -> int:
-        return spin * (num_bath + 1) + site
-
-    bonds = (
-        LinearLattice(num_bath + 1, periodic=False).nn_pairs() if num_bath >= 1 else []
-    )
-    couplings = [V, *t_chain]
-    even_bonds, even_couplings = bonds[::2], couplings[::2]
-    odd_bonds, odd_couplings = bonds[1::2], couplings[1::2]
-
-    def hop_layer(bond_list, coupling_list, spin):
-        return [
-            term
-            for (a, b), coeff in zip(bond_list, coupling_list)
-            for term in hopping(mode(a, spin), mode(b, spin), coeff)
-        ]
-
-    up_even = hop_layer(even_bonds, even_couplings, 0)
-    up_odd = hop_layer(odd_bonds, odd_couplings, 0)
-    down_even = hop_layer(even_bonds, even_couplings, 1)
-    down_odd = hop_layer(odd_bonds, odd_couplings, 1)
-
-    onsite = _aim_onsite_terms(eps_d, U, eps_chain, num_bath, mode)
-
-    layer_sizes = [
-        len(even_bonds),
-        len(odd_bonds),
-        len(even_bonds),
-        len(odd_bonds),
-        len(onsite),
-    ]
-    chunks = [up_even, up_odd, down_even, down_odd, onsite]
-    return layer_sizes, [term for chunk in chunks for term in chunk]
 
 
 def bath_interleaved_mode_order(
@@ -446,7 +358,7 @@ class AndersonImpurity(FermionicHamiltonian):
     ) -> Self:
         """H = Himp + Hbath + Hhyb: impurity coupled directly to each of len(eps_bath) bath
         modes via its own V_k; bath modes never couple to each other."""
-        layer_sizes, terms = _aim_star_terms(eps_d, U, eps_bath, V)
+        layer_sizes, terms = cls._star_terms(eps_d, U, eps_bath, V)
         return cls(len(eps_bath), eps_d, U, "star", terms, layer_sizes)
 
     @classmethod
@@ -460,7 +372,7 @@ class AndersonImpurity(FermionicHamiltonian):
     ) -> Self:
         """H = Himp + chain-mapped Hbath+Hhyb: impurity coupled only to the first of
         len(eps_chain) nearest-neighbor-hopping chain sites, via a single V."""
-        layer_sizes, terms = _aim_chain_terms(eps_d, U, eps_chain, t_chain, V)
+        layer_sizes, terms = cls._chain_terms(eps_d, U, eps_chain, t_chain, V)
         return cls(len(eps_chain), eps_d, U, "chain", terms, layer_sizes)
 
     def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
@@ -471,3 +383,99 @@ class AndersonImpurity(FermionicHamiltonian):
         ham = super().encode(encoding)
         ham.trotter_groups = _chunk(ham.terms, self._layer_sizes)
         return ham
+
+    @staticmethod
+    def _onsite_terms(
+        eps_d: float, U: float, eps_levels: list[float], num_bath: int, mode
+    ) -> list:
+        """eps_d/U impurity terms plus per-level (bath or chain) on-site number terms."""
+        onsite = [eps_d * number(mode(0, 0)), eps_d * number(mode(0, 1))]
+        onsite += density_density(mode(0, 0), mode(0, 1), U)
+        for k in range(1, num_bath + 1):
+            level = eps_levels[k - 1]
+            onsite += [level * number(mode(k, 0)), level * number(mode(k, 1))]
+        return onsite
+
+    @staticmethod
+    def _star_terms(
+        eps_d: float, U: float, eps_bath: list[float], V: list[float]
+    ) -> tuple[list[int], list]:
+        """Flat AIM (star) FermionTerms, plus the OUTPUT HamiltonianTerm count of each
+        Trotter layer: one layer per bath index (every hybridization bond touches the
+        impurity, so none of them commute with each other), plus a final onsite layer.
+        mode(site, spin) = spin*(num_bath+1) + site, site 0 = impurity, site k = bath k.
+        """
+        if len(eps_bath) != len(V):
+            raise ValueError(
+                f"eps_bath and V must have the same length; got {len(eps_bath)} and {len(V)}."
+            )
+        num_bath = len(eps_bath)
+
+        def mode(site: int, spin: int) -> int:
+            return spin * (num_bath + 1) + site
+
+        hyb_layers = []
+        for k in range(1, num_bath + 1):
+            layer = hopping(mode(0, 0), mode(k, 0), V[k - 1]) + hopping(
+                mode(0, 1), mode(k, 1), V[k - 1]
+            )
+            hyb_layers.append(layer)
+
+        onsite = AndersonImpurity._onsite_terms(eps_d, U, eps_bath, num_bath, mode)
+
+        layer_sizes = [len(layer) // 2 for layer in hyb_layers] + [len(onsite)]
+        terms = [term for layer in hyb_layers for term in layer] + onsite
+        return layer_sizes, terms
+
+    @staticmethod
+    def _chain_terms(
+        eps_d: float, U: float, eps_chain: list[float], t_chain: list[float], V: float
+    ) -> tuple[list[int], list]:
+        """Flat AIM (chain) FermionTerms, plus per-layer OUTPUT HamiltonianTerm counts
+        (up-even, up-odd, down-even, down-odd, onsite) -- structurally identical to
+        FermiHubbard1D._terms, since the impurity is just site 0 of an ordinary open chain
+        of length num_bath+1, with V taking the place of a uniform hopping for the
+        impurity<->first-site bond.
+        """
+        num_bath = len(eps_chain)
+        expected_t_len = max(num_bath - 1, 0)
+        if len(t_chain) != expected_t_len:
+            raise ValueError(
+                f"t_chain must have length num_bath-1={expected_t_len}; got {len(t_chain)}."
+            )
+
+        def mode(site: int, spin: int) -> int:
+            return spin * (num_bath + 1) + site
+
+        bonds = (
+            LinearLattice(num_bath + 1, periodic=False).nn_pairs()
+            if num_bath >= 1
+            else []
+        )
+        couplings = [V, *t_chain]
+        even_bonds, even_couplings = bonds[::2], couplings[::2]
+        odd_bonds, odd_couplings = bonds[1::2], couplings[1::2]
+
+        def hop_layer(bond_list, coupling_list, spin):
+            return [
+                term
+                for (a, b), coeff in zip(bond_list, coupling_list)
+                for term in hopping(mode(a, spin), mode(b, spin), coeff)
+            ]
+
+        up_even = hop_layer(even_bonds, even_couplings, 0)
+        up_odd = hop_layer(odd_bonds, odd_couplings, 0)
+        down_even = hop_layer(even_bonds, even_couplings, 1)
+        down_odd = hop_layer(odd_bonds, odd_couplings, 1)
+
+        onsite = AndersonImpurity._onsite_terms(eps_d, U, eps_chain, num_bath, mode)
+
+        layer_sizes = [
+            len(even_bonds),
+            len(odd_bonds),
+            len(even_bonds),
+            len(odd_bonds),
+            len(onsite),
+        ]
+        chunks = [up_even, up_odd, down_even, down_odd, onsite]
+        return layer_sizes, [term for chunk in chunks for term in chunk]

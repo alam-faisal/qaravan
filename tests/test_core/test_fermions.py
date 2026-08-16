@@ -16,7 +16,7 @@ from qaravan.core.fermions import (
     number,
     to_majorana,
 )
-from qaravan.core.observables import PauliString
+from qaravan.core.observables import PauliString, PauliSum
 from qaravan.backends.statevector import Statevector
 
 # ---------------------------------------------------------------------------
@@ -120,12 +120,16 @@ def test_fermion_operator_encode_raises_on_mode_mismatch():
         op.encode(encoding)
 
 
-def test_fermion_operator_encode_returns_hamiltonian_with_correct_qubits():
+def test_fermion_operator_encode_returns_pauli_sum_with_correct_qubits():
+    """FermionicSum has no trotter_groups concept, so .encode() returns a plain PauliSum,
+    not a Hamiltonian -- FermionicHamiltonian overrides encode() to return a Hamiltonian
+    instead, since it's the one that carries trotter_groups."""
     op = FermionicSum(hopping(0, 1, -1.0), 2)
     encoding = FermionicEncoding("jordan_wigner", num_modes=2)
-    ham = op.encode(encoding)
-    assert ham.num_sites == 2
-    assert ham.as_matrix().shape == (4, 4)
+    obs = op.encode(encoding)
+    assert isinstance(obs, PauliSum)
+    assert obs.num_sites == 2
+    assert obs.matrix.shape == (4, 4)
 
 
 # ---------------------------------------------------------------------------

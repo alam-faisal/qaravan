@@ -167,23 +167,47 @@ class Heisenberg1D(Hamiltonian):
 
 
 class FermionicHamiltonian(FermionicSum):
-    """Hermitian-asserted FermionicSum -- what FermiHubbard1D/AndersonImpurity actually are."""
+    """Hermitian-asserted FermionicSum -- what FermiHubbard1D/AndersonImpurity actually are.
 
-    def __init__(self, terms: list, num_modes: int):
+    trotter_groups is the fermionic-side analog of Hamiltonian.trotter_groups: an optional
+    partition of terms into commuting layers, decided at construction (before any qubits
+    exist). Unlike plain FermionicSum, this class overrides encode() to return a full
+    Hamiltonian (not just a PauliSum) precisely because it has a Trotter-layer structure to
+    carry through.
+    """
+
+    def __init__(
+        self,
+        terms: list,
+        num_modes: int,
+        trotter_groups: list[list] | None = None,
+    ):
         super().__init__(terms, num_modes)
+        self.trotter_groups = trotter_groups
         if not self.is_hermitian():
             raise ValueError(
                 f"{type(self).__name__} is not Hermitian -- check the terms passed in."
             )
 
-
-def _chunk(items: list, sizes: list[int]) -> list[list]:
-    """Split a flat list into consecutive chunks of the given sizes."""
-    out, offset = [], 0
-    for size in sizes:
-        out.append(items[offset : offset + size])
-        offset += size
-    return out
+    def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
+        """Map each trotter_groups entry through the encoding independently, rather than
+        flattening then re-slicing by size: jordan_wigner is a pure function over whatever
+        list it's given, so as long as a group contains both halves of any Hermitian pair it
+        holds (true by construction -- hopping()'s two halves are always built into the same
+        group), encoding group-by-group reproduces the same HamiltonianTerms as encoding the
+        flattened list, with the grouping preserved for free."""
+        if encoding.num_modes != self.num_modes:
+            raise ValueError(
+                f"Encoding is for {encoding.num_modes} modes; operator has {self.num_modes}."
+            )
+        if self.trotter_groups is None:
+            terms = encoding.encode_fermion_terms(self.terms)
+            return Hamiltonian(encoding.num_qubits, terms, None)
+        encoded_groups = [
+            encoding.encode_fermion_terms(group) for group in self.trotter_groups
+        ]
+        terms = [term for group in encoded_groups for term in group]
+        return Hamiltonian(encoding.num_qubits, terms, encoded_groups)
 
 
 # ---------------------------------------------------------------------------
@@ -216,12 +240,7 @@ def interleaved_mode_order(
 class FermiHubbard1D(FermionicHamiltonian):
     """1D Fermi-Hubbard model: H = -t Σ_{j,σ}(c†c + h.c.) + U Σ_j n↑n↓ + μ Σ_{j,σ} n_{j,σ}.
 
-    Bare -- no qubit encoding until .encode(encoding) is called. Canonical mode index is
-    spin*num_fermions + site (spin 0=up, 1=down), chosen so that FermionicEncoding's default
-    (mode_order=None) reproduces the "stacked" register [↑_0..↑_{L-1}, ↓_0..↓_{L-1}];
-    "interleaved" ([↑_0,↓_0,↑_1,↓_1,...]) is FermionicEncoding(..., mode_order=
-    interleaved_mode_order(num_fermions)). Total modes/qubits: 2 * num_fermions.
-    See docs/jw_fermi_hubbard_1d.md for derivations and hardware tradeoffs.
+    essentially a wrapper around FermionicSum; no qubit encoding at construction
     """
 
     def __init__(
@@ -239,29 +258,17 @@ class FermiHubbard1D(FermionicHamiltonian):
         self.U = U
         self.mu = mu
         self.periodic = periodic
-        self._layer_output_sizes, terms = self._terms(num_fermions, t, U, mu, periodic)
-        super().__init__(terms, 2 * num_fermions)
-
-    def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
-        """Trotter-layer structure (which terms mutually commute) is FH's own business --
-        computed once at construction, re-chunked onto whatever Hamiltonian the generic,
-        Trotter-agnostic FermionicSum.encode() produces."""
-        ham = super().encode(encoding)
-        ham.trotter_groups = _chunk(ham.terms, self._layer_output_sizes)
-        return ham
+        groups = self._groups(num_fermions, t, U, mu, periodic)
+        terms = [term for group in groups for term in group]
+        super().__init__(terms, 2 * num_fermions, groups)
 
     @staticmethod
-    def _terms(
-        L: int, t: float, U: float, mu: float, periodic: bool
-    ) -> tuple[list[int], list]:
-        """Flat FH FermionTerms in canonical mode order (mode = spin*L + site, spin 0=up,
-        1=down), plus the OUTPUT HamiltonianTerm count of each of the 5 Trotter layers
-        (up-even, up-odd, down-even, down-odd, onsite) in the SAME order they appear in the
-        flat list -- so the qubit-space Hamiltonian's terms can be re-chunked into
-        trotter_groups after encoding, with no re-derivation. Hopping bonds contribute 2
-        FermionTerms each but 1 output HamiltonianTerm (jordan_wigner re-pairs the h.c.
-        halves); onsite terms are each individually self-adjoint, 1-to-1.
-        See docs/jw_fermi_hubbard_1d.md.
+    def _groups(L: int, t: float, U: float, mu: float, periodic: bool) -> list[list]:
+        """FH's Trotter-layer structure, in fermionic (pre-encoding) form: which
+        FermionTerms mutually commute, grouped as up-even/up-odd/down-even/down-odd/onsite
+        bonds. Passed straight through as FermionicHamiltonian.trotter_groups -- encode()
+        maps each group through jordan_wigner independently, so no post-encoding
+        re-chunking is needed. See docs/jw_fermi_hubbard_1d.md.
         """
         bonds = LinearLattice(L, periodic=periodic).nn_pairs()
         even_bonds, odd_bonds = bonds[::2], bonds[1::2]
@@ -279,16 +286,7 @@ class FermiHubbard1D(FermionicHamiltonian):
                 *density_density(j, L + j, U),
             ]
         ]
-
-        layer_output_sizes = [
-            len(even_bonds),
-            len(odd_bonds),
-            len(even_bonds),
-            len(odd_bonds),
-            3 * L,
-        ]
-        chunks = [up_even, up_odd, down_even, down_odd, onsite]
-        return layer_output_sizes, [term for chunk in chunks for term in chunk]
+        return [up_even, up_odd, down_even, down_odd, onsite]
 
 
 # ---------------------------------------------------------------------------
@@ -343,14 +341,13 @@ class AndersonImpurity(FermionicHamiltonian):
         U: float,
         topology: str,
         terms: list,
-        layer_sizes: list[int],
+        groups: list[list],
     ):
         self.num_bath = num_bath
         self.eps_d = eps_d
         self.U = U
         self.topology = topology
-        self._layer_sizes = layer_sizes
-        super().__init__(terms, 2 * (num_bath + 1))
+        super().__init__(terms, 2 * (num_bath + 1), groups)
 
     @classmethod
     def star(
@@ -358,8 +355,9 @@ class AndersonImpurity(FermionicHamiltonian):
     ) -> Self:
         """H = Himp + Hbath + Hhyb: impurity coupled directly to each of len(eps_bath) bath
         modes via its own V_k; bath modes never couple to each other."""
-        layer_sizes, terms = cls._star_terms(eps_d, U, eps_bath, V)
-        return cls(len(eps_bath), eps_d, U, "star", terms, layer_sizes)
+        groups = cls._star_groups(eps_d, U, eps_bath, V)
+        terms = [term for group in groups for term in group]
+        return cls(len(eps_bath), eps_d, U, "star", terms, groups)
 
     @classmethod
     def chain(
@@ -372,17 +370,9 @@ class AndersonImpurity(FermionicHamiltonian):
     ) -> Self:
         """H = Himp + chain-mapped Hbath+Hhyb: impurity coupled only to the first of
         len(eps_chain) nearest-neighbor-hopping chain sites, via a single V."""
-        layer_sizes, terms = cls._chain_terms(eps_d, U, eps_chain, t_chain, V)
-        return cls(len(eps_chain), eps_d, U, "chain", terms, layer_sizes)
-
-    def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
-        """Same pattern as FermiHubbard1D.encode(): the generic, Trotter-agnostic
-        FermionicSum.encode() runs first; Trotter-layer structure (star: one layer per
-        bath index; chain: even/odd bond splitting) is this model's own business, re-chunked
-        onto the result afterward."""
-        ham = super().encode(encoding)
-        ham.trotter_groups = _chunk(ham.terms, self._layer_sizes)
-        return ham
+        groups = cls._chain_groups(eps_d, U, eps_chain, t_chain, V)
+        terms = [term for group in groups for term in group]
+        return cls(len(eps_chain), eps_d, U, "chain", terms, groups)
 
     @staticmethod
     def _onsite_terms(
@@ -397,13 +387,13 @@ class AndersonImpurity(FermionicHamiltonian):
         return onsite
 
     @staticmethod
-    def _star_terms(
+    def _star_groups(
         eps_d: float, U: float, eps_bath: list[float], V: list[float]
-    ) -> tuple[list[int], list]:
-        """Flat AIM (star) FermionTerms, plus the OUTPUT HamiltonianTerm count of each
-        Trotter layer: one layer per bath index (every hybridization bond touches the
-        impurity, so none of them commute with each other), plus a final onsite layer.
-        mode(site, spin) = spin*(num_bath+1) + site, site 0 = impurity, site k = bath k.
+    ) -> list[list]:
+        """AIM (star) Trotter-layer structure, in fermionic (pre-encoding) form: one layer
+        per bath index (every hybridization bond touches the impurity, so none of them
+        commute with each other), plus a final onsite layer. mode(site, spin) =
+        spin*(num_bath+1) + site, site 0 = impurity, site k = bath k.
         """
         if len(eps_bath) != len(V):
             raise ValueError(
@@ -422,18 +412,15 @@ class AndersonImpurity(FermionicHamiltonian):
             hyb_layers.append(layer)
 
         onsite = AndersonImpurity._onsite_terms(eps_d, U, eps_bath, num_bath, mode)
-
-        layer_sizes = [len(layer) // 2 for layer in hyb_layers] + [len(onsite)]
-        terms = [term for layer in hyb_layers for term in layer] + onsite
-        return layer_sizes, terms
+        return hyb_layers + [onsite]
 
     @staticmethod
-    def _chain_terms(
+    def _chain_groups(
         eps_d: float, U: float, eps_chain: list[float], t_chain: list[float], V: float
-    ) -> tuple[list[int], list]:
-        """Flat AIM (chain) FermionTerms, plus per-layer OUTPUT HamiltonianTerm counts
+    ) -> list[list]:
+        """AIM (chain) Trotter-layer structure, in fermionic (pre-encoding) form
         (up-even, up-odd, down-even, down-odd, onsite) -- structurally identical to
-        FermiHubbard1D._terms, since the impurity is just site 0 of an ordinary open chain
+        FermiHubbard1D._groups, since the impurity is just site 0 of an ordinary open chain
         of length num_bath+1, with V taking the place of a uniform hopping for the
         impurity<->first-site bond.
         """
@@ -469,13 +456,4 @@ class AndersonImpurity(FermionicHamiltonian):
         down_odd = hop_layer(odd_bonds, odd_couplings, 1)
 
         onsite = AndersonImpurity._onsite_terms(eps_d, U, eps_chain, num_bath, mode)
-
-        layer_sizes = [
-            len(even_bonds),
-            len(odd_bonds),
-            len(even_bonds),
-            len(odd_bonds),
-            len(onsite),
-        ]
-        chunks = [up_even, up_odd, down_even, down_odd, onsite]
-        return layer_sizes, [term for chunk in chunks for term in chunk]
+        return [up_even, up_odd, down_even, down_odd, onsite]

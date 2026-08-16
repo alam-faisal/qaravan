@@ -15,7 +15,7 @@ import numpy as np
 from qaravan.core.observables import PauliString, PauliSum
 
 if TYPE_CHECKING:
-    from qaravan.core.hamiltonians import Hamiltonian, HamiltonianTerm
+    from qaravan.core.hamiltonians import HamiltonianTerm
 
 
 # ---------------------------------------------------------------------------
@@ -146,9 +146,12 @@ class FermionicSum:
     def __repr__(self) -> str:
         return " + ".join(repr(term) for term in self.terms)
 
-    def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
+    def encode(self, encoding: FermionicEncoding) -> PauliSum:
         """Apply a fermion-to-qubit encoding. The only qubit-producing method -- everything
-        above is pure algebra, unaware that qubits exist."""
+        above is pure algebra, unaware that qubits exist. Returns a PauliSum, not a
+        Hamiltonian: FermionicSum carries no Trotter-layer concept (that's
+        FermionicHamiltonian's job, which overrides this to return a full Hamiltonian), so
+        the result shouldn't carry one either."""
         from qaravan.core.hamiltonians import Hamiltonian
 
         if encoding.num_modes != self.num_modes:
@@ -156,7 +159,7 @@ class FermionicSum:
                 f"Encoding is for {encoding.num_modes} modes; operator has {self.num_modes}."
             )
         terms = encoding.encode_fermion_terms(self.terms)
-        return Hamiltonian(encoding.num_qubits, terms, None)
+        return Hamiltonian(encoding.num_qubits, terms, None).as_observable()
 
 
 # ---------------------------------------------------------------------------

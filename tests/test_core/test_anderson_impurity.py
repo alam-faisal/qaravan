@@ -158,8 +158,7 @@ def test_star_trotter_vs_propagator():
     aim = AndersonImpurity.star(eps_d=0.3, U=1.5, eps_bath=[0.1, -0.2], V=[0.4, 0.3])
     ham = aim.encode(_identity_encoding(aim))
     dt = 0.01
-    with pytest.warns(UserWarning, match="gate-fusion"):
-        circ = trotter_circuit(ham, dt, order=2)
+    circ = trotter_circuit(ham, dt, order=2)
     trotter_mat = circ.to_matrix()
     exact_mat = expm(-1j * dt * ham.as_matrix())
     assert np.linalg.norm(trotter_mat - exact_mat, ord="fro") < 1e-5
@@ -171,8 +170,7 @@ def test_chain_trotter_vs_propagator():
     )
     ham = aim.encode(_identity_encoding(aim))
     dt = 0.01
-    with pytest.warns(UserWarning, match="gate-fusion"):
-        circ = trotter_circuit(ham, dt, order=2)
+    circ = trotter_circuit(ham, dt, order=2)
     trotter_mat = circ.to_matrix()
     exact_mat = expm(-1j * dt * ham.as_matrix())
     assert np.linalg.norm(trotter_mat - exact_mat, ord="fro") < 1e-5

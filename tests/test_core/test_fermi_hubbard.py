@@ -180,15 +180,6 @@ def test_fh_trotter_vs_propagator_interleaved():
     assert frob_err < 1e-5, f"Frobenius error {frob_err:.2e}"
 
 
-def test_fh_trotter_circuit_warns_about_gate_fusion():
-    """encode()-produced Hamiltonians are not gate-fusion-optimized; trotter_circuit should
-    say so (but still work) -- hand-built models like TFI/Heisenberg1D get no warning."""
-    fh = FermiHubbard1D(num_fermions=3, t=1.0, U=2.0, mu=0.0)
-    ham = fh.encode(_fh_encoding(3, "stacked"))
-    with pytest.warns(UserWarning, match="gate-fusion"):
-        trotter_circuit(ham, 0.01, order=2)
-
-
 # ---------------------------------------------------------------------------
 # Periodic boundary conditions
 # ---------------------------------------------------------------------------

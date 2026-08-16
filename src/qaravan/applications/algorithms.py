@@ -17,8 +17,6 @@ core/hamiltonians.py:
 
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
 from scipy.linalg import expm
 from scipy.sparse.linalg import eigsh
@@ -95,15 +93,6 @@ def trotter_circuit(hamiltonian: Hamiltonian, dt: float, order: int = 2) -> Circ
     if hamiltonian.trotter_groups is None:
         raise NotImplementedError(
             f"{type(hamiltonian).__name__} has no trotter_groups defined."
-        )
-    if not hamiltonian.gate_fusion_applied:
-        warnings.warn(
-            "This Hamiltonian's terms were produced by a generic fermion-to-qubit "
-            "encoding with no gate-fusion optimization pass -- the Trotter circuit may "
-            "use more gates than necessary (e.g. commuting diagonal terms on the same "
-            "qubits are not merged into one gate). Correctness and Trotter error "
-            "scaling are unaffected.",
-            stacklevel=2,
         )
     if hamiltonian.num_sites <= 2:
         raise ValueError(

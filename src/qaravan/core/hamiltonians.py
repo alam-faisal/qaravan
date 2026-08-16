@@ -61,9 +61,6 @@ class Hamiltonian:
     num_sites: int
     terms: list[HamiltonianTerm]
     trotter_groups: list[list[HamiltonianTerm]] | None = None
-    # True unless produced by FermionicSum.encode(), which doesn't merge commuting
-    # same-qubit terms into fewer gates -- read by trotter_circuit() to decide whether to warn.
-    gate_fusion_applied: bool = True
 
     def as_observable(self) -> PauliSum:
         """Embed all local terms into the full n-qubit space and simplify (merge duplicate

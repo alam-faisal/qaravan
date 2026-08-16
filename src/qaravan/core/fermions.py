@@ -100,7 +100,8 @@ class FermionicSum:
 
     No Hermiticity claim -- may represent a bare ladder operator (e.g. a single c(0), useful
     for e.g. Green's-function-style correlators) just as well as a physical Hamiltonian. See
-    FermionicHamiltonian for the Hermitian-asserting subclass used by concrete models.
+    Hamiltonian's FermionicHamiltonian for the Hermitian-asserting subclass used by concrete
+    models -- it lives in hamiltonians.py, alongside Hamiltonian, not here.
     """
 
     terms: list[FermionTerm]
@@ -155,22 +156,7 @@ class FermionicSum:
                 f"Encoding is for {encoding.num_modes} modes; operator has {self.num_modes}."
             )
         terms = encoding.encode_fermion_terms(self.terms)
-        return Hamiltonian(encoding.num_qubits, terms, None, _gate_fusion_applied=False)
-
-
-@dataclass
-class FermionicHamiltonian(FermionicSum):
-    """A FermionicSum asserted, at construction, to be Hermitian -- what concrete physical
-    models (FermiHubbard1D, AndersonImpurity) actually are. Subclassing this instead of
-    FermionicSum directly buys the assertion for free: dataclass __init__ calls
-    __post_init__ regardless of whether it's invoked directly or via a subclass's own
-    super().__init__(terms, num_modes)."""
-
-    def __post_init__(self):
-        if not self.is_hermitian():
-            raise ValueError(
-                f"{type(self).__name__} is not Hermitian -- check the terms passed in."
-            )
+        return Hamiltonian(encoding.num_qubits, terms, None, gate_fusion_applied=False)
 
 
 # ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ from qaravan.core.lattices import LinearLattice
 from qaravan.core.hamiltonians import (
     HamiltonianTerm,
     Hamiltonian,
+    FermionicHamiltonian,
     TFI,
     Heisenberg1D,
     FermiHubbard1D,
@@ -31,7 +32,6 @@ from qaravan.core.hamiltonians import (
 from qaravan.core.fermions import (
     FermionTerm,
     FermionicSum,
-    FermionicHamiltonian,
     FermionicEncoding,
     MajoranaTerm,
     MajoranaOperator,

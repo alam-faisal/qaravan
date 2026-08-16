@@ -1,15 +1,14 @@
 """Hamiltonian base class, HamiltonianTerm, TFI, Heisenberg1D, FermiHubbard1D."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
+from typing import Self
 
 import numpy as np
 
 from qaravan.core.base import Observable
 from qaravan.core.fermions import (
     FermionicEncoding,
-    FermionicHamiltonian,
+    FermionicSum,
     density_density,
     hopping,
     number,
@@ -20,18 +19,10 @@ from qaravan.core.observables import PauliString, PauliSum
 
 @dataclass
 class HamiltonianTerm:
-    """A local interaction: an Observable on len(sites) qubits, pinned to specific sites in the full system.
+    """A local Observable pinned to sites, kept separate from PauliString/PauliSum (which are
+    full-register, length == num_sites) so Hamiltonian construction can work with a small
+    local operator instead of a full n-qubit one until as_observable() embeds it.
 
-    Kept separate from PauliString/PauliSum deliberately. PauliString/PauliSum are
-    full-system observables (string length == system size) used for expectation values,
-    matrix construction, and measurement. Merging site-pinning into them would require
-    adding an indices parameter, relaxing PauliSum's same-length validation, and
-    patching _expectation_pauli_string — complicating a clean, well-tested abstraction
-    for a use case (Hamiltonian construction) that is better served by a dedicated type.
-
-    local_obs lives in the SMALL space of the term itself (1- or 2-qubit).
-    sites records where in the full system it acts — needed for Trotter gate placement
-    and for I-padding when building the global PauliSum in as_observable().
     local_obs must be a PauliString or PauliSum for as_observable() to work.
     """
 
@@ -59,6 +50,7 @@ def _embed_local_obs(obs: Observable, sites: list[int], n: int) -> list[PauliStr
     )
 
 
+@dataclass
 class Hamiltonian:
     """Generic Hamiltonian: a list of local HamiltonianTerms with a declared Trotter grouping.
 
@@ -66,31 +58,16 @@ class Hamiltonian:
     act on disjoint sites (so they commute and form a single Trotter layer).
     """
 
-    def __init__(
-        self,
-        num_sites: int,
-        terms: list[HamiltonianTerm],
-        trotter_groups: list[list[HamiltonianTerm]] | None = None,
-        _gate_fusion_applied: bool = True,
-    ):
-        self.num_sites = num_sites
-        self.terms = terms
-        self.trotter_groups = trotter_groups
-        # Set by FermionicSum.encode() for generically-encoded Hamiltonians, where no
-        # pass has merged commuting same-qubit terms into fewer gates. Hand-built models
-        # (TFI, Heisenberg1D, ...) don't pass this and get no warning.
-        self._gate_fusion_applied = _gate_fusion_applied
+    num_sites: int
+    terms: list[HamiltonianTerm]
+    trotter_groups: list[list[HamiltonianTerm]] | None = None
+    # True unless produced by FermionicSum.encode(), which doesn't merge commuting
+    # same-qubit terms into fewer gates -- read by trotter_circuit() to decide whether to warn.
+    gate_fusion_applied: bool = True
 
     def as_observable(self) -> PauliSum:
-        """Embed all local terms into the full n-qubit space, sum, and simplify.
-
-        Simplifying (merging identical strings) matters in practice: a JW-encoded
-        fermionic Hamiltonian's onsite terms each individually pad out to an all-identity
-        string once embedded, so a Hamiltonian with many onsite terms accumulates many
-        separate copies of the same string if they're never merged -- pure waste feeding
-        into as_matrix()'s dense per-string matrix construction. Simplifying never changes
-        .matrix numerically; it just avoids redundant work and gives a smaller __repr__.
-        """
+        """Embed all local terms into the full n-qubit space and simplify (merge duplicate
+        strings) -- doesn't change .matrix, just avoids redundant terms."""
         embedded: list[PauliString] = []
         for term in self.terms:
             embedded.extend(
@@ -104,6 +81,112 @@ class Hamiltonian:
 
     def __repr__(self) -> str:
         return repr(self.as_observable())
+
+
+# ---------------------------------------------------------------------------
+# TFI
+# ---------------------------------------------------------------------------
+
+
+class TFI(Hamiltonian):
+    """Transverse-field Ising model: H = -J Σ_{<ij>} Z_i Z_j - h Σ_i X_i.
+
+    Open boundary unless periodic=True.
+    """
+
+    def __init__(
+        self,
+        n: int,
+        J: float = 1.0,
+        h: float = 0.0,
+        periodic: bool = False,
+    ):
+        self.n = n
+        self.J = J
+        self.h = h
+        self.periodic = periodic
+
+        lattice = LinearLattice(n, periodic=periodic)
+        bond_terms = [
+            HamiltonianTerm([i, j], PauliString("ZZ", -J))
+            for i, j in lattice.nn_pairs()
+        ]
+        field_terms = [HamiltonianTerm([i], PauliString("X", -h)) for i in range(n)]
+
+        even_bonds = bond_terms[::2]
+        odd_bonds = bond_terms[1::2]
+        trotter_groups = [even_bonds, odd_bonds, field_terms]
+
+        super().__init__(n, bond_terms + field_terms, trotter_groups)
+
+
+# ---------------------------------------------------------------------------
+# Heisenberg1D
+# ---------------------------------------------------------------------------
+
+
+class Heisenberg1D(Hamiltonian):
+    """1D Heisenberg chain: H = J Σ_{<ij>} (X_iX_j + Y_iY_j + Z_iZ_j) - h Σ_i Z_i.
+
+    Bond gate is e^{-i dt J (XX+YY+ZZ)}: a single exact 4×4 gate, not decomposed into
+    separate RXX/RYY/RZZ rotations (which would introduce O(dt²) intra-bond Trotter error).
+    Open boundary unless periodic=True.
+    """
+
+    def __init__(
+        self,
+        n: int,
+        J: float = 1.0,
+        h: float = 0.0,
+        periodic: bool = False,
+    ):
+        self.n = n
+        self.J = J
+        self.h = h
+        self.periodic = periodic
+
+        lattice = LinearLattice(n, periodic=periodic)
+        bond_terms = [
+            HamiltonianTerm(
+                [i, j],
+                PauliSum(
+                    [PauliString("XX", J), PauliString("YY", J), PauliString("ZZ", J)]
+                ),
+            )
+            for i, j in lattice.nn_pairs()
+        ]
+        field_terms = [HamiltonianTerm([i], PauliString("Z", -h)) for i in range(n)]
+
+        even_bonds = bond_terms[::2]
+        odd_bonds = bond_terms[1::2]
+        trotter_groups = [even_bonds, odd_bonds, field_terms]
+
+        super().__init__(n, bond_terms + field_terms, trotter_groups)
+
+
+# ---------------------------------------------------------------------------
+# Fermionic Hamiltonians: FermionicHamiltonian, FermiHubbard1D, AndersonImpurity
+# ---------------------------------------------------------------------------
+
+
+class FermionicHamiltonian(FermionicSum):
+    """Hermitian-asserted FermionicSum -- what FermiHubbard1D/AndersonImpurity actually are."""
+
+    def __init__(self, terms: list, num_modes: int):
+        super().__init__(terms, num_modes)
+        if not self.is_hermitian():
+            raise ValueError(
+                f"{type(self).__name__} is not Hermitian -- check the terms passed in."
+            )
+
+
+def _chunk(items: list, sizes: list[int]) -> list[list]:
+    """Split a flat list into consecutive chunks of the given sizes."""
+    out, offset = [], 0
+    for size in sizes:
+        out.append(items[offset : offset + size])
+        offset += size
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -166,15 +249,6 @@ def interleaved_mode_order(
 
     annotation = " ".join(f"q{q}={label(mode)}" for q, mode in enumerate(order))
     return order, annotation
-
-
-def _chunk(items: list, sizes: list[int]) -> list[list]:
-    """Split a flat list into consecutive chunks of the given sizes."""
-    out, offset = [], 0
-    for size in sizes:
-        out.append(items[offset : offset + size])
-        offset += size
-    return out
 
 
 class FermiHubbard1D(FermionicHamiltonian):
@@ -372,7 +446,7 @@ class AndersonImpurity(FermionicHamiltonian):
     @classmethod
     def star(
         cls, eps_d: float, U: float, eps_bath: list[float], V: list[float]
-    ) -> AndersonImpurity:
+    ) -> Self:
         """H = Himp + Hbath + Hhyb: impurity coupled directly to each of len(eps_bath) bath
         modes via its own V_k; bath modes never couple to each other."""
         layer_sizes, terms = _aim_star_terms(eps_d, U, eps_bath, V)
@@ -386,7 +460,7 @@ class AndersonImpurity(FermionicHamiltonian):
         eps_chain: list[float],
         t_chain: list[float],
         V: float,
-    ) -> AndersonImpurity:
+    ) -> Self:
         """H = Himp + chain-mapped Hbath+Hhyb: impurity coupled only to the first of
         len(eps_chain) nearest-neighbor-hopping chain sites, via a single V."""
         layer_sizes, terms = _aim_chain_terms(eps_d, U, eps_chain, t_chain, V)
@@ -400,84 +474,3 @@ class AndersonImpurity(FermionicHamiltonian):
         ham = super().encode(encoding)
         ham.trotter_groups = _chunk(ham.terms, self._layer_sizes)
         return ham
-
-
-# ---------------------------------------------------------------------------
-# TFI
-# ---------------------------------------------------------------------------
-
-
-class TFI(Hamiltonian):
-    """Transverse-field Ising model: H = -J Σ_{<ij>} Z_i Z_j - h Σ_i X_i.
-
-    Open boundary unless periodic=True.
-    """
-
-    def __init__(
-        self,
-        n: int,
-        J: float = 1.0,
-        h: float = 0.0,
-        periodic: bool = False,
-    ):
-        self.n = n
-        self.J = J
-        self.h = h
-        self.periodic = periodic
-
-        lattice = LinearLattice(n, periodic=periodic)
-        bond_terms = [
-            HamiltonianTerm([i, j], PauliString("ZZ", -J))
-            for i, j in lattice.nn_pairs()
-        ]
-        field_terms = [HamiltonianTerm([i], PauliString("X", -h)) for i in range(n)]
-
-        even_bonds = bond_terms[::2]
-        odd_bonds = bond_terms[1::2]
-        trotter_groups = [even_bonds, odd_bonds, field_terms]
-
-        super().__init__(n, bond_terms + field_terms, trotter_groups)
-
-
-# ---------------------------------------------------------------------------
-# Heisenberg1D
-# ---------------------------------------------------------------------------
-
-
-class Heisenberg1D(Hamiltonian):
-    """1D Heisenberg chain: H = J Σ_{<ij>} (X_iX_j + Y_iY_j + Z_iZ_j) - h Σ_i Z_i.
-
-    Bond gate is e^{-i dt J (XX+YY+ZZ)}: a single exact 4×4 gate, not decomposed into
-    separate RXX/RYY/RZZ rotations (which would introduce O(dt²) intra-bond Trotter error).
-    Open boundary unless periodic=True.
-    """
-
-    def __init__(
-        self,
-        n: int,
-        J: float = 1.0,
-        h: float = 0.0,
-        periodic: bool = False,
-    ):
-        self.n = n
-        self.J = J
-        self.h = h
-        self.periodic = periodic
-
-        lattice = LinearLattice(n, periodic=periodic)
-        bond_terms = [
-            HamiltonianTerm(
-                [i, j],
-                PauliSum(
-                    [PauliString("XX", J), PauliString("YY", J), PauliString("ZZ", J)]
-                ),
-            )
-            for i, j in lattice.nn_pairs()
-        ]
-        field_terms = [HamiltonianTerm([i], PauliString("Z", -h)) for i in range(n)]
-
-        even_bonds = bond_terms[::2]
-        odd_bonds = bond_terms[1::2]
-        trotter_groups = [even_bonds, odd_bonds, field_terms]
-
-        super().__init__(n, bond_terms + field_terms, trotter_groups)

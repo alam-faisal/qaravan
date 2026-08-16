@@ -96,7 +96,7 @@ def trotter_circuit(hamiltonian: Hamiltonian, dt: float, order: int = 2) -> Circ
         raise NotImplementedError(
             f"{type(hamiltonian).__name__} has no trotter_groups defined."
         )
-    if not hamiltonian._gate_fusion_applied:
+    if not hamiltonian.gate_fusion_applied:
         warnings.warn(
             "This Hamiltonian's terms were produced by a generic fermion-to-qubit "
             "encoding with no gate-fusion optimization pass -- the Trotter circuit may "

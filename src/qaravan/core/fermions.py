@@ -159,7 +159,7 @@ class FermionicSum:
                 f"Encoding is for {encoding.num_modes} modes; operator has {self.num_modes}."
             )
         terms = encoding.encode_fermion_terms(self.terms)
-        return Hamiltonian(encoding.num_qubits, terms, None).as_observable()
+        return Hamiltonian(terms, encoding.num_qubits, None).as_observable()
 
 
 # ---------------------------------------------------------------------------

@@ -50,17 +50,24 @@ def _embed_local_obs(obs: Observable, sites: list[int], n: int) -> list[PauliStr
     )
 
 
-@dataclass
 class Hamiltonian:
     """Generic Hamiltonian: a list of local HamiltonianTerms with a declared Trotter grouping.
 
     trotter_groups is a partition of terms into sublists. Within each sublist all terms
-    act on disjoint sites (so they commute and form a single Trotter layer).
+    act on disjoint sites (so they commute and form a single Trotter layer). Constructor
+    order (terms, num_sites, ...) matches FermionicHamiltonian(terms, num_modes, ...) and
+    Circuit(gates, num_sites, ...) -- content first, size second, throughout the codebase.
     """
 
-    num_sites: int
-    terms: list[HamiltonianTerm]
-    trotter_groups: list[list[HamiltonianTerm]] | None = None
+    def __init__(
+        self,
+        terms: list[HamiltonianTerm],
+        num_sites: int,
+        trotter_groups: list[list[HamiltonianTerm]] | None = None,
+    ):
+        self.terms = terms
+        self.num_sites = num_sites
+        self.trotter_groups = trotter_groups
 
     def as_observable(self) -> PauliSum:
         """Embed all local terms into the full n-qubit space and simplify (merge duplicate
@@ -114,7 +121,7 @@ class TFI(Hamiltonian):
         odd_bonds = bond_terms[1::2]
         trotter_groups = [even_bonds, odd_bonds, field_terms]
 
-        super().__init__(n, bond_terms + field_terms, trotter_groups)
+        super().__init__(bond_terms + field_terms, n, trotter_groups)
 
 
 # ---------------------------------------------------------------------------
@@ -158,22 +165,19 @@ class Heisenberg1D(Hamiltonian):
         odd_bonds = bond_terms[1::2]
         trotter_groups = [even_bonds, odd_bonds, field_terms]
 
-        super().__init__(n, bond_terms + field_terms, trotter_groups)
+        super().__init__(bond_terms + field_terms, n, trotter_groups)
 
 
 # ---------------------------------------------------------------------------
-# Fermionic Hamiltonians: FermionicHamiltonian, FermiHubbard1D, AndersonImpurity
+# Fermionic things
 # ---------------------------------------------------------------------------
 
 
 class FermionicHamiltonian(FermionicSum):
-    """Hermitian-asserted FermionicSum -- what FermiHubbard1D/AndersonImpurity actually are.
+    """Hermitian-asserted FermionicSum
 
-    trotter_groups is the fermionic-side analog of Hamiltonian.trotter_groups: an optional
-    partition of terms into commuting layers, decided at construction (before any qubits
-    exist). Unlike plain FermionicSum, this class overrides encode() to return a full
-    Hamiltonian (not just a PauliSum) precisely because it has a Trotter-layer structure to
-    carry through.
+    trotter_groups is the fermionic-side analog of Hamiltonian.trotter_groups: a
+    partition of terms into commuting layers, decided at definition by definer
     """
 
     def __init__(
@@ -202,12 +206,12 @@ class FermionicHamiltonian(FermionicSum):
             )
         if self.trotter_groups is None:
             terms = encoding.encode_fermion_terms(self.terms)
-            return Hamiltonian(encoding.num_qubits, terms, None)
+            return Hamiltonian(terms, encoding.num_qubits, None)
         encoded_groups = [
             encoding.encode_fermion_terms(group) for group in self.trotter_groups
         ]
         terms = [term for group in encoded_groups for term in group]
-        return Hamiltonian(encoding.num_qubits, terms, encoded_groups)
+        return Hamiltonian(terms, encoding.num_qubits, encoded_groups)
 
 
 # ---------------------------------------------------------------------------

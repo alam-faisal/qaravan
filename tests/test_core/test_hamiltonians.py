@@ -162,7 +162,7 @@ def test_ground_state_lanczos_matches_exact_with_fixed_particle_number():
 
 
 def test_ground_state_lanczos_raises_for_tiny_matrix():
-    ham = Hamiltonian(1, [HamiltonianTerm([0], PauliString("Z"))])  # 2x2
+    ham = Hamiltonian([HamiltonianTerm([0], PauliString("Z"))], 1)  # 2x2
     with pytest.raises(ValueError, match="lanczos"):
         ground_state(ham, method="lanczos")
 

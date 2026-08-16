@@ -83,7 +83,7 @@ exp_list = trotter_dm_sim(ham, step_size=0.1, max_steps=500,
                           nm=nm, obs=obs)
 
 def trotter_dm_sim(ham, step_size, max_steps, nm, obs) -> np.ndarray: 
-  circ = ham.trotter_circuit(step_size)
+  circ = trotter_circuit(ham, step_size)
   dm = DensityMatrix(bitstring='0'*ham.num_sites)
   exp_list = []
   for step in range(max_steps): 

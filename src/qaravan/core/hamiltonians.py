@@ -2,29 +2,20 @@
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.linalg import expm
-from scipy.sparse.linalg import eigsh
 
 from qaravan.core.base import Observable
-from qaravan.core.circuit import Circuit
 from qaravan.core.fermions import (
-    FermionOperator,
     FermionicEncoding,
+    FermionicHamiltonian,
     density_density,
     hopping,
     number,
 )
-from qaravan.core.gates import MatrixGate
 from qaravan.core.lattices import LinearLattice
 from qaravan.core.observables import PauliString, PauliSum
-
-if TYPE_CHECKING:
-    from qaravan.backends.statevector import Statevector
 
 
 @dataclass
@@ -85,7 +76,7 @@ class Hamiltonian:
         self.num_sites = num_sites
         self.terms = terms
         self.trotter_groups = trotter_groups
-        # Set by FermionOperator.encode() for generically-encoded Hamiltonians, where no
+        # Set by FermionicSum.encode() for generically-encoded Hamiltonians, where no
         # pass has merged commuting same-qubit terms into fewer gates. Hand-built models
         # (TFI, Heisenberg1D, ...) don't pass this and get no warning.
         self._gate_fusion_applied = _gate_fusion_applied
@@ -111,140 +102,8 @@ class Hamiltonian:
         """Full 2^n × 2^n Hamiltonian matrix."""
         return self.as_observable().matrix
 
-    def ground_state(
-        self,
-        method: str = "exact",
-        fixed_particle_number: int | None = None,
-    ) -> Statevector:
-        """Ground state. Returns Statevector.
-
-        method="exact" (default): full dense diagonalization (numpy.linalg.eigh). Computes the
-        whole spectrum even though only the bottom eigenvector is kept -- O(n^3), but robust at
-        any size, including the tiny systems (n<20) most tests use.
-        method="lanczos": scipy.sparse.linalg.eigsh(k=1) -- only the extremal eigenpair,
-        O(n^2) per iteration instead of diagonalizing everything. Much faster once n is large
-        enough that "compute everything" is wasteful; raises ValueError if the (possibly
-        sector-restricted) matrix is too small for that to make sense -- use "exact" there.
-        For a degenerate ground level, either method returns *some* vector spanning the ground
-        subspace, not necessarily the same one run to run.
-
-        fixed_particle_number restricts to the popcount-k sector of the computational basis
-        before diagonalizing -- meaningful whenever the Hamiltonian conserves total
-        occupation number, e.g. any Jordan-Wigner-encoded fermionic Hamiltonian.
-        """
-        # Local import: core/ must not depend on backends/ at module load time -- backends
-        # import core.base, so a top-level import here is a circular-import trap that only
-        # bites depending on which module a caller happens to import first.
-        from qaravan.backends.statevector import Statevector
-
-        H = self.as_matrix()
-        if fixed_particle_number is None:
-            sector = None
-            H_reduced = H
-        else:
-            sector = [
-                i
-                for i in range(2**self.num_sites)
-                if bin(i).count("1") == fixed_particle_number
-            ]
-            H_reduced = H[np.ix_(sector, sector)]
-
-        if method == "exact":
-            _, evecs = np.linalg.eigh(H_reduced)
-            ground_vec = evecs[:, 0]
-        elif method == "lanczos":
-            n = H_reduced.shape[0]
-            ncv = min(n - 1, max(3, 20))
-            if ncv <= 1:
-                raise ValueError(
-                    f"method='lanczos' needs a larger matrix than {n}x{n}; use method='exact'."
-                )
-            _, evecs = eigsh(H_reduced, k=1, which="SA", ncv=ncv)
-            ground_vec = evecs[:, 0]
-        else:
-            raise ValueError(
-                f"Unknown method {method!r}; expected 'exact' or 'lanczos'."
-            )
-
-        if sector is None:
-            return Statevector(array=ground_vec)
-        full_vec = np.zeros(2**self.num_sites, dtype=complex)
-        for local_idx, global_idx in enumerate(sector):
-            full_vec[global_idx] = ground_vec[local_idx]
-        return Statevector(array=full_vec)
-
-    def trotter_circuit(self, dt: float, order: int = 2) -> Circuit:
-        """Single Trotter step of duration dt.
-
-        order=1: sequential groups at full dt.
-        order=2: symmetric (Suzuki-Trotter) with boundary half-steps.
-        Raises NotImplementedError if trotter_groups is None.
-        Raises ValueError for systems too small to have distinct even/odd bond layers.
-        """
-        if self.trotter_groups is None:
-            raise NotImplementedError(
-                f"{type(self).__name__} has no trotter_groups defined."
-            )
-        if not self._gate_fusion_applied:
-            warnings.warn(
-                "This Hamiltonian's terms were produced by a generic fermion-to-qubit "
-                "encoding with no gate-fusion optimization pass -- the Trotter circuit may "
-                "use more gates than necessary (e.g. commuting diagonal terms on the same "
-                "qubits are not merged into one gate). Correctness and Trotter error "
-                "scaling are unaffected.",
-                stacklevel=2,
-            )
-        if self.num_sites <= 2:
-            raise ValueError(
-                f"trotter_circuit requires num_sites > 2; got {self.num_sites}."
-            )
-        groups = [g for g in self.trotter_groups if g]  # skip empty groups
-
-        if order == 1:
-            gates = _trotter_order1(groups, dt)
-        elif order == 2:
-            gates = _trotter_order2(groups, dt)
-        else:
-            raise ValueError(f"Trotter order must be 1 or 2; got {order}.")
-
-        return Circuit(gates, num_sites=self.num_sites)
-
     def __repr__(self) -> str:
         return repr(self.as_observable())
-
-
-def _trotter_order1(groups: list[list[HamiltonianTerm]], dt: float) -> list[MatrixGate]:
-    """Apply each group once at step size dt."""
-    gates: list[MatrixGate] = []
-    for group in groups:
-        for term in group:
-            mat = expm(-1j * dt * term.local_obs.matrix)
-            gates.append(MatrixGate("Trotter", term.sites, mat))
-    return gates
-
-
-def _trotter_order2(groups: list[list[HamiltonianTerm]], dt: float) -> list[MatrixGate]:
-    """Symmetric second-order Trotter for k groups.
-
-    Pattern: g0(dt/2) g1(dt/2) ... g_{k-2}(dt/2) g_{k-1}(dt) g_{k-2}(dt/2) ... g0(dt/2)
-    """
-    gates: list[MatrixGate] = []
-    half_dt = dt / 2.0
-    # forward half-steps: all but last group
-    for group in groups[:-1]:
-        for term in group:
-            mat = expm(-1j * half_dt * term.local_obs.matrix)
-            gates.append(MatrixGate("Trotter", term.sites, mat))
-    # last group: full step
-    for term in groups[-1]:
-        mat = expm(-1j * dt * term.local_obs.matrix)
-        gates.append(MatrixGate("Trotter", term.sites, mat))
-    # backward half-steps: reverse of all but last group
-    for group in reversed(groups[:-1]):
-        for term in group:
-            mat = expm(-1j * half_dt * term.local_obs.matrix)
-            gates.append(MatrixGate("Trotter", term.sites, mat))
-    return gates
 
 
 # ---------------------------------------------------------------------------
@@ -318,7 +177,7 @@ def _chunk(items: list, sizes: list[int]) -> list[list]:
     return out
 
 
-class FermiHubbard1D(FermionOperator):
+class FermiHubbard1D(FermionicHamiltonian):
     """1D Fermi-Hubbard model: H = -t Σ_{j,σ}(c†c + h.c.) + U Σ_j n↑n↓ + μ Σ_{j,σ} n_{j,σ}.
 
     Bare -- no qubit encoding until .encode(encoding) is called. Canonical mode index is
@@ -350,7 +209,7 @@ class FermiHubbard1D(FermionOperator):
     def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
         """Trotter-layer structure (which terms mutually commute) is FH's own business --
         computed once at construction, re-chunked onto whatever Hamiltonian the generic,
-        Trotter-agnostic FermionOperator.encode() produces."""
+        Trotter-agnostic FermionicSum.encode() produces."""
         ham = super().encode(encoding)
         ham.trotter_groups = _chunk(ham.terms, self._layer_output_sizes)
         return ham
@@ -482,7 +341,7 @@ def bath_interleaved_mode_order(
     return order, annotation
 
 
-class AndersonImpurity(FermionOperator):
+class AndersonImpurity(FermionicHamiltonian):
     """Single-orbital Anderson impurity model (star or chain geometry). Bare -- no qubit
     encoding until .encode(encoding) is called, exactly like FermiHubbard1D.
 
@@ -535,7 +394,7 @@ class AndersonImpurity(FermionOperator):
 
     def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
         """Same pattern as FermiHubbard1D.encode(): the generic, Trotter-agnostic
-        FermionOperator.encode() runs first; Trotter-layer structure (star: one layer per
+        FermionicSum.encode() runs first; Trotter-layer structure (star: one layer per
         bath index; chain: even/odd bond splitting) is this model's own business, re-chunked
         onto the result afterward."""
         ham = super().encode(encoding)

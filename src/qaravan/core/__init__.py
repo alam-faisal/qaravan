@@ -30,7 +30,8 @@ from qaravan.core.hamiltonians import (
 )
 from qaravan.core.fermions import (
     FermionTerm,
-    FermionOperator,
+    FermionicSum,
+    FermionicHamiltonian,
     FermionicEncoding,
     MajoranaTerm,
     MajoranaOperator,
@@ -71,7 +72,8 @@ __all__ = [
     "AndersonImpurity",
     "bath_interleaved_mode_order",
     "FermionTerm",
-    "FermionOperator",
+    "FermionicSum",
+    "FermionicHamiltonian",
     "FermionicEncoding",
     "MajoranaTerm",
     "MajoranaOperator",

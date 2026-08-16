@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from scipy.linalg import expm
 
+from qaravan.applications.algorithms import ground_state, trotter_circuit
 from qaravan.core.hamiltonians import (
     Hamiltonian,
     HamiltonianTerm,
@@ -103,7 +104,7 @@ def test_tfi_ground_state_energy_h0():
     # h=0, J=1, open BC: ferromagnet ground state, E = -(n-1)*J
     for n in [2, 3, 4]:
         tfi = TFI(n, J=1.0, h=0.0, periodic=False)
-        sv = tfi.ground_state()
+        sv = ground_state(tfi)
         energy = sv.expectation(tfi.as_observable()).real
         expected = -(n - 1)
         assert abs(energy - expected) < 1e-9, (
@@ -115,7 +116,7 @@ def test_tfi_ground_state_against_exact_diag():
     # |⟨computed | exact⟩|² = 1 up to global phase
     for n in range(3, 6):
         tfi = TFI(n, J=1.0, h=0.5, periodic=False)
-        sv = tfi.ground_state()
+        sv = ground_state(tfi)
         evals, evecs = np.linalg.eigh(tfi.as_matrix())
         exact_gs = evecs[:, 0]
         fidelity = abs(np.dot(sv.to_array().conj(), exact_gs)) ** 2
@@ -130,9 +131,11 @@ def test_tfi_ground_state_against_exact_diag():
 def test_ground_state_lanczos_matches_exact_energy():
     for n in [3, 4, 5]:
         tfi = TFI(n, J=1.0, h=0.5, periodic=False)
-        e_exact = tfi.ground_state(method="exact").expectation(tfi.as_observable()).real
+        e_exact = (
+            ground_state(tfi, method="exact").expectation(tfi.as_observable()).real
+        )
         e_lanczos = (
-            tfi.ground_state(method="lanczos").expectation(tfi.as_observable()).real
+            ground_state(tfi, method="lanczos").expectation(tfi.as_observable()).real
         )
         assert abs(e_exact - e_lanczos) < 1e-9, (
             f"n={n}: exact={e_exact}, lanczos={e_lanczos}"
@@ -146,12 +149,12 @@ def test_ground_state_lanczos_matches_exact_with_fixed_particle_number():
     fh = FermiHubbard1D(num_fermions=3, t=1.0, U=2.0, mu=0.0)
     ham = fh.encode(FermionicEncoding("jordan_wigner", num_modes=fh.num_modes))
     e_exact = (
-        ham.ground_state(method="exact", fixed_particle_number=3)
+        ground_state(ham, method="exact", fixed_particle_number=3)
         .expectation(ham.as_observable())
         .real
     )
     e_lanczos = (
-        ham.ground_state(method="lanczos", fixed_particle_number=3)
+        ground_state(ham, method="lanczos", fixed_particle_number=3)
         .expectation(ham.as_observable())
         .real
     )
@@ -161,13 +164,13 @@ def test_ground_state_lanczos_matches_exact_with_fixed_particle_number():
 def test_ground_state_lanczos_raises_for_tiny_matrix():
     ham = Hamiltonian(1, [HamiltonianTerm([0], PauliString("Z"))])  # 2x2
     with pytest.raises(ValueError, match="lanczos"):
-        ham.ground_state(method="lanczos")
+        ground_state(ham, method="lanczos")
 
 
 def test_ground_state_unknown_method_raises():
     tfi = TFI(3)
     with pytest.raises(ValueError, match="Unknown method"):
-        tfi.ground_state(method="bogus")
+        ground_state(tfi, method="bogus")
 
 
 # ---------------------------------------------------------------------------
@@ -178,14 +181,14 @@ def test_ground_state_unknown_method_raises():
 def test_tfi_trotter_raises_for_n2():
     tfi = TFI(2, J=1.0, h=0.5)
     with pytest.raises(ValueError):
-        tfi.trotter_circuit(0.1)
+        trotter_circuit(tfi, 0.1)
 
 
 def test_tfi_trotter_circuit_order2_vs_propagator():
     # Order-2 error per step ~ O(dt^3); dt=0.005 gives error ~ 1e-7
     n, J, h, dt = 4, 1.0, 0.5, 0.005
     tfi = TFI(n, J=J, h=h, periodic=False)
-    circ = tfi.trotter_circuit(dt, order=2)
+    circ = trotter_circuit(tfi, dt, order=2)
     trotter_mat = circ.to_matrix()
     exact_mat = expm(-1j * dt * tfi.as_matrix())
     frob_err = np.linalg.norm(trotter_mat - exact_mat, ord="fro")
@@ -199,7 +202,7 @@ def test_tfi_trotter_error_scaling_order1():
     dt_values = [0.1, 0.05, 0.02, 0.01]
     errors = []
     for dt in dt_values:
-        circ = tfi.trotter_circuit(dt, order=1)
+        circ = trotter_circuit(tfi, dt, order=1)
         errors.append(
             np.linalg.norm(
                 circ.to_matrix() - expm(-1j * dt * tfi.as_matrix()), ord="fro"
@@ -216,7 +219,7 @@ def test_tfi_trotter_error_scaling_order2():
     dt_values = [0.1, 0.05, 0.02, 0.01]
     errors = []
     for dt in dt_values:
-        circ = tfi.trotter_circuit(dt, order=2)
+        circ = trotter_circuit(tfi, dt, order=2)
         errors.append(
             np.linalg.norm(
                 circ.to_matrix() - expm(-1j * dt * tfi.as_matrix()), ord="fro"
@@ -235,7 +238,7 @@ def test_heisenberg_ground_state_energy_j0():
     # J=0, h=1: H = -h Σ Z_i; |0...0⟩ is ground state with E = -h*n
     for n in [2, 3, 4]:
         heis = Heisenberg1D(n, J=0.0, h=1.0)
-        sv = heis.ground_state()
+        sv = ground_state(heis)
         energy = sv.expectation(heis.as_observable()).real
         expected = -float(n)
         assert abs(energy - expected) < 1e-9, (
@@ -246,7 +249,7 @@ def test_heisenberg_ground_state_energy_j0():
 def test_heisenberg_ground_state_against_exact_diag():
     for n in range(3, 6):
         heis = Heisenberg1D(n, J=1.0, h=0.5)
-        sv = heis.ground_state()
+        sv = ground_state(heis)
         evals, evecs = np.linalg.eigh(heis.as_matrix())
         exact_gs = evecs[:, 0]
         fidelity = abs(np.dot(sv.to_array().conj(), exact_gs)) ** 2
@@ -261,13 +264,13 @@ def test_heisenberg_ground_state_against_exact_diag():
 def test_heisenberg_trotter_raises_for_n2():
     heis = Heisenberg1D(2, J=1.0)
     with pytest.raises(ValueError):
-        heis.trotter_circuit(0.1)
+        trotter_circuit(heis, 0.1)
 
 
 def test_heisenberg_trotter_vs_propagator():
     n, J, h, dt = 4, 1.0, 0.3, 0.005
     heis = Heisenberg1D(n, J=J, h=h, periodic=False)
-    circ = heis.trotter_circuit(dt, order=2)
+    circ = trotter_circuit(heis, dt, order=2)
     trotter_mat = circ.to_matrix()
     exact_mat = expm(-1j * dt * heis.as_matrix())
     frob_err = np.linalg.norm(trotter_mat - exact_mat, ord="fro")
@@ -279,7 +282,7 @@ def test_heisenberg_xx_model_ground_energy():
     for n in [4, 6]:
         heis = Heisenberg1D(n, J=1.0, h=0.0, periodic=True)
         evals = np.linalg.eigvalsh(heis.as_matrix())
-        sv = heis.ground_state()
+        sv = ground_state(heis)
         energy = sv.expectation(heis.as_observable()).real
         assert abs(energy - evals[0]) < 1e-9, (
             f"n={n}: got {energy}, expected {evals[0]}"

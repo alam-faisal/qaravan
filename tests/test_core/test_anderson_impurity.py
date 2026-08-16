@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from scipy.linalg import expm
 
+from qaravan.applications.algorithms import ground_state, trotter_circuit
 from qaravan.core.fermions import FermionicEncoding
 from qaravan.core.hamiltonians import AndersonImpurity, bath_interleaved_mode_order
 
@@ -128,7 +129,7 @@ def test_star_fixed_particle_number_ground_state_has_correct_n():
     num_qubits = aim.num_modes
     n_op = np.diag([float(bin(i).count("1")) for i in range(2**num_qubits)])
     for n_elec in [1, 2, 3]:
-        sv = ham.ground_state(fixed_particle_number=n_elec)
+        sv = ground_state(ham, fixed_particle_number=n_elec)
         arr = sv.to_array()
         expectation = (arr.conj() @ n_op @ arr).real
         assert abs(expectation - n_elec) < 1e-10
@@ -142,7 +143,7 @@ def test_chain_fixed_particle_number_ground_state_has_correct_n():
     num_qubits = aim.num_modes
     n_op = np.diag([float(bin(i).count("1")) for i in range(2**num_qubits)])
     for n_elec in [1, 2, 3]:
-        sv = ham.ground_state(fixed_particle_number=n_elec)
+        sv = ground_state(ham, fixed_particle_number=n_elec)
         arr = sv.to_array()
         expectation = (arr.conj() @ n_op @ arr).real
         assert abs(expectation - n_elec) < 1e-10
@@ -158,7 +159,7 @@ def test_star_trotter_vs_propagator():
     ham = aim.encode(_identity_encoding(aim))
     dt = 0.01
     with pytest.warns(UserWarning, match="gate-fusion"):
-        circ = ham.trotter_circuit(dt, order=2)
+        circ = trotter_circuit(ham, dt, order=2)
     trotter_mat = circ.to_matrix()
     exact_mat = expm(-1j * dt * ham.as_matrix())
     assert np.linalg.norm(trotter_mat - exact_mat, ord="fro") < 1e-5
@@ -171,7 +172,7 @@ def test_chain_trotter_vs_propagator():
     ham = aim.encode(_identity_encoding(aim))
     dt = 0.01
     with pytest.warns(UserWarning, match="gate-fusion"):
-        circ = ham.trotter_circuit(dt, order=2)
+        circ = trotter_circuit(ham, dt, order=2)
     trotter_mat = circ.to_matrix()
     exact_mat = expm(-1j * dt * ham.as_matrix())
     assert np.linalg.norm(trotter_mat - exact_mat, ord="fro") < 1e-5

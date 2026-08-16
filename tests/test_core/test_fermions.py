@@ -1,10 +1,10 @@
-"""Tests for core/fermions.py: FermionOperator algebra, Jordan-Wigner, Majorana operators."""
+"""Tests for core/fermions.py: FermionicSum algebra, Jordan-Wigner, Majorana operators."""
 
 import numpy as np
 import pytest
 
 from qaravan.core.fermions import (
-    FermionOperator,
+    FermionicSum,
     FermionicEncoding,
     c,
     density_density,
@@ -85,27 +85,27 @@ def test_jordan_wigner_raises_on_unpaired_non_hermitian_term():
 
 
 # ---------------------------------------------------------------------------
-# FermionOperator
+# FermionicSum
 # ---------------------------------------------------------------------------
 
 
 def test_fermion_operator_add_and_scale():
-    op1 = FermionOperator([number(0)], 2)
-    op2 = FermionOperator(hopping(0, 1, -1.0), 2)
+    op1 = FermionicSum([number(0)], 2)
+    op2 = FermionicSum(hopping(0, 1, -1.0), 2)
     combined = op1 + 2 * op2
     assert len(combined.terms) == 3
     assert combined.num_modes == 2
 
 
 def test_fermion_operator_add_mismatched_num_modes_raises():
-    op1 = FermionOperator([number(0)], 2)
-    op2 = FermionOperator([number(0)], 3)
+    op1 = FermionicSum([number(0)], 2)
+    op2 = FermionicSum([number(0)], 3)
     with pytest.raises(ValueError):
         op1 + op2
 
 
 def test_fermion_operator_dagger_of_hopping_is_itself():
-    op = FermionOperator(hopping(0, 1, -1.0), 2)
+    op = FermionicSum(hopping(0, 1, -1.0), 2)
     dagger_matrix_sum = sum(
         jw.local_obs.matrix for jw in jordan_wigner(op.dagger().terms, 2)
     )
@@ -114,14 +114,14 @@ def test_fermion_operator_dagger_of_hopping_is_itself():
 
 
 def test_fermion_operator_encode_raises_on_mode_mismatch():
-    op = FermionOperator([number(0)], 2)
+    op = FermionicSum([number(0)], 2)
     encoding = FermionicEncoding("jordan_wigner", num_modes=3)
     with pytest.raises(ValueError, match="modes"):
         op.encode(encoding)
 
 
 def test_fermion_operator_encode_returns_hamiltonian_with_correct_qubits():
-    op = FermionOperator(hopping(0, 1, -1.0), 2)
+    op = FermionicSum(hopping(0, 1, -1.0), 2)
     encoding = FermionicEncoding("jordan_wigner", num_modes=2)
     ham = op.encode(encoding)
     assert ham.num_sites == 2

@@ -1,6 +1,6 @@
-"""Fermion-to-qubit encoding: FermionOperator/MajoranaOperator algebra, Jordan-Wigner transform.
+"""Fermion-to-qubit encoding: FermionicSum/MajoranaOperator algebra, Jordan-Wigner transform.
 
-Physics (FermionOperator/MajoranaOperator) is encoding-agnostic; FermionicEncoding is a value
+Physics (FermionicSum/MajoranaOperator) is encoding-agnostic; FermionicEncoding is a value
 (which qubit each mode lands on, which map) threaded through both Hamiltonian and observable
 construction so they can't independently drift apart.
 """
@@ -95,28 +95,52 @@ def density_density(a: int, b: int, coeff: complex) -> list[FermionTerm]:
 
 
 @dataclass
-class FermionOperator:
-    """Sum of FermionTerm over a fixed number of modes. Flat -- no grouping of any kind."""
+class FermionicSum:
+    """Sum of FermionTerm over a fixed number of modes. Flat -- no grouping of any kind.
+
+    No Hermiticity claim -- may represent a bare ladder operator (e.g. a single c(0), useful
+    for e.g. Green's-function-style correlators) just as well as a physical Hamiltonian. See
+    FermionicHamiltonian for the Hermitian-asserting subclass used by concrete models.
+    """
 
     terms: list[FermionTerm]
     num_modes: int
 
-    def __add__(self, other: FermionOperator) -> FermionOperator:
+    def __add__(self, other: FermionicSum) -> FermionicSum:
         if self.num_modes != other.num_modes:
             raise ValueError(
-                f"Cannot add FermionOperators with different num_modes: "
+                f"Cannot add FermionicSums with different num_modes: "
                 f"{self.num_modes} vs {other.num_modes}."
             )
-        return FermionOperator(self.terms + other.terms, self.num_modes)
+        return FermionicSum(self.terms + other.terms, self.num_modes)
 
-    def __mul__(self, scalar: complex) -> FermionOperator:
-        return FermionOperator([scalar * term for term in self.terms], self.num_modes)
+    def __mul__(self, scalar: complex) -> FermionicSum:
+        return FermionicSum([scalar * term for term in self.terms], self.num_modes)
 
-    def __rmul__(self, scalar: complex) -> FermionOperator:
+    def __rmul__(self, scalar: complex) -> FermionicSum:
         return self.__mul__(scalar)
 
-    def dagger(self) -> FermionOperator:
-        return FermionOperator([term.dagger() for term in self.terms], self.num_modes)
+    def dagger(self) -> FermionicSum:
+        return FermionicSum([term.dagger() for term in self.terms], self.num_modes)
+
+    def is_hermitian(self, atol: float = 1e-9) -> bool:
+        """Encoding-independent Hermiticity check.
+
+        Naively comparing self's raw (ops-tuple, coeff) pairs against self.dagger()'s is
+        WRONG: e.g. density_density(a, b)'s dagger reorders n_a n_b -> n_b n_a, a different
+        ops-tuple for the very same operator (number operators on different modes commute,
+        but FermionTerm never normal-orders, so the raw tuples don't match syntactically).
+        Getting this right requires the same fermionic-anticommutation bookkeeping
+        jordan_wigner already does -- so this reuses it directly: JW-map every term under
+        the identity mode_order (any consistent choice works; Hermiticity doesn't depend on
+        which one) into a single PauliSum and check its coefficients are real. Real
+        coefficients on a simplified PauliSum are necessary and sufficient for Hermiticity,
+        since Pauli strings are themselves Hermitian and form a basis.
+        """
+        qubit_of = list(range(self.num_modes))
+        mapped = [_map_term(term, qubit_of, self.num_modes) for term in self.terms]
+        combined = PauliSum([ps for image in mapped for ps in image.terms]).simplify()
+        return _is_real(combined, atol)
 
     def __repr__(self) -> str:
         return " + ".join(repr(term) for term in self.terms)
@@ -132,6 +156,21 @@ class FermionOperator:
             )
         terms = encoding.encode_fermion_terms(self.terms)
         return Hamiltonian(encoding.num_qubits, terms, None, _gate_fusion_applied=False)
+
+
+@dataclass
+class FermionicHamiltonian(FermionicSum):
+    """A FermionicSum asserted, at construction, to be Hermitian -- what concrete physical
+    models (FermiHubbard1D, AndersonImpurity) actually are. Subclassing this instead of
+    FermionicSum directly buys the assertion for free: dataclass __init__ calls
+    __post_init__ regardless of whether it's invoked directly or via a subclass's own
+    super().__init__(terms, num_modes)."""
+
+    def __post_init__(self):
+        if not self.is_hermitian():
+            raise ValueError(
+                f"{type(self).__name__} is not Hermitian -- check the terms passed in."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +315,7 @@ class MajoranaTerm:
 
 @dataclass
 class MajoranaOperator:
-    """Sum of MajoranaTerm over 2*num_modes Majorana operators. Mirrors FermionOperator."""
+    """Sum of MajoranaTerm over 2*num_modes Majorana operators. Mirrors FermionicSum."""
 
     terms: list[MajoranaTerm]
     num_modes: int

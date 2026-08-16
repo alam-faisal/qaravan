@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from scipy.linalg import expm
 
+from qaravan.applications.algorithms import ground_state, trotter_circuit
 from qaravan.core.fermions import FermionicEncoding
 from qaravan.core.hamiltonians import FermiHubbard1D, interleaved_mode_order
 
@@ -77,7 +78,7 @@ def test_fh_ground_state_dimer_exact():
             ham = FermiHubbard1D(num_fermions=2, t=t, U=U, mu=0.0).encode(
                 _fh_encoding(2, ordering)
             )
-            sv = ham.ground_state(fixed_particle_number=2)
+            sv = ground_state(ham, fixed_particle_number=2)
             energy = sv.expectation(ham.as_observable()).real
             expected = (U - np.sqrt(U**2 + 16 * t**2)) / 2
             assert abs(energy - expected) < 1e-10, (
@@ -120,7 +121,7 @@ def test_fh_free_fermion_stacked_spin_decoupling():
     num_fermions = 4
     fh = FermiHubbard1D(num_fermions=num_fermions, t=1.0, U=0.0, mu=0.0)
     ham = fh.encode(_fh_encoding(num_fermions, "stacked"))
-    sv = ham.ground_state()
+    sv = ground_state(ham)
     down_sites = list(range(num_fermions, 2 * num_fermions))
     rho = sv.rdm(down_sites)
     purity = np.trace(rho @ rho).real
@@ -144,7 +145,7 @@ def test_fh_electron_number_conservation():
         fh = FermiHubbard1D(num_fermions=num_fermions, t=1.0, U=2.0, mu=0.0)
         ham = fh.encode(_fh_encoding(num_fermions, ordering))
         for n_elec in [2, 3, 4]:
-            sv = ham.ground_state(fixed_particle_number=n_elec)
+            sv = ground_state(ham, fixed_particle_number=n_elec)
             arr = sv.to_array()
             expectation = (arr.conj() @ n_op @ arr).real
             assert abs(expectation - n_elec) < 1e-10, (
@@ -161,7 +162,7 @@ def test_fh_trotter_vs_propagator_stacked():
     num_fermions, dt = 3, 0.01
     fh = FermiHubbard1D(num_fermions=num_fermions, t=1.0, U=2.0, mu=0.0)
     ham = fh.encode(_fh_encoding(num_fermions, "stacked"))
-    circ = ham.trotter_circuit(dt, order=2)
+    circ = trotter_circuit(ham, dt, order=2)
     trotter_mat = circ.to_matrix()
     exact_mat = expm(-1j * dt * ham.as_matrix())
     frob_err = np.linalg.norm(trotter_mat - exact_mat, ord="fro")
@@ -172,7 +173,7 @@ def test_fh_trotter_vs_propagator_interleaved():
     num_fermions, dt = 3, 0.01
     fh = FermiHubbard1D(num_fermions=num_fermions, t=1.0, U=2.0, mu=0.0)
     ham = fh.encode(_fh_encoding(num_fermions, "interleaved"))
-    circ = ham.trotter_circuit(dt, order=2)
+    circ = trotter_circuit(ham, dt, order=2)
     trotter_mat = circ.to_matrix()
     exact_mat = expm(-1j * dt * ham.as_matrix())
     frob_err = np.linalg.norm(trotter_mat - exact_mat, ord="fro")
@@ -185,7 +186,7 @@ def test_fh_trotter_circuit_warns_about_gate_fusion():
     fh = FermiHubbard1D(num_fermions=3, t=1.0, U=2.0, mu=0.0)
     ham = fh.encode(_fh_encoding(3, "stacked"))
     with pytest.warns(UserWarning, match="gate-fusion"):
-        ham.trotter_circuit(0.01, order=2)
+        trotter_circuit(ham, 0.01, order=2)
 
 
 # ---------------------------------------------------------------------------
@@ -269,7 +270,7 @@ def test_fh_trotter_error_scaling_order1():
         ham = fh.encode(_fh_encoding(num_fermions, ordering))
         errors = []
         for dt in dt_values:
-            circ = ham.trotter_circuit(dt, order=1)
+            circ = trotter_circuit(ham, dt, order=1)
             errors.append(
                 np.linalg.norm(
                     circ.to_matrix() - expm(-1j * dt * ham.as_matrix()), ord="fro"

@@ -1,3 +1,4 @@
+from qaravan.applications.algorithms import ground_state, trotter_circuit
 from qaravan.applications.circuit_library import (
     bell_basis_circuit,
     brickwall_skeleton,
@@ -25,6 +26,8 @@ from qaravan.applications.dynamic_circuit_library import (
 )
 
 __all__ = [
+    "ground_state",
+    "trotter_circuit",
     "bell_basis_circuit",
     "brickwall_skeleton",
     "ghz_circuit",

@@ -5,17 +5,12 @@ Physics (FermionicSum/MajoranaOperator) is encoding-agnostic; FermionicEncoding 
 construction so they can't independently drift apart.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Self
 
 import numpy as np
 
-from qaravan.core.observables import PauliString, PauliSum
-
-if TYPE_CHECKING:
-    from qaravan.core.hamiltonians import HamiltonianTerm
+from qaravan.core.observables import HamiltonianTerm, PauliString, PauliSum
 
 
 # ---------------------------------------------------------------------------
@@ -38,24 +33,24 @@ class FermionTerm:
     coeff: complex
     ops: list[tuple[int, bool]]
 
-    def dagger(self) -> FermionTerm:
+    def dagger(self) -> Self:
         """(op1...opn)† = opn†...op1†, each dagger flipped, coeff conjugated."""
         return FermionTerm(
             np.conj(self.coeff),
             [(mode, not is_dagger) for mode, is_dagger in reversed(self.ops)],
         )
 
-    def compose(self, other: FermionTerm) -> FermionTerm:
+    def compose(self, other: Self) -> Self:
         """Concatenate ops, multiply coeffs. Order preserved: self's ops come first."""
         return FermionTerm(self.coeff * other.coeff, self.ops + other.ops)
 
-    def __matmul__(self, other: FermionTerm) -> FermionTerm:
+    def __matmul__(self, other: Self) -> Self:
         return self.compose(other)
 
-    def __mul__(self, scalar: complex) -> FermionTerm:
+    def __mul__(self, scalar: complex) -> Self:
         return FermionTerm(self.coeff * scalar, self.ops)
 
-    def __rmul__(self, scalar: complex) -> FermionTerm:
+    def __rmul__(self, scalar: complex) -> Self:
         return self.__mul__(scalar)
 
     def __repr__(self) -> str:
@@ -107,7 +102,7 @@ class FermionicSum:
     terms: list[FermionTerm]
     num_modes: int
 
-    def __add__(self, other: FermionicSum) -> FermionicSum:
+    def __add__(self, other: Self) -> Self:
         if self.num_modes != other.num_modes:
             raise ValueError(
                 f"Cannot add FermionicSums with different num_modes: "
@@ -115,13 +110,13 @@ class FermionicSum:
             )
         return FermionicSum(self.terms + other.terms, self.num_modes)
 
-    def __mul__(self, scalar: complex) -> FermionicSum:
+    def __mul__(self, scalar: complex) -> Self:
         return FermionicSum([scalar * term for term in self.terms], self.num_modes)
 
-    def __rmul__(self, scalar: complex) -> FermionicSum:
+    def __rmul__(self, scalar: complex) -> Self:
         return self.__mul__(scalar)
 
-    def dagger(self) -> FermionicSum:
+    def dagger(self) -> Self:
         return FermionicSum([term.dagger() for term in self.terms], self.num_modes)
 
     def is_hermitian(self, atol: float = 1e-9) -> bool:
@@ -146,7 +141,7 @@ class FermionicSum:
     def __repr__(self) -> str:
         return " + ".join(repr(term) for term in self.terms)
 
-    def encode(self, encoding: FermionicEncoding) -> PauliSum:
+    def encode(self, encoding: "FermionicEncoding") -> PauliSum:
         """Apply a fermion-to-qubit encoding. The only qubit-producing method -- everything
         above is pure algebra, unaware that qubits exist. Returns a PauliSum, not a
         Hamiltonian: FermionicSum carries no Trotter-layer concept (that's
@@ -205,8 +200,6 @@ def _is_real(pauli_sum: PauliSum, atol: float = 1e-9) -> bool:
 
 def _restrict(pauli_sum: PauliSum) -> HamiltonianTerm:
     """Embed a full-register PauliSum down to just the qubits it touches."""
-    from qaravan.core.hamiltonians import HamiltonianTerm
-
     sites = sorted(
         {i for term in pauli_sum.terms for i, ch in enumerate(term.string) if ch != "I"}
     )
@@ -279,20 +272,20 @@ class MajoranaTerm:
     coeff: complex
     ops: list[int]
 
-    def dagger(self) -> MajoranaTerm:
+    def dagger(self) -> Self:
         """(g1...gn)† = gn...g1 (each gamma self-adjoint), coeff conjugated."""
         return MajoranaTerm(np.conj(self.coeff), list(reversed(self.ops)))
 
-    def compose(self, other: MajoranaTerm) -> MajoranaTerm:
+    def compose(self, other: Self) -> Self:
         return MajoranaTerm(self.coeff * other.coeff, self.ops + other.ops)
 
-    def __matmul__(self, other: MajoranaTerm) -> MajoranaTerm:
+    def __matmul__(self, other: Self) -> Self:
         return self.compose(other)
 
-    def __mul__(self, scalar: complex) -> MajoranaTerm:
+    def __mul__(self, scalar: complex) -> Self:
         return MajoranaTerm(self.coeff * scalar, self.ops)
 
-    def __rmul__(self, scalar: complex) -> MajoranaTerm:
+    def __rmul__(self, scalar: complex) -> Self:
         return self.__mul__(scalar)
 
     def __repr__(self) -> str:
@@ -309,7 +302,7 @@ class MajoranaOperator:
     terms: list[MajoranaTerm]
     num_modes: int
 
-    def __add__(self, other: MajoranaOperator) -> MajoranaOperator:
+    def __add__(self, other: Self) -> Self:
         if self.num_modes != other.num_modes:
             raise ValueError(
                 f"Cannot add MajoranaOperators with different num_modes: "
@@ -317,10 +310,10 @@ class MajoranaOperator:
             )
         return MajoranaOperator(self.terms + other.terms, self.num_modes)
 
-    def __mul__(self, scalar: complex) -> MajoranaOperator:
+    def __mul__(self, scalar: complex) -> Self:
         return MajoranaOperator([scalar * term for term in self.terms], self.num_modes)
 
-    def __rmul__(self, scalar: complex) -> MajoranaOperator:
+    def __rmul__(self, scalar: complex) -> Self:
         return self.__mul__(scalar)
 
     def __repr__(self) -> str:

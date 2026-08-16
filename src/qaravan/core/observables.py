@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import numpy as np
+from dataclasses import dataclass
 from functools import reduce
 from qaravan.core.base import Observable
 
@@ -173,6 +174,19 @@ class PauliSum(Observable):
 
     def __repr__(self) -> str:
         return " + ".join(repr(t) for t in self.terms)
+
+
+@dataclass
+class HamiltonianTerm:
+    """A local Observable pinned to sites, kept separate from PauliString/PauliSum (which are
+    full-register, length == num_sites) so Hamiltonian construction can work with a small
+    local operator instead of a full n-qubit one until as_observable() embeds it.
+
+    local_obs must be a PauliString or PauliSum for as_observable() to work.
+    """
+
+    sites: list[int]
+    local_obs: Observable
 
 
 class LocalOp(Observable):

@@ -1,6 +1,5 @@
 """Hamiltonian base class, HamiltonianTerm, TFI, Heisenberg1D, FermiHubbard1D."""
 
-from dataclasses import dataclass
 from typing import Self
 
 import numpy as np
@@ -14,20 +13,7 @@ from qaravan.core.fermions import (
     number,
 )
 from qaravan.core.lattices import LinearLattice
-from qaravan.core.observables import PauliString, PauliSum
-
-
-@dataclass
-class HamiltonianTerm:
-    """A local Observable pinned to sites, kept separate from PauliString/PauliSum (which are
-    full-register, length == num_sites) so Hamiltonian construction can work with a small
-    local operator instead of a full n-qubit one until as_observable() embeds it.
-
-    local_obs must be a PauliString or PauliSum for as_observable() to work.
-    """
-
-    sites: list[int]
-    local_obs: Observable
+from qaravan.core.observables import HamiltonianTerm, PauliString, PauliSum
 
 
 def _embed_local_obs(obs: Observable, sites: list[int], n: int) -> list[PauliString]:
@@ -194,12 +180,13 @@ class FermionicHamiltonian(FermionicSum):
             )
 
     def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
-        """Map each trotter_groups entry through the encoding independently, rather than
-        flattening then re-slicing by size: jordan_wigner is a pure function over whatever
-        list it's given, so as long as a group contains both halves of any Hermitian pair it
-        holds (true by construction -- hopping()'s two halves are always built into the same
-        group), encoding group-by-group reproduces the same HamiltonianTerms as encoding the
-        flattened list, with the grouping preserved for free."""
+        """Encodes each trotter_groups entry independently via jordan_wigner, preserving the
+        grouping into the returned Hamiltonian.trotter_groups.
+
+        Each group must contain both halves of any Hermitian-conjugate pair it holds (e.g.
+        hopping()'s two terms) -- jordan_wigner needs the partner in the same call to pair
+        them into one HamiltonianTerm.
+        """
         if encoding.num_modes != self.num_modes:
             raise ValueError(
                 f"Encoding is for {encoding.num_modes} modes; operator has {self.num_modes}."
@@ -242,10 +229,7 @@ def interleaved_mode_order(
 
 
 class FermiHubbard1D(FermionicHamiltonian):
-    """1D Fermi-Hubbard model: H = -t Σ_{j,σ}(c†c + h.c.) + U Σ_j n↑n↓ + μ Σ_{j,σ} n_{j,σ}.
-
-    essentially a wrapper around FermionicSum; no qubit encoding at construction
-    """
+    """1D Fermi-Hubbard model: H = -t Σ_{j,σ}(c†c + h.c.) + U Σ_j n↑n↓ + μ Σ_{j,σ} n_{j,σ}."""
 
     def __init__(
         self,
@@ -270,9 +254,6 @@ class FermiHubbard1D(FermionicHamiltonian):
     def _groups(L: int, t: float, U: float, mu: float, periodic: bool) -> list[list]:
         """FH's Trotter-layer structure, in fermionic (pre-encoding) form: which
         FermionTerms mutually commute, grouped as up-even/up-odd/down-even/down-odd/onsite
-        bonds. Passed straight through as FermionicHamiltonian.trotter_groups -- encode()
-        maps each group through jordan_wigner independently, so no post-encoding
-        re-chunking is needed. See docs/jw_fermi_hubbard_1d.md.
         """
         bonds = LinearLattice(L, periodic=periodic).nn_pairs()
         even_bonds, odd_bonds = bonds[::2], bonds[1::2]

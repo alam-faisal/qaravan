@@ -1,50 +1,50 @@
 from qaravan.core.base import (
     Gate,
-    State,
-    Observable,
     NoiseModel,
+    Observable,
     Simulator,
+    State,
+)
+from qaravan.core.circuit import Circuit
+from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
+from qaravan.core.fermions import (
+    FermionicEncoding,
+    FermionicSum,
+    FermionTerm,
+    MajoranaSum,
+    MajoranaTerm,
+    bath_interleaved_mode_order,
+    c,
+    cdag,
+    density_density,
+    gamma,
+    hopping,
+    interleaved_mode_order,
+    jordan_wigner,
+    majorana_bilinear,
+    majorana_observable,
+    number,
 )
 from qaravan.core.gates import (
     MatrixGate,
     ParametricGate,
 )
-from qaravan.core.circuit import Circuit
-from qaravan.core.dynamic_circuit import DynamicRound, DynamicCircuit
-from qaravan.core.observables import (
-    PauliString,
-    PauliSum,
-    LocalOp,
-    Magnetization,
+from qaravan.core.hamiltonians import (
+    TFI,
+    AndersonImpurity,
+    FermiHubbard1D,
+    FermionicHamiltonian,
+    Hamiltonian,
+    HamiltonianTerm,
+    Heisenberg1D,
 )
 from qaravan.core.lattices import LinearLattice
-from qaravan.core.hamiltonians import (
-    HamiltonianTerm,
-    Hamiltonian,
-    FermionicHamiltonian,
-    TFI,
-    Heisenberg1D,
-    FermiHubbard1D,
-    interleaved_mode_order,
-    AndersonImpurity,
-    bath_interleaved_mode_order,
-)
-from qaravan.core.fermions import (
-    FermionTerm,
-    FermionicSum,
-    FermionicEncoding,
-    MajoranaTerm,
-    MajoranaOperator,
-    c,
-    cdag,
-    number,
-    hopping,
-    density_density,
-    jordan_wigner,
-    gamma,
-    majorana_bilinear,
-    majorana_observable,
-    to_majorana,
+from qaravan.core.observables import (
+    LocalOp,
+    Magnetization,
+    NumberOperator,
+    PauliString,
+    PauliSum,
 )
 
 __all__ = [
@@ -62,6 +62,7 @@ __all__ = [
     "PauliSum",
     "LocalOp",
     "Magnetization",
+    "NumberOperator",
     "LinearLattice",
     "HamiltonianTerm",
     "Hamiltonian",
@@ -76,7 +77,7 @@ __all__ = [
     "FermionicHamiltonian",
     "FermionicEncoding",
     "MajoranaTerm",
-    "MajoranaOperator",
+    "MajoranaSum",
     "c",
     "cdag",
     "number",
@@ -86,5 +87,4 @@ __all__ = [
     "gamma",
     "majorana_bilinear",
     "majorana_observable",
-    "to_majorana",
 ]

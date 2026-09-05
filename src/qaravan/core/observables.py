@@ -1,9 +1,9 @@
-"""Concrete Observable subclasses: PauliString, PauliSum, LocalOp, Magnetization."""
+"""Concrete Observable subclasses"""
 
 from __future__ import annotations
-import numpy as np
 from dataclasses import dataclass
 from functools import reduce
+import numpy as np
 from qaravan.core.base import Observable
 
 PAULI_MATRICES: dict[str, np.ndarray] = {
@@ -66,10 +66,8 @@ class PauliString(Observable):
     def as_pauli_sum(self) -> PauliSum:
         return PauliSum([self])
 
-    def compose(self, other: PauliString | PauliSum) -> PauliString | PauliSum:
+    def compose(self, other: PauliString) -> PauliString:
         """Operator product self @ other (matrix multiplication, NOT tensor product). Same length required."""
-        if isinstance(other, PauliSum):
-            return PauliSum([self]).compose(other)
         if len(self.string) != len(other.string):
             raise ValueError(
                 f"compose requires equal-length strings; got {len(self.string)} and {len(other.string)}."
@@ -77,7 +75,9 @@ class PauliString(Observable):
         phase, string = _compose_strings(self.string, other.string)
         return PauliString(string, self.coeff * other.coeff * phase)
 
-    def __matmul__(self, other: PauliString | PauliSum) -> PauliString | PauliSum:
+    def __matmul__(self, other: PauliString) -> PauliString:
+        if not isinstance(other, PauliString):
+            return NotImplemented
         return self.compose(other)
 
     def __mul__(self, scalar: complex) -> PauliString:
@@ -86,19 +86,13 @@ class PauliString(Observable):
     def __rmul__(self, scalar: complex) -> PauliString:
         return self.__mul__(scalar)
 
-    def __add__(self, other: PauliString | PauliSum) -> PauliSum:
+    def __add__(self, other: PauliString) -> PauliSum:
         if isinstance(other, PauliString):
             return PauliSum([self, other])
-        if isinstance(other, PauliSum):
-            return PauliSum([self, *other.terms])
         return NotImplemented
 
-    def __radd__(self, other: PauliString | PauliSum) -> PauliSum:
-        if isinstance(other, PauliString):
-            return PauliSum([other, self])
-        if isinstance(other, PauliSum):
-            return PauliSum([*other.terms, self])
-        return NotImplemented
+    def __radd__(self, other: PauliString) -> PauliSum:
+        return self.__add__(other)
 
     def __repr__(self) -> str:
         if self.coeff == 1.0:
@@ -133,10 +127,18 @@ class PauliSum(Observable):
     def compose(self, other: PauliString | PauliSum) -> PauliSum:
         """Operator product self @ other (matrix multiplication). Distributes over both operands' terms."""
         other_terms = other.terms if isinstance(other, PauliSum) else [other]
-        return PauliSum([s.compose(o) for s in self.terms for o in other_terms])
+        composed_terms = []
+        for term in self.terms:
+            for other_term in other_terms:
+                composed_terms.append(term.compose(other_term))
+        return PauliSum(composed_terms)
 
     def __matmul__(self, other: PauliString | PauliSum) -> PauliSum:
         return self.compose(other)
+
+    def __rmatmul__(self, other: PauliString) -> PauliSum:
+        """Supports ps @ pauli_sum (a bare PauliString on the left)."""
+        return PauliSum([other]).compose(self)
 
     def simplify(self, atol: float = 1e-12) -> PauliSum:
         """Merge terms with identical strings (sum coefficients); drop near-zero terms."""
@@ -189,6 +191,52 @@ class HamiltonianTerm:
     local_obs: Observable
 
 
+def _embed_local_obs(
+    obs: Observable, sites: list[int], num_sites: int
+) -> list[PauliString]:
+    """Embed a local PauliString or PauliSum into the num_sites-qubit space by I-padding.
+
+    sites must match the number of qubits in obs. E.g. PauliString("ZZ"), sites=[1,2],
+    num_sites=4 -> ["IZZI"].
+    """
+    if isinstance(obs, PauliSum):
+        embedded = []
+        for term in obs.terms:
+            embedded.extend(_embed_local_obs(term, sites, num_sites))
+        return embedded
+    if isinstance(obs, PauliString):
+        chars = ["I"] * num_sites
+        for site, op in zip(sites, obs.string):
+            chars[site] = op
+        return [PauliString("".join(chars), obs.coeff)]
+    raise TypeError(
+        f"local_obs must be PauliString or PauliSum; got {type(obs).__name__}"
+    )
+
+
+def embed_hamiltonian_terms(terms: list[HamiltonianTerm], num_sites: int) -> PauliSum:
+    """Embed all local HamiltonianTerms into the full num_sites-qubit space and simplify
+    (merge duplicate strings) -- doesn't change the matrix, just avoids redundant terms."""
+    embedded: list[PauliString] = []
+    for term in terms:
+        embedded.extend(_embed_local_obs(term.local_obs, term.sites, num_sites))
+    return PauliSum(embedded).simplify()
+
+
+def restrict_pauli_sum(pauli_sum: PauliSum) -> HamiltonianTerm:
+    """Inverse of embed_hamiltonian_terms: restrict a full-register PauliSum down to a
+    HamiltonianTerm covering just the sites it touches."""
+    touched_sites = set()
+    for term in pauli_sum.terms:
+        touched_sites.update(i for i, ch in enumerate(term.string) if ch != "I")
+    sites = sorted(touched_sites)
+    local_terms = [
+        PauliString("".join(term.string[i] for i in sites), term.coeff)
+        for term in pauli_sum.terms
+    ]
+    return HamiltonianTerm(sites, PauliSum(local_terms))
+
+
 class LocalOp(Observable):
     """Generic local Hermitian operator on specified sites.
 
@@ -223,3 +271,26 @@ class Magnetization(PauliSum):
         ]
         super().__init__(terms)
         self.name = f"Magnetization{axis}"
+
+
+class NumberOperator(PauliSum):
+    """Occupation sum_q n_q over qubits (all of them if None), for a JW-encoded register:
+    n_q = (I - Z_q)/2, eigenvalue 1 on |1> and 0 on |0>. Unnormalized -- it counts particles.
+
+    Pass FermionicEncoding.spin_qubits() to get N_up or N_down.
+    """
+
+    def __init__(self, n: int, qubits: list[int] | None = None):
+        self.n = n
+        self.qubits = list(range(n)) if qubits is None else list(qubits)
+        if len(set(self.qubits)) != len(self.qubits):
+            raise ValueError(f"qubits must not repeat; got {self.qubits}.")
+        if not all(0 <= qubit < n for qubit in self.qubits):
+            raise ValueError(f"qubits must lie in [0, {n}); got {self.qubits}.")
+        identity = PauliString("I" * n, 0.5 * len(self.qubits))
+        z_terms = [
+            PauliString("I" * qubit + "Z" + "I" * (n - qubit - 1), -0.5)
+            for qubit in self.qubits
+        ]
+        super().__init__([identity, *z_terms])
+        self.name = "NumberOperator"

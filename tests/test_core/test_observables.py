@@ -2,10 +2,12 @@
 
 import numpy as np
 import pytest
+from qaravan.backends.statevector import Statevector
 from qaravan.core.observables import (
     HamiltonianTerm,
     LocalOp,
     Magnetization,
+    NumberOperator,
     PauliString,
     PauliSum,
     _embed_local_obs,
@@ -319,3 +321,55 @@ def test_restrict_pauli_sum_is_inverse_of_embed():
     assert term.sites == [1, 2, 3]
     reembedded = embed_hamiltonian_terms([term], 4)
     assert np.allclose(reembedded.matrix, full.simplify().matrix)
+
+
+# ---------------------------------------------------------------------------
+# NumberOperator
+# ---------------------------------------------------------------------------
+
+
+def test_number_operator_is_the_popcount_diagonal():
+    """N is diagonal with popcount(i) as eigenvalues -- the hand-rolled form notebooks used."""
+    for n in [1, 2, 3, 4]:
+        diagonal = np.diag(NumberOperator(n).matrix).real
+        expected = [float(bin(i).count("1")) for i in range(2**n)]
+        np.testing.assert_allclose(diagonal, expected, atol=1e-12)
+
+
+def test_number_operator_is_diagonal():
+    matrix = NumberOperator(3).matrix
+    np.testing.assert_allclose(matrix, np.diag(np.diag(matrix)), atol=1e-12)
+
+
+def test_number_operator_on_a_qubit_subset_counts_only_those_qubits():
+    # qubit q is character q of the bitstring, i.e. qubit 0 is the most significant bit
+    n, qubits = 4, [0, 2]
+    diagonal = np.diag(NumberOperator(n, qubits).matrix).real
+    for index in range(2**n):
+        bits = format(index, f"0{n}b")
+        assert diagonal[index] == pytest.approx(
+            sum(bits[qubit] == "1" for qubit in qubits)
+        ), bits
+
+
+def test_number_operator_subsets_sum_to_the_total():
+    n = 4
+    up, down = NumberOperator(n, [0, 1]), NumberOperator(n, [2, 3])
+    np.testing.assert_allclose(
+        up.matrix + down.matrix, NumberOperator(n).matrix, atol=1e-12
+    )
+
+
+def test_number_operator_expectation_of_a_basis_state():
+    sv = Statevector(bitstring="1011")
+    assert sv.expectation(NumberOperator(4)).real == pytest.approx(3.0, abs=1e-12)
+    assert sv.expectation(NumberOperator(4, [0, 1])).real == pytest.approx(
+        1.0, abs=1e-12
+    )
+
+
+def test_number_operator_rejects_bad_qubits():
+    with pytest.raises(ValueError, match="must not repeat"):
+        NumberOperator(3, [0, 0])
+    with pytest.raises(ValueError, match=r"must lie in"):
+        NumberOperator(3, [3])

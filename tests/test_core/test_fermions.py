@@ -7,6 +7,7 @@ from qaravan.core.fermions import (
     FermionicEncoding,
     FermionicSum,
     FermionicTerm,
+    MajoranaSum,
     _is_real,
     _map_term,
     c,
@@ -15,8 +16,8 @@ from qaravan.core.fermions import (
     gamma,
     hopping,
     jordan_wigner,
+    jordan_wigner_majorana,
     majorana_bilinear,
-    majorana_observable,
     number,
 )
 from qaravan.core.observables import PauliString, PauliSum
@@ -182,20 +183,22 @@ def test_majorana_bilinear_matches_fermionic_identity():
     # i*gamma_0*gamma_1 = i*(c+cdag)*i*(cdag-c) = -(c+cdag)(cdag-c)
     #                   = -(c cdag - c c + cdag cdag - cdag c) = -(c cdag - cdag c) = -Z
     # (using c c = cdag cdag = 0, c cdag + cdag c = 1 => c cdag - cdag c = 1 - 2 cdag c = Z)
-    obs = majorana_observable([majorana_bilinear(0, 1)], 1)
+    obs = jordan_wigner_majorana([majorana_bilinear(0, 1)], 1)
     assert np.allclose(obs.to_matrix(), -PauliString("Z").to_matrix())
 
 
-def test_majorana_observable_two_mode_bilinear():
-    obs = majorana_observable([majorana_bilinear(0, 3)], 2)
+def test_jordan_wigner_majorana_two_mode_bilinear():
+    obs = jordan_wigner_majorana([majorana_bilinear(0, 3)], 2)
     assert obs.to_matrix().shape == (4, 4)
     assert np.allclose(
         obs.to_matrix(), obs.to_matrix().conj().T
     )  # Hermitian by construction (coeff=1j)
 
 
-def test_majorana_observable_expectation_on_statevector():
-    obs = majorana_observable([majorana_bilinear(0, 1)], 1)  # == -Z, per identity above
+def test_jordan_wigner_majorana_expectation_on_statevector():
+    obs = jordan_wigner_majorana(
+        [majorana_bilinear(0, 1)], 1
+    )  # == -Z, per identity above
     up = Statevector(bitstring="0")
     down = Statevector(bitstring="1")
     assert np.isclose(up.expectation(obs), -1.0)
@@ -203,10 +206,10 @@ def test_majorana_observable_expectation_on_statevector():
 
 
 def test_to_majorana_round_trips_through_jordan_wigner():
-    # number(0) mapped via fermion JW should match number(0) mapped via majorana_observable
+    # number(0) mapped via fermion JW should match number(0) mapped via jordan_wigner_majorana
     # after to_majorana -- two independent routes to the same operator.
     direct = jordan_wigner([number(0)], 1)[0].local_obs.to_matrix()
-    via_majorana = majorana_observable(number(0).to_majorana().terms, 1).to_matrix()
+    via_majorana = jordan_wigner_majorana(number(0).to_majorana().terms, 1).to_matrix()
     assert np.allclose(direct, via_majorana)
 
 
@@ -218,7 +221,7 @@ def test_to_majorana_on_hopping_term_matches_direct_jw():
     maj = term.to_majorana()
     maj_dagger = term.dagger().to_majorana()
     combined = maj + maj_dagger
-    via_majorana = majorana_observable(combined.terms, 2).to_matrix()
+    via_majorana = jordan_wigner_majorana(combined.terms, 2).to_matrix()
     assert np.allclose(direct, via_majorana)
 
 
@@ -368,3 +371,43 @@ def test_normal_order_on_a_hamiltonian_returns_a_plain_sum():
 
     canonical = FermiHubbard1D(2, t=1.0, U=2.0).normal_order()
     assert type(canonical) is FermionicSum
+
+
+# ---------------------------------------------------------------------------
+# MajoranaSum.encode -- the object-level entry, mirroring FermionicSum.encode
+# ---------------------------------------------------------------------------
+
+
+def test_majorana_sum_encode_matches_the_transform():
+    terms = [majorana_bilinear(0, 3)]
+    op = MajoranaSum(terms, num_fermionic_modes=2)
+    encoding = FermionicEncoding("jordan_wigner", num_modes=2)
+    np.testing.assert_allclose(
+        op.encode(encoding).to_matrix(),
+        jordan_wigner_majorana(terms, 2).to_matrix(),
+        atol=1e-12,
+    )
+
+
+def test_majorana_sum_encode_threads_mode_order():
+    terms = [majorana_bilinear(0, 3)]
+    op = MajoranaSum(terms, num_fermionic_modes=2)
+    reordered = FermionicEncoding("jordan_wigner", num_modes=2, mode_order=(1, 0))
+    np.testing.assert_allclose(
+        op.encode(reordered).to_matrix(),
+        jordan_wigner_majorana(terms, 2, mode_order=(1, 0)).to_matrix(),
+        atol=1e-12,
+    )
+
+
+def test_majorana_sum_encode_rejects_mode_count_mismatch():
+    op = MajoranaSum([majorana_bilinear(0, 1)], num_fermionic_modes=1)
+    with pytest.raises(ValueError, match="Encoding is for"):
+        op.encode(FermionicEncoding("jordan_wigner", num_modes=3))
+
+
+def test_majorana_sum_add_rejects_mode_count_mismatch():
+    one = MajoranaSum([majorana_bilinear(0, 1)], num_fermionic_modes=1)
+    two = MajoranaSum([majorana_bilinear(0, 3)], num_fermionic_modes=2)
+    with pytest.raises(ValueError, match="num_fermionic_modes"):
+        one + two

@@ -21,8 +21,8 @@ from qaravan.core.fermions import (
     hopping,
     interleaved_mode_order,
     jordan_wigner,
+    jordan_wigner_majorana,
     majorana_bilinear,
-    majorana_observable,
     number,
 )
 from qaravan.core.gates import (
@@ -86,5 +86,5 @@ __all__ = [
     "jordan_wigner",
     "gamma",
     "majorana_bilinear",
-    "majorana_observable",
+    "jordan_wigner_majorana",
 ]

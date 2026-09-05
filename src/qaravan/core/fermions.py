@@ -290,24 +290,38 @@ class MajoranaTerm:
 
 @dataclass
 class MajoranaSum:
-    """Sum of MajoranaTerm over 2*num_modes Majorana operators. Mirrors FermionicSum."""
+    """Sum of MajoranaTerm over 2*num_fermionic_modes Majorana operators. Mirrors
+    FermionicSum."""
 
     terms: list[MajoranaTerm]
-    num_modes: int
+    num_fermionic_modes: int
 
     def __add__(self, other: MajoranaSum) -> MajoranaSum:
-        if self.num_modes != other.num_modes:
+        if self.num_fermionic_modes != other.num_fermionic_modes:
             raise ValueError(
-                f"Cannot add MajoranaSums with different num_modes: "
-                f"{self.num_modes} vs {other.num_modes}."
+                f"Cannot add MajoranaSums with different num_fermionic_modes: "
+                f"{self.num_fermionic_modes} vs {other.num_fermionic_modes}."
             )
-        return MajoranaSum(self.terms + other.terms, self.num_modes)
+        return MajoranaSum(self.terms + other.terms, self.num_fermionic_modes)
 
     def __mul__(self, scalar: complex) -> MajoranaSum:
-        return MajoranaSum([scalar * term for term in self.terms], self.num_modes)
+        return MajoranaSum(
+            [scalar * term for term in self.terms], self.num_fermionic_modes
+        )
 
     def __rmul__(self, scalar: complex) -> MajoranaSum:
         return self.__mul__(scalar)
+
+    def encode(self, encoding: FermionicEncoding) -> PauliSum:
+        """Apply a fermion-to-qubit encoding. Returns a full-register PauliSum ready for
+        state.expectation(), with no site restriction -- unlike FermionicSum.encode(), whose
+        HamiltonianTerms stay site-restricted so Trotter groupings survive."""
+        if encoding.num_modes != self.num_fermionic_modes:
+            raise ValueError(
+                f"Encoding is for {encoding.num_modes} modes; operator has "
+                f"{self.num_fermionic_modes}."
+            )
+        return encoding.encode_majorana_terms(self.terms)
 
     def __repr__(self) -> str:
         return " + ".join(repr(term) for term in self.terms)
@@ -408,15 +422,13 @@ def jordan_wigner(
     return ham_terms
 
 
-def majorana_observable(
+def jordan_wigner_majorana(
     terms: list[MajoranaTerm],
     num_modes: int,
     mode_order: tuple[int, ...] | None = None,
 ) -> PauliSum:
     """JW-map and sum a list of MajoranaTerms into one full-register PauliSum observable.
-    Each term maps to exactly one PauliString, so this costs len(terms) compositions total --
-    no combinatorial fan-out, no site-restriction (observables want the full register, unlike
-    HamiltonianTerm). Ready to pass straight to state.expectation()."""
+    Each term maps to exactly one PauliString"""
     mode_order = mode_order or tuple(range(num_modes))
     qubit_of = [0] * num_modes
     for qubit, mode in enumerate(mode_order):
@@ -477,7 +489,7 @@ class FermionicEncoding:
 
     def encode_majorana_terms(self, terms: list[MajoranaTerm]) -> PauliSum:
         """Currently always applies Jordan-Wigner, regardless of self.name."""
-        return majorana_observable(terms, self.num_modes, self.mode_order)
+        return jordan_wigner_majorana(terms, self.num_modes, self.mode_order)
 
 
 def interleaved_mode_order(

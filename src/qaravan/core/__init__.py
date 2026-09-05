@@ -10,7 +10,7 @@ from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
 from qaravan.core.fermions import (
     FermionicEncoding,
     FermionicSum,
-    FermionTerm,
+    FermionicTerm,
     MajoranaSum,
     MajoranaTerm,
     bath_interleaved_mode_order,
@@ -72,7 +72,7 @@ __all__ = [
     "interleaved_mode_order",
     "AndersonImpurity",
     "bath_interleaved_mode_order",
-    "FermionTerm",
+    "FermionicTerm",
     "FermionicSum",
     "FermionicHamiltonian",
     "FermionicEncoding",

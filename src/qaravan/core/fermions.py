@@ -12,18 +12,18 @@ from qaravan.core.observables import (
 )
 
 # ---------------------------------------------------------------------------
-# Ladder operators
+# Fermionic algebra (ladder operators, term builders, FermionicSum)
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class FermionTerm:
+class FermionicTerm:
     """coeff * product of ladder operators in the given order, e.g. c-dagger_a c_b ->
     ops=[(a, True), (b, False)].
 
     No implicit normal-ordering -- order is the caller's responsibility and is preserved
     exactly through Jordan-Wigner, so two terms denoting the same operator can hold different
-    ops (n_a n_b vs n_b n_a). Compare them via FermionicSum.normal_order(). A single FermionTerm
+    ops (n_a n_b vs n_b n_a). Compare them via FermionicSum.normal_order(). A single FermionicTerm
     need not be individually Hermitian
     """
 
@@ -41,24 +41,24 @@ class FermionTerm:
         annihilations = [mode for mode, _ in self.ops[split:]]
         return _strictly_ascending(creations) and _strictly_ascending(annihilations)
 
-    def dagger(self) -> FermionTerm:
+    def dagger(self) -> FermionicTerm:
         """(op1...opn)† = opn†...op1†, each dagger flipped, coeff conjugated."""
-        return FermionTerm(
+        return FermionicTerm(
             np.conj(self.coeff),
             [(mode, not is_dagger) for mode, is_dagger in reversed(self.ops)],
         )
 
-    def compose(self, other: FermionTerm) -> FermionTerm:
+    def compose(self, other: FermionicTerm) -> FermionicTerm:
         """Concatenate ops, multiply coeffs. Order preserved: self's ops come first."""
-        return FermionTerm(self.coeff * other.coeff, self.ops + other.ops)
+        return FermionicTerm(self.coeff * other.coeff, self.ops + other.ops)
 
-    def __matmul__(self, other: FermionTerm) -> FermionTerm:
+    def __matmul__(self, other: FermionicTerm) -> FermionicTerm:
         return self.compose(other)
 
-    def __mul__(self, scalar: complex) -> FermionTerm:
-        return FermionTerm(self.coeff * scalar, self.ops)
+    def __mul__(self, scalar: complex) -> FermionicTerm:
+        return FermionicTerm(self.coeff * scalar, self.ops)
 
-    def __rmul__(self, scalar: complex) -> FermionTerm:
+    def __rmul__(self, scalar: complex) -> FermionicTerm:
         return self.__mul__(scalar)
 
     def to_majorana(self) -> MajoranaSum:
@@ -87,104 +87,38 @@ class FermionTerm:
         return f"{self.coeff} * {ops_str}"
 
 
-def c(mode: int) -> FermionTerm:
-    """Annihilation operator on mode, as a length-1 FermionTerm."""
-    return FermionTerm(1.0, [(mode, False)])
+def c(mode: int) -> FermionicTerm:
+    """Annihilation operator on mode, as a length-1 FermionicTerm."""
+    return FermionicTerm(1.0, [(mode, False)])
 
 
-def cdag(mode: int) -> FermionTerm:
-    """Creation operator on mode, as a length-1 FermionTerm."""
-    return FermionTerm(1.0, [(mode, True)])
+def cdag(mode: int) -> FermionicTerm:
+    """Creation operator on mode, as a length-1 FermionicTerm."""
+    return FermionicTerm(1.0, [(mode, True)])
 
 
-def number(mode: int) -> FermionTerm:
+def number(mode: int) -> FermionicTerm:
     """n_mode = c-dagger_mode c_mode -- Hermitian on its own, no partner needed at encode time."""
     return cdag(mode) @ c(mode)
 
 
-def hopping(mode_a: int, mode_b: int, coeff: complex) -> list[FermionTerm]:
-    """coeff * (c-dagger_a c_b + c-dagger_b c_a) -- two FermionTerms, neither individually
+def hopping(mode_a: int, mode_b: int, coeff: complex) -> list[FermionicTerm]:
+    """coeff * (c-dagger_a c_b + c-dagger_b c_a) -- two FermionicTerms, neither individually
     Hermitian; jordan_wigner re-pairs them automatically at encode time."""
     return [coeff * (cdag(mode_a) @ c(mode_b)), coeff * (cdag(mode_b) @ c(mode_a))]
 
 
-def density_density(mode_a: int, mode_b: int, coeff: complex) -> list[FermionTerm]:
+def density_density(mode_a: int, mode_b: int, coeff: complex) -> list[FermionicTerm]:
     """coeff * n_a n_b -- Hermitian on its own (product of commuting self-adjoint operators).
     Single-entry list, kept as a list for uniform +='ing into a flat term list."""
     return [coeff * (number(mode_a) @ number(mode_b))]
 
 
-# ---------------------------------------------------------------------------
-# Normal ordering
-# ---------------------------------------------------------------------------
-
-
-def _strictly_ascending(modes: list[int]) -> bool:
-    return all(earlier < later for earlier, later in zip(modes, modes[1:]))
-
-
-def _sort_sign(modes: list[int]) -> int:
-    """(-1)^inversions: sign of the permutation sorting distinct modes ascending."""
-    inversions = 0
-    for position, earlier in enumerate(modes):
-        for later in modes[position + 1 :]:
-            if earlier > later:
-                inversions += 1
-    return -1 if inversions % 2 else 1
-
-
-def _sort_blocks(ops: list[tuple[int, bool]]) -> tuple[list[tuple[int, bool]], int]:
-    """Sort each block of an already dagger-segregated ops list; sign 0 if a mode repeats,
-    since c†_i c†_i = c_i c_i = 0."""
-    split = sum(1 for _, is_dagger in ops if is_dagger)
-    creations = [mode for mode, _ in ops[:split]]
-    annihilations = [mode for mode, _ in ops[split:]]
-    if len(set(creations)) != len(creations) or len(set(annihilations)) != len(
-        annihilations
-    ):
-        return [], 0
-    sign = _sort_sign(creations) * _sort_sign(annihilations)
-    sorted_ops = [(mode, True) for mode in sorted(creations)]
-    sorted_ops += [(mode, False) for mode in sorted(annihilations)]
-    return sorted_ops, sign
-
-
-def _normal_order_term(term: FermionTerm) -> list[FermionTerm]:
-    """One term as a sum of normal-ordered terms -- a sum, not a term, because the
-    c_i c†_j = delta_ij - c†_j c_i rewrite spawns a shorter contracted term whenever i == j."""
-    pending = [(term.coeff, list(term.ops))]
-    segregated = []
-    while pending:
-        coeff, ops = pending.pop()
-        position = _first_annihilation_before_creation(ops)
-        if position is None:
-            segregated.append((coeff, ops))
-            continue
-        left, right = ops[position], ops[position + 1]
-        pending.append((-coeff, ops[:position] + [right, left] + ops[position + 2 :]))
-        if left[0] == right[0]:
-            pending.append((coeff, ops[:position] + ops[position + 2 :]))
-
-    ordered = []
-    for coeff, ops in segregated:
-        sorted_ops, sign = _sort_blocks(ops)
-        if sign:
-            ordered.append(FermionTerm(sign * coeff, sorted_ops))
-    return ordered
-
-
-def _first_annihilation_before_creation(ops: list[tuple[int, bool]]) -> int | None:
-    for position in range(len(ops) - 1):
-        if not ops[position][1] and ops[position + 1][1]:
-            return position
-    return None
-
-
 @dataclass
 class FermionicSum:
-    """Sum of FermionTerm"""
+    """Sum of FermionicTerm"""
 
-    terms: list[FermionTerm]
+    terms: list[FermionicTerm]
     num_fermionic_modes: int
 
     def __add__(self, other: FermionicSum) -> FermionicSum:
@@ -221,7 +155,7 @@ class FermionicSum:
                 key = tuple(ordered.ops)
                 merged[key] = merged.get(key, 0) + ordered.coeff
         terms = [
-            FermionTerm(coeff, list(ops))
+            FermionicTerm(coeff, list(ops))
             for ops, coeff in sorted(merged.items())
             if abs(coeff) > atol
         ]
@@ -253,97 +187,73 @@ class FermionicSum:
 
 
 # ---------------------------------------------------------------------------
-# Shared Jordan-Wigner primitive (also backs Majorana operators, below)
+# Normal ordering (internals behind FermionicTerm.normal_ordered / FermionicSum.normal_order)
 # ---------------------------------------------------------------------------
 
 
-def _majorana_pauli_string(qubit: int, is_odd: bool, num_modes: int) -> PauliString:
-    """gamma_2k -> Z_{<q} X_q ; gamma_2k+1 -> Z_{<q} Y_q (q = qubit_of[mode]). Single string,
-    coeff 1 -- no PauliSum needed for one Majorana operator."""
-    chars = ["Z"] * qubit + ["Y" if is_odd else "X"] + ["I"] * (num_modes - qubit - 1)
-    return PauliString("".join(chars), 1.0)
+def _strictly_ascending(modes: list[int]) -> bool:
+    return all(earlier < later for earlier, later in zip(modes, modes[1:]))
 
 
-def _ladder_pauli_sum(qubit: int, is_dagger: bool, num_modes: int) -> PauliSum:
-    """c_k = (gamma_2k + i*gamma_2k+1)/2 ; c-dagger_k = (gamma_2k - i*gamma_2k+1)/2."""
-    x_term = _majorana_pauli_string(
-        qubit, is_odd=False, num_modes=num_modes
-    )  # gamma_2k
-    y_term = _majorana_pauli_string(
-        qubit, is_odd=True, num_modes=num_modes
-    )  # gamma_2k+1
-    sign = -1j if is_dagger else 1j
-    return PauliSum([0.5 * x_term, 0.5 * sign * y_term])
+def _sort_sign(modes: list[int]) -> int:
+    """(-1)^inversions: sign of the permutation sorting distinct modes ascending."""
+    inversions = 0
+    for position, earlier in enumerate(modes):
+        for later in modes[position + 1 :]:
+            if earlier > later:
+                inversions += 1
+    return -1 if inversions % 2 else 1
 
 
-# ---------------------------------------------------------------------------
-# Jordan-Wigner transform (fermionic ladder operators -> HamiltonianTerm)
-# ---------------------------------------------------------------------------
+def _sort_blocks(ops: list[tuple[int, bool]]) -> tuple[list[tuple[int, bool]], int]:
+    """Sort each block of an already dagger-segregated ops list; sign 0 if a mode repeats,
+    since c†_i c†_i = c_i c_i = 0."""
+    split = sum(1 for _, is_dagger in ops if is_dagger)
+    creations = [mode for mode, _ in ops[:split]]
+    annihilations = [mode for mode, _ in ops[split:]]
+    if len(set(creations)) != len(creations) or len(set(annihilations)) != len(
+        annihilations
+    ):
+        return [], 0
+    sign = _sort_sign(creations) * _sort_sign(annihilations)
+    sorted_ops = [(mode, True) for mode in sorted(creations)]
+    sorted_ops += [(mode, False) for mode in sorted(annihilations)]
+    return sorted_ops, sign
 
 
-def _map_term(term: FermionTerm, qubit_of: list[int], num_modes: int) -> PauliSum:
-    """JW-map a single FermionTerm to a PauliSum (not necessarily Hermitian on its own)."""
-    result = PauliSum([PauliString("I" * num_modes, 1.0)])
-    for mode, is_dagger in term.ops:
-        result = result.compose(_ladder_pauli_sum(qubit_of[mode], is_dagger, num_modes))
-    return term.coeff * result
-
-
-def _is_real(pauli_sum: PauliSum, atol: float = 1e-9) -> bool:
-    return all(abs(term.coeff.imag) < atol for term in pauli_sum.terms)
-
-
-def jordan_wigner(
-    terms: list[FermionTerm],
-    num_modes: int,
-    mode_order: tuple[int, ...] | None = None,
-) -> list[HamiltonianTerm]:
-    """Map a flat list of FermionTerms to Hermitian-guaranteed HamiltonianTerms via
-    Jordan-Wigner (each returned term must be Hermitian so it can later be exponentiated
-    into a unitary Trotter layer).
-
-    mode_order[qubit] = fermionic mode occupying that qubit; defaults to the identity
-    (mode i -> qubit i). Non-self-adjoint terms (e.g. one half of a hopping bond) are
-    automatically paired with whichever remaining term makes their sum real; raises
-    ValueError if no such partner exists. Near-zero results are dropped rather than
-    returned as empty HamiltonianTerms.
-    """
-    mode_order = mode_order or tuple(range(num_modes))
-    qubit_of = [0] * num_modes
-    for qubit, mode in enumerate(mode_order):
-        qubit_of[mode] = qubit
-
-    images = [_map_term(term, qubit_of, num_modes) for term in terms]
-    used = [False] * len(terms)
-    ham_terms = []
-    for i, image in enumerate(images):
-        if used[i]:
+def _normal_order_term(term: FermionicTerm) -> list[FermionicTerm]:
+    """One term as a sum of normal-ordered terms -- a sum, not a term, because the
+    c_i c†_j = delta_ij - c†_j c_i rewrite spawns a shorter contracted term whenever i == j."""
+    pending = [(term.coeff, list(term.ops))]
+    segregated = []
+    while pending:
+        coeff, ops = pending.pop()
+        position = _first_annihilation_before_creation(ops)
+        if position is None:
+            segregated.append((coeff, ops))
             continue
-        combined = image.simplify()
-        if not _is_real(combined):
-            partner = next(
-                (
-                    j
-                    for j in range(i + 1, len(terms))
-                    if not used[j] and _is_real((image + images[j]).simplify())
-                ),
-                None,
-            )
-            if partner is None:
-                raise ValueError(
-                    f"FermionTerm {terms[i]} has no Hermitian-conjugate partner among the "
-                    "remaining terms; the operator, as given, is not Hermitian."
-                )
-            combined = (image + images[partner]).simplify()
-            used[partner] = True
-        used[i] = True
-        if any(abs(term.coeff) > 1e-12 for term in combined.terms):
-            ham_terms.append(restrict_pauli_sum(combined))
-    return ham_terms
+        left, right = ops[position], ops[position + 1]
+        pending.append((-coeff, ops[:position] + [right, left] + ops[position + 2 :]))
+        if left[0] == right[0]:
+            pending.append((coeff, ops[:position] + ops[position + 2 :]))
+
+    ordered = []
+    for coeff, ops in segregated:
+        sorted_ops, sign = _sort_blocks(ops)
+        if sign:
+            ordered.append(FermionicTerm(sign * coeff, sorted_ops))
+    return ordered
+
+
+def _first_annihilation_before_creation(ops: list[tuple[int, bool]]) -> int | None:
+    for position in range(len(ops) - 1):
+        if not ops[position][1] and ops[position + 1][1]:
+            return position
+    return None
 
 
 # ---------------------------------------------------------------------------
-# Majorana operators
+# Majorana algebra
 # ---------------------------------------------------------------------------
 
 
@@ -413,6 +323,91 @@ def majorana_bilinear(index_a: int, index_b: int, coeff: complex = 1j) -> Majora
     return coeff * (gamma(index_a) @ gamma(index_b))
 
 
+# ---------------------------------------------------------------------------
+# Jordan-Wigner transform (_majorana_pauli_string backs both paths below)
+# ---------------------------------------------------------------------------
+
+
+def _majorana_pauli_string(qubit: int, is_odd: bool, num_modes: int) -> PauliString:
+    """gamma_2k -> Z_{<q} X_q ; gamma_2k+1 -> Z_{<q} Y_q (q = qubit_of[mode]). Single string,
+    coeff 1 -- no PauliSum needed for one Majorana operator."""
+    chars = ["Z"] * qubit + ["Y" if is_odd else "X"] + ["I"] * (num_modes - qubit - 1)
+    return PauliString("".join(chars), 1.0)
+
+
+def _ladder_pauli_sum(qubit: int, is_dagger: bool, num_modes: int) -> PauliSum:
+    """c_k = (gamma_2k + i*gamma_2k+1)/2 ; c-dagger_k = (gamma_2k - i*gamma_2k+1)/2."""
+    x_term = _majorana_pauli_string(
+        qubit, is_odd=False, num_modes=num_modes
+    )  # gamma_2k
+    y_term = _majorana_pauli_string(
+        qubit, is_odd=True, num_modes=num_modes
+    )  # gamma_2k+1
+    sign = -1j if is_dagger else 1j
+    return PauliSum([0.5 * x_term, 0.5 * sign * y_term])
+
+
+def _map_term(term: FermionicTerm, qubit_of: list[int], num_modes: int) -> PauliSum:
+    """JW-map a single FermionicTerm to a PauliSum (not necessarily Hermitian on its own)."""
+    result = PauliSum([PauliString("I" * num_modes, 1.0)])
+    for mode, is_dagger in term.ops:
+        result = result.compose(_ladder_pauli_sum(qubit_of[mode], is_dagger, num_modes))
+    return term.coeff * result
+
+
+def _is_real(pauli_sum: PauliSum, atol: float = 1e-9) -> bool:
+    return all(abs(term.coeff.imag) < atol for term in pauli_sum.terms)
+
+
+def jordan_wigner(
+    terms: list[FermionicTerm],
+    num_modes: int,
+    mode_order: tuple[int, ...] | None = None,
+) -> list[HamiltonianTerm]:
+    """Map a flat list of FermionicTerms to Hermitian-guaranteed HamiltonianTerms via
+    Jordan-Wigner (each returned term must be Hermitian so it can later be exponentiated
+    into a unitary Trotter layer).
+
+    mode_order[qubit] = fermionic mode occupying that qubit; defaults to the identity
+    (mode i -> qubit i). Non-self-adjoint terms (e.g. one half of a hopping bond) are
+    automatically paired with whichever remaining term makes their sum real; raises
+    ValueError if no such partner exists. Near-zero results are dropped rather than
+    returned as empty HamiltonianTerms.
+    """
+    mode_order = mode_order or tuple(range(num_modes))
+    qubit_of = [0] * num_modes
+    for qubit, mode in enumerate(mode_order):
+        qubit_of[mode] = qubit
+
+    images = [_map_term(term, qubit_of, num_modes) for term in terms]
+    used = [False] * len(terms)
+    ham_terms = []
+    for i, image in enumerate(images):
+        if used[i]:
+            continue
+        combined = image.simplify()
+        if not _is_real(combined):
+            partner = next(
+                (
+                    j
+                    for j in range(i + 1, len(terms))
+                    if not used[j] and _is_real((image + images[j]).simplify())
+                ),
+                None,
+            )
+            if partner is None:
+                raise ValueError(
+                    f"FermionicTerm {terms[i]} has no Hermitian-conjugate partner among the "
+                    "remaining terms; the operator, as given, is not Hermitian."
+                )
+            combined = (image + images[partner]).simplify()
+            used[partner] = True
+        used[i] = True
+        if any(abs(term.coeff) > 1e-12 for term in combined.terms):
+            ham_terms.append(restrict_pauli_sum(combined))
+    return ham_terms
+
+
 def majorana_observable(
     terms: list[MajoranaTerm],
     num_modes: int,
@@ -476,7 +471,7 @@ class FermionicEncoding:
         down = [self.qubit_of(mode) for mode in range(half, self.num_modes)]
         return up, down
 
-    def encode_fermion_terms(self, terms: list[FermionTerm]) -> list[HamiltonianTerm]:
+    def encode_fermion_terms(self, terms: list[FermionicTerm]) -> list[HamiltonianTerm]:
         """Currently always applies Jordan-Wigner, regardless of self.name."""
         return jordan_wigner(terms, self.num_modes, self.mode_order)
 

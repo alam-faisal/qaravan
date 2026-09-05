@@ -61,7 +61,7 @@ def test_star_hermitian():
     eps_bath = rng.uniform(-1, 1, size=3).tolist()
     V = rng.uniform(-1, 1, size=3).tolist()
     aim = AndersonImpurity.star(eps_d=0.4, U=2.0, eps_bath=eps_bath, V=V)
-    H = aim.encode(_identity_encoding(aim)).as_matrix()
+    H = aim.encode(_identity_encoding(aim)).to_matrix()
     assert np.allclose(H, H.conj().T, atol=1e-12)
 
 
@@ -72,7 +72,7 @@ def test_chain_hermitian():
     aim = AndersonImpurity.chain(
         eps_d=0.4, U=2.0, eps_chain=eps_chain, t_chain=t_chain, V=0.7
     )
-    H = aim.encode(_identity_encoding(aim)).as_matrix()
+    H = aim.encode(_identity_encoding(aim)).to_matrix()
     assert np.allclose(H, H.conj().T, atol=1e-12)
 
 
@@ -84,7 +84,7 @@ def test_chain_hermitian():
 def test_star_atomic_limit_spectrum():
     eps_d, U = 0.7, 2.3
     aim = AndersonImpurity.star(eps_d=eps_d, U=U, eps_bath=[], V=[])
-    H = aim.encode(_identity_encoding(aim)).as_matrix()
+    H = aim.encode(_identity_encoding(aim)).to_matrix()
     evals = np.sort(np.linalg.eigvalsh(H))
     expected = np.sort([0.0, eps_d, eps_d, 2 * eps_d + U])
     assert np.allclose(evals, expected, atol=1e-10)
@@ -93,7 +93,7 @@ def test_star_atomic_limit_spectrum():
 def test_chain_atomic_limit_spectrum():
     eps_d, U = -0.5, 1.8
     aim = AndersonImpurity.chain(eps_d=eps_d, U=U, eps_chain=[], t_chain=[], V=0.0)
-    H = aim.encode(_identity_encoding(aim)).as_matrix()
+    H = aim.encode(_identity_encoding(aim)).to_matrix()
     evals = np.sort(np.linalg.eigvalsh(H))
     expected = np.sort([0.0, eps_d, eps_d, 2 * eps_d + U])
     assert np.allclose(evals, expected, atol=1e-10)
@@ -108,8 +108,8 @@ def test_star_equals_chain_for_single_bath():
     eps_d, U, eps_1, V = 0.2, 1.5, -0.3, 0.6
     star = AndersonImpurity.star(eps_d=eps_d, U=U, eps_bath=[eps_1], V=[V])
     chain = AndersonImpurity.chain(eps_d=eps_d, U=U, eps_chain=[eps_1], t_chain=[], V=V)
-    H_star = star.encode(_identity_encoding(star)).as_matrix()
-    H_chain = chain.encode(_identity_encoding(chain)).as_matrix()
+    H_star = star.encode(_identity_encoding(star)).to_matrix()
+    H_chain = chain.encode(_identity_encoding(chain)).to_matrix()
     assert np.allclose(
         np.sort(np.linalg.eigvalsh(H_star)),
         np.sort(np.linalg.eigvalsh(H_chain)),
@@ -159,7 +159,7 @@ def test_star_trotter_vs_propagator():
     dt = 0.01
     circ = trotter_circuit(ham, dt, order=2)
     trotter_mat = circ.to_matrix()
-    exact_mat = expm(-1j * dt * ham.as_matrix())
+    exact_mat = expm(-1j * dt * ham.to_matrix())
     assert np.linalg.norm(trotter_mat - exact_mat, ord="fro") < 1e-5
 
 
@@ -171,7 +171,7 @@ def test_chain_trotter_vs_propagator():
     dt = 0.01
     circ = trotter_circuit(ham, dt, order=2)
     trotter_mat = circ.to_matrix()
-    exact_mat = expm(-1j * dt * ham.as_matrix())
+    exact_mat = expm(-1j * dt * ham.to_matrix())
     assert np.linalg.norm(trotter_mat - exact_mat, ord="fro") < 1e-5
 
 
@@ -217,6 +217,6 @@ def test_bath_interleaved_mode_order_matches_stacked_spectrum():
         num_modes=aim.num_fermionic_modes,
         mode_order=bath_interleaved_mode_order(2),
     )
-    E_stacked = np.linalg.eigvalsh(aim.encode(stacked).as_matrix())[0]
-    E_reordered = np.linalg.eigvalsh(aim.encode(reordered).as_matrix())[0]
+    E_stacked = np.linalg.eigvalsh(aim.encode(stacked).to_matrix())[0]
+    E_reordered = np.linalg.eigvalsh(aim.encode(reordered).to_matrix())[0]
     assert abs(E_stacked - E_reordered) < 1e-10

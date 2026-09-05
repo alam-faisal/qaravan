@@ -23,7 +23,7 @@ def _fh_encoding(num_fermionic_sites: int, ordering: str) -> FermionicEncoding:
 # ---------------------------------------------------------------------------
 
 
-def test_fh_as_matrix_is_hermitian_stacked():
+def test_fh_to_matrix_is_hermitian_stacked():
     rng = np.random.default_rng(0)
     t, U, mu = (
         float(rng.uniform(0.5, 2.0)),
@@ -31,11 +31,11 @@ def test_fh_as_matrix_is_hermitian_stacked():
         float(rng.uniform(-0.5, 0.5)),
     )
     fh = FermiHubbard1D(3, t=t, U=U, mu=mu)
-    H = fh.encode(_fh_encoding(3, "stacked")).as_matrix()
+    H = fh.encode(_fh_encoding(3, "stacked")).to_matrix()
     assert np.allclose(H, H.conj().T, atol=1e-12)
 
 
-def test_fh_as_matrix_is_hermitian_interleaved():
+def test_fh_to_matrix_is_hermitian_interleaved():
     rng = np.random.default_rng(1)
     t, U, mu = (
         float(rng.uniform(0.5, 2.0)),
@@ -43,7 +43,7 @@ def test_fh_as_matrix_is_hermitian_interleaved():
         float(rng.uniform(-0.5, 0.5)),
     )
     fh = FermiHubbard1D(3, t=t, U=U, mu=mu)
-    H = fh.encode(_fh_encoding(3, "interleaved")).as_matrix()
+    H = fh.encode(_fh_encoding(3, "interleaved")).to_matrix()
     assert np.allclose(H, H.conj().T, atol=1e-12)
 
 
@@ -57,10 +57,10 @@ def test_fh_encoding_agreement():
     for num_fermionic_sites in [3, 4]:
         fh = FermiHubbard1D(num_fermionic_sites, t=1.0, U=2.0, mu=0.5)
         E_s = np.linalg.eigvalsh(
-            fh.encode(_fh_encoding(num_fermionic_sites, "stacked")).as_matrix()
+            fh.encode(_fh_encoding(num_fermionic_sites, "stacked")).to_matrix()
         )[0]
         E_i = np.linalg.eigvalsh(
-            fh.encode(_fh_encoding(num_fermionic_sites, "interleaved")).as_matrix()
+            fh.encode(_fh_encoding(num_fermionic_sites, "interleaved")).to_matrix()
         )[0]
         assert abs(E_s - E_i) < 1e-10, (
             f"num_fermionic_sites={num_fermionic_sites}: stacked E0={E_s}, interleaved E0={E_i}"
@@ -108,7 +108,7 @@ def test_fh_free_fermion_ground_energy():
 
     for ordering in ["stacked", "interleaved"]:
         fh = FermiHubbard1D(num_fermionic_sites=num_fermionic_sites, t=t, U=0.0, mu=0.0)
-        H = fh.encode(_fh_encoding(num_fermionic_sites, ordering)).as_matrix()
+        H = fh.encode(_fh_encoding(num_fermionic_sites, ordering)).to_matrix()
         E0 = np.linalg.eigvalsh(H)[0]
         assert abs(E0 - expected) < 1e-8, (
             f"ordering={ordering}: got {E0:.8f}, expected {expected:.8f}"
@@ -167,7 +167,7 @@ def test_fh_trotter_vs_propagator_stacked():
     ham = fh.encode(_fh_encoding(num_fermionic_sites, "stacked"))
     circ = trotter_circuit(ham, dt, order=2)
     trotter_mat = circ.to_matrix()
-    exact_mat = expm(-1j * dt * ham.as_matrix())
+    exact_mat = expm(-1j * dt * ham.to_matrix())
     frob_err = np.linalg.norm(trotter_mat - exact_mat, ord="fro")
     assert frob_err < 1e-5, f"Frobenius error {frob_err:.2e}"
 
@@ -178,7 +178,7 @@ def test_fh_trotter_vs_propagator_interleaved():
     ham = fh.encode(_fh_encoding(num_fermionic_sites, "interleaved"))
     circ = trotter_circuit(ham, dt, order=2)
     trotter_mat = circ.to_matrix()
-    exact_mat = expm(-1j * dt * ham.as_matrix())
+    exact_mat = expm(-1j * dt * ham.to_matrix())
     frob_err = np.linalg.norm(trotter_mat - exact_mat, ord="fro")
     assert frob_err < 1e-5, f"Frobenius error {frob_err:.2e}"
 
@@ -204,7 +204,7 @@ def test_fh_pbc_matrix_hermitian():
     )
     for ordering in ["stacked", "interleaved"]:
         fh = FermiHubbard1D(3, t=t, U=U, mu=mu, periodic=True)
-        H = fh.encode(_fh_encoding(3, ordering)).as_matrix()
+        H = fh.encode(_fh_encoding(3, ordering)).to_matrix()
         assert np.allclose(H, H.conj().T, atol=1e-12), (
             f"{ordering} PBC Hamiltonian not Hermitian"
         )
@@ -215,10 +215,10 @@ def test_fh_pbc_spectrum_ordering_agreement():
     for num_fermionic_sites in [3, 4]:
         fh = FermiHubbard1D(num_fermionic_sites, t=1.0, U=2.0, mu=0.5, periodic=True)
         E_s = np.linalg.eigvalsh(
-            fh.encode(_fh_encoding(num_fermionic_sites, "stacked")).as_matrix()
+            fh.encode(_fh_encoding(num_fermionic_sites, "stacked")).to_matrix()
         )[0]
         E_i = np.linalg.eigvalsh(
-            fh.encode(_fh_encoding(num_fermionic_sites, "interleaved")).as_matrix()
+            fh.encode(_fh_encoding(num_fermionic_sites, "interleaved")).to_matrix()
         )[0]
         assert abs(E_s - E_i) < 1e-10, (
             f"num_fermionic_sites={num_fermionic_sites}: stacked E0={E_s}, interleaved E0={E_i}"
@@ -231,8 +231,8 @@ def test_fh_pbc_vs_obc_spectrum_differs():
         fh_obc = FermiHubbard1D(3, t=1.0, U=1.0, periodic=False)
         fh_pbc = FermiHubbard1D(3, t=1.0, U=1.0, periodic=True)
         encoding = _fh_encoding(3, ordering)
-        E_obc = np.linalg.eigvalsh(fh_obc.encode(encoding).as_matrix())[0]
-        E_pbc = np.linalg.eigvalsh(fh_pbc.encode(encoding).as_matrix())[0]
+        E_obc = np.linalg.eigvalsh(fh_obc.encode(encoding).to_matrix())[0]
+        E_pbc = np.linalg.eigvalsh(fh_pbc.encode(encoding).to_matrix())[0]
         assert abs(E_obc - E_pbc) > 1e-6, (
             f"{ordering}: OBC and PBC spectra are identical (boundary term has no effect)"
         )
@@ -248,7 +248,7 @@ def test_fh_pbc_free_fermion_ground_energy():
     expected = -4 * t  # 2 spins × (-2t + 0)
     for ordering in ["stacked", "interleaved"]:
         fh = FermiHubbard1D(L, t=t, U=0.0, mu=0.0, periodic=True)
-        H = fh.encode(_fh_encoding(L, ordering)).as_matrix()
+        H = fh.encode(_fh_encoding(L, ordering)).to_matrix()
         E0 = np.linalg.eigvalsh(H)[0]
         assert abs(E0 - expected) < 1e-8, (
             f"{ordering}: got E0={E0:.8f}, expected {expected:.8f}"
@@ -269,7 +269,7 @@ def test_fh_trotter_error_scaling_order1():
             circ = trotter_circuit(ham, dt, order=1)
             errors.append(
                 np.linalg.norm(
-                    circ.to_matrix() - expm(-1j * dt * ham.as_matrix()), ord="fro"
+                    circ.to_matrix() - expm(-1j * dt * ham.to_matrix()), ord="fro"
                 )
             )
         slope = np.polyfit(np.log(dt_values), np.log(errors), 1)[0]

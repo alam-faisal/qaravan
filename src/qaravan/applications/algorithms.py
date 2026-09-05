@@ -42,7 +42,7 @@ def ground_state(
 
     if method == "lanczos":
         return _matrix_free_lanczos(hamiltonian, 1, sector, True)
-    matrix = hamiltonian.as_matrix()
+    matrix = hamiltonian.to_matrix()
     if sector is not None:
         matrix = matrix[np.ix_(sector, sector)]
     _, evecs = _lowest_eigenpairs(matrix, method, 1, True)
@@ -71,7 +71,7 @@ def spectrum(
 
     if method == "lanczos":
         return _matrix_free_lanczos(hamiltonian, num_eigenvalues, sector, False)
-    matrix = hamiltonian.as_matrix()
+    matrix = hamiltonian.to_matrix()
     if sector is not None:
         matrix = matrix[np.ix_(sector, sector)]
     evals, _ = _lowest_eigenpairs(matrix, method, num_eigenvalues, False)
@@ -264,7 +264,7 @@ def _trotter_order1(groups: list[list[HamiltonianTerm]], dt: float) -> list[Matr
     gates: list[MatrixGate] = []
     for group in groups:
         for term in group:
-            mat = expm(-1j * dt * term.local_obs.matrix)
+            mat = expm(-1j * dt * term.local_obs.to_matrix())
             gates.append(MatrixGate("Trotter", term.sites, mat))
     return gates
 
@@ -279,15 +279,15 @@ def _trotter_order2(groups: list[list[HamiltonianTerm]], dt: float) -> list[Matr
     # forward half-steps: all but last group
     for group in groups[:-1]:
         for term in group:
-            mat = expm(-1j * half_dt * term.local_obs.matrix)
+            mat = expm(-1j * half_dt * term.local_obs.to_matrix())
             gates.append(MatrixGate("Trotter", term.sites, mat))
     # last group: full step
     for term in groups[-1]:
-        mat = expm(-1j * dt * term.local_obs.matrix)
+        mat = expm(-1j * dt * term.local_obs.to_matrix())
         gates.append(MatrixGate("Trotter", term.sites, mat))
     # backward half-steps: reverse of all but last group
     for group in reversed(groups[:-1]):
         for term in group:
-            mat = expm(-1j * half_dt * term.local_obs.matrix)
+            mat = expm(-1j * half_dt * term.local_obs.to_matrix())
             gates.append(MatrixGate("Trotter", term.sites, mat))
     return gates

@@ -65,7 +65,7 @@ def _projected_ground_energy(encoded, spin_numbers, up_qubits, down_qubits) -> f
         for index in range(2**num_sites)
         if _spin_counts(index, num_sites, up_qubits, down_qubits) == spin_numbers
     ]
-    return float(np.linalg.eigvalsh(encoded.as_matrix()[np.ix_(keep, keep)])[0])
+    return float(np.linalg.eigvalsh(encoded.to_matrix()[np.ix_(keep, keep)])[0])
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +230,7 @@ def test_naive_and_naive_lanczos_agree_on_low_lying_spectrum():
 def test_spectrum_default_is_the_full_ascending_spectrum():
     tfi = TFI(4, J=1.0, h=0.5)
     np.testing.assert_allclose(
-        spectrum(tfi), np.linalg.eigvalsh(tfi.as_matrix()), atol=1e-10
+        spectrum(tfi), np.linalg.eigvalsh(tfi.to_matrix()), atol=1e-10
     )
 
 

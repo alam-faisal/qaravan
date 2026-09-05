@@ -58,8 +58,7 @@ class PauliString(Observable):
         self.num_sites = n
         super().__init__(f"P({self.string})", list(range(n)))
 
-    @property
-    def matrix(self) -> np.ndarray:
+    def to_matrix(self) -> np.ndarray:
         mats = [PAULI_MATRICES[c] for c in self.string]
         return self.coeff * reduce(np.kron, mats)
 
@@ -117,9 +116,8 @@ class PauliSum(Observable):
         self.terms = list(terms)
         super().__init__("PauliSum", list(range(n)))
 
-    @property
-    def matrix(self) -> np.ndarray:
-        return sum(t.matrix for t in self.terms)  # type: ignore[return-value]
+    def to_matrix(self) -> np.ndarray:
+        return sum(t.to_matrix() for t in self.terms)  # type: ignore[return-value]
 
     def as_pauli_sum(self) -> PauliSum:
         return self
@@ -248,8 +246,7 @@ class LocalOp(Observable):
         self._matrix = np.asarray(mat, dtype=complex)
         super().__init__("LocalOp", indices)
 
-    @property
-    def matrix(self) -> np.ndarray:
+    def to_matrix(self) -> np.ndarray:
         return self._matrix
 
 
@@ -274,11 +271,7 @@ class Magnetization(PauliSum):
 
 
 class NumberOperator(PauliSum):
-    """Occupation sum_q n_q over qubits (all of them if None), for a JW-encoded register:
-    n_q = (I - Z_q)/2, eigenvalue 1 on |1> and 0 on |0>. Unnormalized -- it counts particles.
-
-    Pass FermionicEncoding.spin_qubits() to get N_up or N_down.
-    """
+    """n_q = (I - Z_q)/2, eigenvalue 1 on |1> and 0 on |0>. Unnormalized -- it counts particles."""
 
     def __init__(self, n: int, qubits: list[int] | None = None):
         self.n = n

@@ -12,17 +12,17 @@ from qaravan.core.observables import PauliString
 # ---------------------------------------------------------------------------
 
 
-def test_tfi_as_matrix_is_hermitian():
+def test_tfi_to_matrix_is_hermitian():
     rng = np.random.default_rng(42)
     J, h = float(rng.uniform(0.5, 2.0)), float(rng.uniform(0.1, 1.0))
     tfi = TFI(4, J=J, h=h)
-    mat = tfi.as_matrix()
+    mat = tfi.to_matrix()
     assert np.allclose(mat, mat.conj().T, atol=1e-12)
 
 
-def test_heisenberg_as_matrix_is_hermitian():
+def test_heisenberg_to_matrix_is_hermitian():
     heis = Heisenberg1D(4, J=1.0, h=0.3)
-    mat = heis.as_matrix()
+    mat = heis.to_matrix()
     assert np.allclose(mat, mat.conj().T, atol=1e-12)
 
 
@@ -50,7 +50,7 @@ def test_as_observable_merges_duplicate_strings_without_changing_matrix():
     assert len(simplified.terms) < len(unsimplified), (
         "onsite terms should collapse shared identity strings"
     )
-    assert np.allclose(simplified.matrix, PauliSum(unsimplified).matrix)
+    assert np.allclose(simplified.to_matrix(), PauliSum(unsimplified).to_matrix())
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ def test_tfi_ground_state_against_exact_diag():
     for n in range(3, 6):
         tfi = TFI(n, J=1.0, h=0.5, periodic=False)
         sv = ground_state(tfi)
-        evals, evecs = np.linalg.eigh(tfi.as_matrix())
+        evals, evecs = np.linalg.eigh(tfi.to_matrix())
         exact_gs = evecs[:, 0]
         fidelity = abs(np.dot(sv.to_array().conj(), exact_gs)) ** 2
         assert fidelity > 1 - 1e-10, f"n={n}: fidelity={fidelity}"
@@ -152,7 +152,7 @@ def test_tfi_trotter_circuit_order2_vs_propagator():
     tfi = TFI(n, J=J, h=h, periodic=False)
     circ = trotter_circuit(tfi, dt, order=2)
     trotter_mat = circ.to_matrix()
-    exact_mat = expm(-1j * dt * tfi.as_matrix())
+    exact_mat = expm(-1j * dt * tfi.to_matrix())
     frob_err = np.linalg.norm(trotter_mat - exact_mat, ord="fro")
     assert frob_err < 1e-5, f"Frobenius error {frob_err:.2e}"
 
@@ -167,7 +167,7 @@ def test_tfi_trotter_error_scaling_order1():
         circ = trotter_circuit(tfi, dt, order=1)
         errors.append(
             np.linalg.norm(
-                circ.to_matrix() - expm(-1j * dt * tfi.as_matrix()), ord="fro"
+                circ.to_matrix() - expm(-1j * dt * tfi.to_matrix()), ord="fro"
             )
         )
     slope = np.polyfit(np.log(dt_values), np.log(errors), 1)[0]
@@ -184,7 +184,7 @@ def test_tfi_trotter_error_scaling_order2():
         circ = trotter_circuit(tfi, dt, order=2)
         errors.append(
             np.linalg.norm(
-                circ.to_matrix() - expm(-1j * dt * tfi.as_matrix()), ord="fro"
+                circ.to_matrix() - expm(-1j * dt * tfi.to_matrix()), ord="fro"
             )
         )
     slope = np.polyfit(np.log(dt_values), np.log(errors), 1)[0]
@@ -212,7 +212,7 @@ def test_heisenberg_ground_state_against_exact_diag():
     for n in range(3, 6):
         heis = Heisenberg1D(n, J=1.0, h=0.5)
         sv = ground_state(heis)
-        evals, evecs = np.linalg.eigh(heis.as_matrix())
+        evals, evecs = np.linalg.eigh(heis.to_matrix())
         exact_gs = evecs[:, 0]
         fidelity = abs(np.dot(sv.to_array().conj(), exact_gs)) ** 2
         assert fidelity > 1 - 1e-10, f"n={n}: fidelity={fidelity}"
@@ -234,7 +234,7 @@ def test_heisenberg_trotter_vs_propagator():
     heis = Heisenberg1D(n, J=J, h=h, periodic=False)
     circ = trotter_circuit(heis, dt, order=2)
     trotter_mat = circ.to_matrix()
-    exact_mat = expm(-1j * dt * heis.as_matrix())
+    exact_mat = expm(-1j * dt * heis.to_matrix())
     frob_err = np.linalg.norm(trotter_mat - exact_mat, ord="fro")
     assert frob_err < 1e-5, f"Frobenius error {frob_err:.2e}"
 
@@ -243,7 +243,7 @@ def test_heisenberg_xx_model_ground_energy():
     # J=1, h=0, PBC: ground energy from ground_state() matches eigh minimum
     for n in [4, 6]:
         heis = Heisenberg1D(n, J=1.0, h=0.0, periodic=True)
-        evals = np.linalg.eigvalsh(heis.as_matrix())
+        evals = np.linalg.eigvalsh(heis.to_matrix())
         sv = ground_state(heis)
         energy = sv.expectation(heis.as_observable()).real
         assert abs(energy - evals[0]) < 1e-9, (

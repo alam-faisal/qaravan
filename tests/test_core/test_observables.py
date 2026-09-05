@@ -27,24 +27,24 @@ _Z = np.array([[1, 0], [0, -1]], dtype=complex)
 
 
 def test_pauli_string_single_qubit_matrices():
-    assert np.allclose(PauliString("I").matrix, _I)
-    assert np.allclose(PauliString("X").matrix, _X)
-    assert np.allclose(PauliString("Y").matrix, _Y)
-    assert np.allclose(PauliString("Z").matrix, _Z)
+    assert np.allclose(PauliString("I").to_matrix(), _I)
+    assert np.allclose(PauliString("X").to_matrix(), _X)
+    assert np.allclose(PauliString("Y").to_matrix(), _Y)
+    assert np.allclose(PauliString("Z").to_matrix(), _Z)
 
 
 def test_pauli_string_two_qubit():
-    assert np.allclose(PauliString("XZ").matrix, np.kron(_X, _Z))
-    assert np.allclose(PauliString("IX").matrix, np.kron(_I, _X))
+    assert np.allclose(PauliString("XZ").to_matrix(), np.kron(_X, _Z))
+    assert np.allclose(PauliString("IX").to_matrix(), np.kron(_I, _X))
 
 
 def test_pauli_string_coeff():
-    assert np.allclose(PauliString("XZ", coeff=2.0).matrix, 2.0 * np.kron(_X, _Z))
-    assert np.allclose(PauliString("Z", coeff=0.5).matrix, 0.5 * _Z)
+    assert np.allclose(PauliString("XZ", coeff=2.0).to_matrix(), 2.0 * np.kron(_X, _Z))
+    assert np.allclose(PauliString("Z", coeff=0.5).to_matrix(), 0.5 * _Z)
 
 
 def test_pauli_string_lowercase_accepted():
-    assert np.allclose(PauliString("xz").matrix, np.kron(_X, _Z))
+    assert np.allclose(PauliString("xz").to_matrix(), np.kron(_X, _Z))
 
 
 def test_pauli_string_invalid_raises():
@@ -65,14 +65,14 @@ def test_pauli_string_indices():
 def test_pauli_string_scalar_mul():
     ps = 2.0 * PauliString("X")
     assert ps.coeff == 2.0
-    assert np.allclose(ps.matrix, 2.0 * _X)
+    assert np.allclose(ps.to_matrix(), 2.0 * _X)
 
 
 def test_pauli_string_add_two_strings():
     total = PauliString("IZ") + PauliString("ZI")
     assert isinstance(total, PauliSum)
     assert len(total.terms) == 2
-    assert np.allclose(total.matrix, np.kron(_I, _Z) + np.kron(_Z, _I))
+    assert np.allclose(total.to_matrix(), np.kron(_I, _Z) + np.kron(_Z, _I))
 
 
 def test_pauli_string_add_string_and_sum():
@@ -91,7 +91,7 @@ def test_pauli_string_add_string_and_sum():
 def test_pauli_sum_as_matrix():
     obs = PauliSum([PauliString("IZ"), PauliString("ZI")])
     expected = np.kron(_I, _Z) + np.kron(_Z, _I)
-    assert np.allclose(obs.matrix, expected)
+    assert np.allclose(obs.to_matrix(), expected)
 
 
 def test_pauli_sum_mismatched_lengths_raises():
@@ -107,7 +107,7 @@ def test_pauli_sum_empty_raises():
 def test_pauli_sum_scalar_mul():
     obs = 0.5 * PauliSum([PauliString("IZ"), PauliString("ZI")])
     expected = 0.5 * (np.kron(_I, _Z) + np.kron(_Z, _I))
-    assert np.allclose(obs.matrix, expected)
+    assert np.allclose(obs.to_matrix(), expected)
 
 
 def test_pauli_sum_add():
@@ -115,7 +115,7 @@ def test_pauli_sum_add():
     b = PauliSum([PauliString("ZI")])
     c = a + b
     assert len(c.terms) == 2
-    assert np.allclose(c.matrix, np.kron(_I, _Z) + np.kron(_Z, _I))
+    assert np.allclose(c.to_matrix(), np.kron(_I, _Z) + np.kron(_Z, _I))
 
 
 def test_pauli_sum_as_pauli_sum_returns_self():
@@ -128,7 +128,7 @@ def test_pauli_string_as_pauli_sum():
     psum = ps.as_pauli_sum()
     assert isinstance(psum, PauliSum)
     assert len(psum.terms) == 1
-    assert np.allclose(psum.matrix, _X)
+    assert np.allclose(psum.to_matrix(), _X)
 
 
 # ---------------------------------------------------------------------------
@@ -138,19 +138,19 @@ def test_pauli_string_as_pauli_sum():
 
 def test_local_op_matrix_returned_as_is():
     obs = LocalOp(_Z, [0])
-    assert np.allclose(obs.matrix, _Z)
+    assert np.allclose(obs.to_matrix(), _Z)
 
 
 def test_local_op_indices_stored():
     obs = LocalOp(_Z, [1])
     assert obs.indices == [1]
-    assert np.allclose(obs.matrix, _Z)  # still just Z, no embedding
+    assert np.allclose(obs.to_matrix(), _Z)  # still just Z, no embedding
 
 
 def test_local_op_two_site():
     zz = np.kron(_Z, _Z)
     obs = LocalOp(zz, [0, 1])
-    assert np.allclose(obs.matrix, zz)
+    assert np.allclose(obs.to_matrix(), zz)
     assert obs.indices == [0, 1]
 
 
@@ -165,12 +165,12 @@ def test_magnetization_is_pauli_sum():
 
 def test_magnetization_matrix_shape():
     M = Magnetization(3)
-    assert M.matrix.shape == (8, 8)
+    assert M.to_matrix().shape == (8, 8)
 
 
 def test_magnetization_on_basis_states():
     M = Magnetization(2)
-    mat = M.matrix
+    mat = M.to_matrix()
     # |00⟩: both spins up → <M> = +1
     v00 = np.array([1, 0, 0, 0], dtype=complex)
     assert np.isclose(v00 @ mat @ v00, 1.0)
@@ -186,7 +186,7 @@ def test_magnetization_axis_x():
     # |+⟩ eigenstate of X: <X> = 1
     M = Magnetization(1, axis="X")
     plus = np.array([1, 1], dtype=complex) / np.sqrt(2)
-    assert np.isclose(plus @ M.matrix @ plus, 1.0)
+    assert np.isclose(plus @ M.to_matrix() @ plus, 1.0)
 
 
 def test_magnetization_invalid_axis():
@@ -215,7 +215,7 @@ def test_compose_single_qubit_identities():
 def test_compose_matmul_operator_matches_matrix_product():
     a, b = PauliString("XZ", coeff=0.5), PauliString("YZ", coeff=2.0)
     composed = a @ b
-    assert np.allclose(composed.matrix, a.matrix @ b.matrix)
+    assert np.allclose(composed.to_matrix(), a.to_matrix() @ b.to_matrix())
 
 
 def test_compose_associative_on_random_triples():
@@ -227,8 +227,10 @@ def test_compose_associative_on_random_triples():
         )
         left = (a @ b) @ c
         right = a @ (b @ c)
-        assert np.allclose(left.matrix, right.matrix)
-        assert np.allclose(left.matrix, a.matrix @ b.matrix @ c.matrix)
+        assert np.allclose(left.to_matrix(), right.to_matrix())
+        assert np.allclose(
+            left.to_matrix(), a.to_matrix() @ b.to_matrix() @ c.to_matrix()
+        )
 
 
 def test_compose_requires_equal_length():
@@ -240,7 +242,7 @@ def test_compose_pauli_sum_distributes():
     xx = PauliSum(["XI", "IX"])
     z = PauliString("ZI")
     composed = z @ xx
-    assert np.allclose(composed.matrix, z.matrix @ xx.matrix)
+    assert np.allclose(composed.to_matrix(), z.to_matrix() @ xx.to_matrix())
 
 
 def test_compose_raising_lowering_gives_number_operator():
@@ -249,7 +251,7 @@ def test_compose_raising_lowering_gives_number_operator():
     raising = PauliSum([PauliString("X", 0.5), PauliString("Y", -0.5j)])  # (X-iY)/2
     number = raising.compose(lowering).simplify()
     expected = PauliSum([PauliString("I", 0.5), PauliString("Z", -0.5)])
-    assert np.allclose(number.matrix, expected.matrix)
+    assert np.allclose(number.to_matrix(), expected.to_matrix())
 
 
 def test_simplify_merges_duplicate_strings():
@@ -258,7 +260,7 @@ def test_simplify_merges_duplicate_strings():
     )
     simplified = ps.simplify()
     assert len(simplified.terms) == 2
-    assert np.allclose(simplified.matrix, ps.matrix)
+    assert np.allclose(simplified.to_matrix(), ps.to_matrix())
 
 
 def test_simplify_drops_near_zero_terms():
@@ -311,8 +313,8 @@ def test_embed_hamiltonian_terms_merges_and_simplifies():
     ]
     embedded = embed_hamiltonian_terms(terms, 3)
     assert isinstance(embedded, PauliSum)
-    expected = PauliString("ZZI", 1.0).matrix + PauliString("IZZ", 1.0).matrix
-    assert np.allclose(embedded.matrix, expected)
+    expected = PauliString("ZZI", 1.0).to_matrix() + PauliString("IZZ", 1.0).to_matrix()
+    assert np.allclose(embedded.to_matrix(), expected)
 
 
 def test_restrict_pauli_sum_is_inverse_of_embed():
@@ -320,7 +322,7 @@ def test_restrict_pauli_sum_is_inverse_of_embed():
     term = restrict_pauli_sum(full)
     assert term.sites == [1, 2, 3]
     reembedded = embed_hamiltonian_terms([term], 4)
-    assert np.allclose(reembedded.matrix, full.simplify().matrix)
+    assert np.allclose(reembedded.to_matrix(), full.simplify().to_matrix())
 
 
 # ---------------------------------------------------------------------------
@@ -331,20 +333,20 @@ def test_restrict_pauli_sum_is_inverse_of_embed():
 def test_number_operator_is_the_popcount_diagonal():
     """N is diagonal with popcount(i) as eigenvalues -- the hand-rolled form notebooks used."""
     for n in [1, 2, 3, 4]:
-        diagonal = np.diag(NumberOperator(n).matrix).real
+        diagonal = np.diag(NumberOperator(n).to_matrix()).real
         expected = [float(bin(i).count("1")) for i in range(2**n)]
         np.testing.assert_allclose(diagonal, expected, atol=1e-12)
 
 
 def test_number_operator_is_diagonal():
-    matrix = NumberOperator(3).matrix
+    matrix = NumberOperator(3).to_matrix()
     np.testing.assert_allclose(matrix, np.diag(np.diag(matrix)), atol=1e-12)
 
 
 def test_number_operator_on_a_qubit_subset_counts_only_those_qubits():
     # qubit q is character q of the bitstring, i.e. qubit 0 is the most significant bit
     n, qubits = 4, [0, 2]
-    diagonal = np.diag(NumberOperator(n, qubits).matrix).real
+    diagonal = np.diag(NumberOperator(n, qubits).to_matrix()).real
     for index in range(2**n):
         bits = format(index, f"0{n}b")
         assert diagonal[index] == pytest.approx(
@@ -356,7 +358,7 @@ def test_number_operator_subsets_sum_to_the_total():
     n = 4
     up, down = NumberOperator(n, [0, 1]), NumberOperator(n, [2, 3])
     np.testing.assert_allclose(
-        up.matrix + down.matrix, NumberOperator(n).matrix, atol=1e-12
+        up.to_matrix() + down.to_matrix(), NumberOperator(n).to_matrix(), atol=1e-12
     )
 
 

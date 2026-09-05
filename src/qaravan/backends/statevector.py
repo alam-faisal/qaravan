@@ -1,12 +1,9 @@
 """Statevector backend — Statevector(State) and StatevectorSimulator(Simulator)."""
 
 from __future__ import annotations
-
 import copy
-
 import numpy as np
-from ncon_torch import ncon, permute
-
+from qaravan.backends._ncon_compat import ncon, permute
 from qaravan.core.base import (
     Gate,
     IncompatibleStateError,
@@ -14,7 +11,6 @@ from qaravan.core.base import (
     State,
 )
 from qaravan.core.observables import PAULI_MATRICES, LocalOp, PauliString, PauliSum
-
 
 # ---------------------------------------------------------------------------
 # ncon primitives (ported from legacy/statevector_sim.py, no semantic changes)
@@ -148,7 +144,7 @@ def _expectation_local_op(
     n = tensor.ndim
     flat = tensor.reshape(local_dim**n)
     right_tensor = op_action(
-        obs.matrix, list(obs.indices), copy.deepcopy(tensor), local_dim
+        obs.to_matrix(), list(obs.indices), copy.deepcopy(tensor), local_dim
     )
     return partial_overlap(right_tensor.reshape(local_dim**n), flat)[0, 0]
 

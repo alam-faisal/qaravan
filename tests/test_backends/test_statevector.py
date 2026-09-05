@@ -258,8 +258,7 @@ def test_statevector_expectation_unsupported_raises():
     from qaravan.core.base import Observable
 
     class WeirdObs(Observable):
-        @property
-        def matrix(self):
+        def to_matrix(self):
             return np.eye(2, dtype=complex)
 
     sv = Statevector(1)

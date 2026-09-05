@@ -1,9 +1,7 @@
 """Concrete NoiseModel subclasses: PauliNoise, DepolarizingNoise."""
 
 from __future__ import annotations
-
 import numpy as np
-
 from qaravan.core.base import NoiseModel
 from qaravan.core.observables import PauliString
 
@@ -37,7 +35,8 @@ class PauliNoise(NoiseModel):
     def get_kraus(self, *args, **kwargs) -> list[np.ndarray]:
         """Kraus operators: sqrt(p_i) * Pauli_i matrix for each term."""
         return [
-            np.sqrt(p) * PauliString(s).matrix for s, p in zip(self.strings, self.probs)
+            np.sqrt(p) * PauliString(s).to_matrix()
+            for s, p in zip(self.strings, self.probs)
         ]
 
 

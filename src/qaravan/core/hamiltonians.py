@@ -37,12 +37,12 @@ class Hamiltonian:
 
     def as_observable(self) -> PauliSum:
         """Embed all local terms into the full n-qubit space and simplify (merge duplicate
-        strings) -- doesn't change .matrix, just avoids redundant terms."""
+        strings) -- doesn't change to_matrix(), just avoids redundant terms."""
         return embed_hamiltonian_terms(self.terms, self.num_sites)
 
-    def as_matrix(self) -> np.ndarray:
+    def to_matrix(self) -> np.ndarray:
         """Full 2^n × 2^n Hamiltonian matrix."""
-        return self.as_observable().matrix
+        return self.as_observable().to_matrix()
 
     def __repr__(self) -> str:
         return repr(self.as_observable())
@@ -209,7 +209,7 @@ class FermiHubbard1D(FermionicHamiltonian):
         num_fermionic_sites: int, t: float, U: float, mu: float, periodic: bool
     ) -> list[list]:
         """FH's Trotter-layer structure, in fermionic (pre-encoding) form: which
-        FermionTerms mutually commute, grouped as up-even/up-odd/down-even/down-odd/onsite
+        FermionicTerms mutually commute, grouped as up-even/up-odd/down-even/down-odd/onsite
         """
         bonds = LinearLattice(num_fermionic_sites, periodic=periodic).nn_pairs()
         even_bonds, odd_bonds = bonds[::2], bonds[1::2]

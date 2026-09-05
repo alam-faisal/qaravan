@@ -41,8 +41,7 @@ class MinimalState(State):
 
 
 class MinimalObservable(Observable):
-    @property
-    def matrix(self):
+    def to_matrix(self):
         return np.eye(2, dtype=complex)
 
 

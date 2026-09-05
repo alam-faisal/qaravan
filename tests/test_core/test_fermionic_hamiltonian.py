@@ -73,7 +73,7 @@ def test_encode_with_custom_groups_matches_exact_propagator():
     errors = []
     for dt in dt_values:
         circ = trotter_circuit(ham, dt, order=2)
-        exact = expm(-1j * dt * ham.as_matrix())
+        exact = expm(-1j * dt * ham.to_matrix())
         errors.append(np.linalg.norm(circ.to_matrix() - exact, ord="fro"))
     slope = np.polyfit(np.log(dt_values), np.log(errors), 1)[0]
     assert 2.8 < slope < 3.2, f"order-2 slope={slope:.3f} (expected ~3)"

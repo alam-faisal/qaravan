@@ -133,10 +133,10 @@ class Observable(ABC):
         self.name = name
         self.indices = [indices] if isinstance(indices, int) else list(indices)
 
-    @property
     @abstractmethod
-    def matrix(self) -> np.ndarray:
-        """Hermitian matrix for this observable"""
+    def to_matrix(self) -> np.ndarray:
+        """Hermitian 2^n x 2^n matrix. A method, not a property like Gate.matrix: concrete
+        observables are full-register, so this allocates exponentially in num_sites."""
         ...
 
     def __str__(self) -> str:

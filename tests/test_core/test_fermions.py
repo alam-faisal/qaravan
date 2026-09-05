@@ -6,7 +6,7 @@ from qaravan.backends.statevector import Statevector
 from qaravan.core.fermions import (
     FermionicEncoding,
     FermionicSum,
-    FermionTerm,
+    FermionicTerm,
     _is_real,
     _map_term,
     c,
@@ -30,8 +30,8 @@ from qaravan.core.observables import PauliString, PauliSum
 def test_number_maps_to_occupation_projector():
     terms = jordan_wigner([number(0)], 1)
     assert len(terms) == 1
-    expected = 0.5 * np.eye(2) - 0.5 * PauliString("Z").matrix
-    assert np.allclose(terms[0].local_obs.matrix, expected)
+    expected = 0.5 * np.eye(2) - 0.5 * PauliString("Z").to_matrix()
+    assert np.allclose(terms[0].local_obs.to_matrix(), expected)
     assert terms[0].sites == [0]
 
 
@@ -41,8 +41,10 @@ def test_hopping_bond_maps_to_weight_two_xx_plus_yy():
     t = 1.3
     terms = jordan_wigner(hopping(0, 1, -t), 2)
     assert len(terms) == 1
-    expected = (-t / 2) * (PauliString("XX").matrix + PauliString("YY").matrix)
-    assert np.allclose(terms[0].local_obs.matrix, expected)
+    expected = (-t / 2) * (
+        PauliString("XX").to_matrix() + PauliString("YY").to_matrix()
+    )
+    assert np.allclose(terms[0].local_obs.to_matrix(), expected)
     assert terms[0].sites == [0, 1]
 
 
@@ -51,17 +53,19 @@ def test_hopping_with_spectator_gives_weight_three_form():
     t = 0.7
     terms = jordan_wigner(hopping(0, 2, -t), 3)
     assert len(terms) == 1
-    expected = (-t / 2) * (PauliString("XZX").matrix + PauliString("YZY").matrix)
-    assert np.allclose(terms[0].local_obs.matrix, expected)
+    expected = (-t / 2) * (
+        PauliString("XZX").to_matrix() + PauliString("YZY").to_matrix()
+    )
+    assert np.allclose(terms[0].local_obs.to_matrix(), expected)
     assert terms[0].sites == [0, 1, 2]
 
 
 def test_density_density_maps_to_diagonal_form():
     U = 2.0
     terms = jordan_wigner(density_density(0, 1, U), 2)
-    n = 0.5 * np.eye(2) - 0.5 * PauliString("Z").matrix
+    n = 0.5 * np.eye(2) - 0.5 * PauliString("Z").to_matrix()
     expected = U * np.kron(n, n)
-    assert np.allclose(terms[0].local_obs.matrix, expected)
+    assert np.allclose(terms[0].local_obs.to_matrix(), expected)
 
 
 def test_jordan_wigner_respects_mode_order():
@@ -71,7 +75,7 @@ def test_jordan_wigner_respects_mode_order():
     assert terms_identity[0].sites == [0, 1]
     assert terms_swapped[0].sites == [0, 1]
     assert np.allclose(
-        terms_identity[0].local_obs.matrix, terms_swapped[0].local_obs.matrix
+        terms_identity[0].local_obs.to_matrix(), terms_swapped[0].local_obs.to_matrix()
     )
 
 
@@ -109,9 +113,11 @@ def test_fermion_operator_add_mismatched_num_modes_raises():
 def test_fermion_operator_dagger_of_hopping_is_itself():
     op = FermionicSum(hopping(0, 1, -1.0), 2)
     dagger_matrix_sum = sum(
-        jw.local_obs.matrix for jw in jordan_wigner(op.dagger().terms, 2)
+        jw.local_obs.to_matrix() for jw in jordan_wigner(op.dagger().terms, 2)
     )
-    original_matrix_sum = sum(jw.local_obs.matrix for jw in jordan_wigner(op.terms, 2))
+    original_matrix_sum = sum(
+        jw.local_obs.to_matrix() for jw in jordan_wigner(op.terms, 2)
+    )
     assert np.allclose(dagger_matrix_sum, original_matrix_sum)
 
 
@@ -131,7 +137,7 @@ def test_fermion_operator_encode_returns_pauli_sum_with_correct_qubits():
     obs = op.encode(encoding)
     assert isinstance(obs, PauliSum)
     assert obs.num_sites == 2
-    assert obs.matrix.shape == (4, 4)
+    assert obs.to_matrix().shape == (4, 4)
 
 
 # ---------------------------------------------------------------------------
@@ -177,14 +183,14 @@ def test_majorana_bilinear_matches_fermionic_identity():
     #                   = -(c cdag - c c + cdag cdag - cdag c) = -(c cdag - cdag c) = -Z
     # (using c c = cdag cdag = 0, c cdag + cdag c = 1 => c cdag - cdag c = 1 - 2 cdag c = Z)
     obs = majorana_observable([majorana_bilinear(0, 1)], 1)
-    assert np.allclose(obs.matrix, -PauliString("Z").matrix)
+    assert np.allclose(obs.to_matrix(), -PauliString("Z").to_matrix())
 
 
 def test_majorana_observable_two_mode_bilinear():
     obs = majorana_observable([majorana_bilinear(0, 3)], 2)
-    assert obs.matrix.shape == (4, 4)
+    assert obs.to_matrix().shape == (4, 4)
     assert np.allclose(
-        obs.matrix, obs.matrix.conj().T
+        obs.to_matrix(), obs.to_matrix().conj().T
     )  # Hermitian by construction (coeff=1j)
 
 
@@ -199,8 +205,8 @@ def test_majorana_observable_expectation_on_statevector():
 def test_to_majorana_round_trips_through_jordan_wigner():
     # number(0) mapped via fermion JW should match number(0) mapped via majorana_observable
     # after to_majorana -- two independent routes to the same operator.
-    direct = jordan_wigner([number(0)], 1)[0].local_obs.matrix
-    via_majorana = majorana_observable(number(0).to_majorana().terms, 1).matrix
+    direct = jordan_wigner([number(0)], 1)[0].local_obs.to_matrix()
+    via_majorana = majorana_observable(number(0).to_majorana().terms, 1).to_matrix()
     assert np.allclose(direct, via_majorana)
 
 
@@ -208,11 +214,11 @@ def test_to_majorana_on_hopping_term_matches_direct_jw():
     term = hopping(0, 1, -1.0)[
         0
     ]  # cdag(0) c(1) scaled -- not Hermitian alone, that's fine here
-    direct = jordan_wigner([term, term.dagger()], 2)[0].local_obs.matrix
+    direct = jordan_wigner([term, term.dagger()], 2)[0].local_obs.to_matrix()
     maj = term.to_majorana()
     maj_dagger = term.dagger().to_majorana()
     combined = maj + maj_dagger
-    via_majorana = majorana_observable(combined.terms, 2).matrix
+    via_majorana = majorana_observable(combined.terms, 2).to_matrix()
     assert np.allclose(direct, via_majorana)
 
 
@@ -280,7 +286,7 @@ def _matrix_via_jw(op: FermionicSum) -> np.ndarray:
     flat = []
     for term in op.terms:
         flat.extend(_map_term(term, qubit_of, op.num_fermionic_modes).terms)
-    return PauliSum(flat).simplify().matrix
+    return PauliSum(flat).simplify().to_matrix()
 
 
 @pytest.mark.parametrize("num_modes", [2, 3, 4])
@@ -295,7 +301,7 @@ def test_normal_order_preserves_the_operator(num_modes):
             (int(rng.integers(0, num_modes)), bool(rng.integers(0, 2)))
             for _ in range(length)
         ]
-        terms.append(FermionTerm(complex(rng.normal(), rng.normal()), ops))
+        terms.append(FermionicTerm(complex(rng.normal(), rng.normal()), ops))
 
     op = FermionicSum(terms, num_modes)
     np.testing.assert_allclose(

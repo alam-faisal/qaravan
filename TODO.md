@@ -13,55 +13,18 @@ in CLAUDE.md.
 
 ---
 
-### Task 20 — Generic fermion-to-qubit encoding: `FermionOperator` + Jordan-Wigner transform
+### Pending (Faisal, not Claude) — review + commit/push checkpoints
 
-**Top priority — do this before Task 14.**
-
-**Goal:** Decouple fermionic model definitions from qubit encoding. `FermiHubbard1D` currently
-hand-derives its Jordan-Wigner Pauli strings per `ordering` inside `_build_fh_terms`
-(`core/hamiltonians.py`) — correct (see `docs/jw_fermi_hubbard_1d.md`), but it means
-re-deriving JW by hand for every new fermionic model, and swapping encodings (e.g.
-Bravyi-Kitaev) is a rewrite rather than a parameter. Introduce a small fermionic-operator
-algebra and a generic encoding transform that any fermionic Hamiltonian (present and future —
-see Task 21) can go through.
-
-**New module `core/fermions.py`:**
-- `FermionTerm` — `coeff: complex`, `ops: list[tuple[int, bool]]` (mode index, is_dagger);
-  left-to-right operator order is preserved (no auto normal-ordering — multiplication order
-  matters and is the caller's responsibility, matching how the term is physically written).
-- `FermionOperator` — list of `FermionTerm` + `num_modes`; `+`, scalar `*`, `dagger()`.
-- `c(mode)`, `cdag(mode)` — single-ladder-operator `FermionTerm` builders.
-- `jordan_wigner(terms: list[FermionTerm], num_modes: int, mode_order: list[int] | None = None) -> list[HamiltonianTerm]`
-  — `mode_order[qubit] = mode`, defaults to identity. One `HamiltonianTerm` per input
-  `FermionTerm`, embedded on the qubits it actually touches (JW strings are contiguous by
-  construction). `ordering` choices (stacked/interleaved/anything else) become a `mode_order`
-  permutation, not a code branch.
-
-**New primitive in `core/observables.py`:** `PauliString`/`PauliSum` operator composition
-(matrix product in the shared qubit space, not tensor product) — needed to multiply
-per-ladder-operator Pauli representations together in order. General-purpose beyond fermions.
-
-**Refactor:** `_build_fh_terms` rewritten to (1) build the FH `FermionOperator` once in a
-canonical mode order, (2) compute the `stacked`/`interleaved` `mode_order` permutation, (3)
-call `jordan_wigner`. Trotter grouping (even/odd bonds, periodic boundary terms) is
-model-specific and stays in `hamiltonians.py`.
-
-**Acceptance:**
-- All existing `test_fermi_hubbard.py` tests pass unchanged (same public API, same numerics)
-  — the regression safety net.
-- New test: `jordan_wigner` reproduces the hand-derived Pauli strings in
-  `docs/jw_fermi_hubbard_1d.md` eq. (8)-(10) and (15)-(17) exactly, for both orderings.
-- New test: generic Pauli composition reproduces known identities (e.g. `X @ Y == iZ`) and is
-  associative.
+- [ ] Review `examples/devbooks/fermi_hubbard_jw.ipynb`, `fh_pbc.ipynb`, `fh_entanglement.ipynb`
+      (all three repaired 2026-08-16, see `reports/2026-08-16-task20-cleanup.md`), then commit +
+      push those notebooks plus the rest of the `src/` changes from that report.
+- [ ] Review the Anderson impurity notebooks/code, then commit + push.
 
 ---
 
 ### Task 21 — Anderson impurity model
 
-**Do immediately after Task 20**, as the first real test that the generic encoding
-generalizes beyond a 1D chain.
-
-**Goal:** Single-impurity Anderson model, built on Task 20's `FermionOperator`/
+**Goal:** Single-impurity Anderson model, built on `core/fermions.py`'s `FermionicSum`/
 `jordan_wigner`: `H = ε_d n_d↑ + ε_d n_d↓ + U n_d↑ n_d↓ + Σ_k ε_k n_k + Σ_k V_k (c†_d c_k +
 h.c.)` — a star topology (impurity coupled to every bath mode), unlike FH's nearest-neighbor
 chain. JW strings between the impurity and each bath mode will generally have non-trivial
@@ -70,6 +33,57 @@ length depending on `mode_order`.
 **Acceptance:** TBD in proposal — at minimum, the free-fermion limit (`U=0`) matches exact
 diagonalization of the quadratic form, and the atomic limit (`V_k=0`) reproduces the isolated
 impurity spectrum.
+
+---
+
+### Task 24 — QASM-text consumer for Magritte-emitted circuits
+
+**Goal:** `qaravan/interop/qasm.py` (`from_unitary_qasm(qasm_text: str, num_sites: int) ->
+Circuit`), a QASM-text sibling to the existing protobuf/JSON converter (`interop/magritte.py`,
+Task 22) — a parallel import path, not a replacement. Built for the OpenQASM 2 dialect
+`greens_functions_experiment`'s `qasm_export.py` emits (header/`qreg`/`barrier` lines, an
+unparsed documentary angle-convention comment, an optional `// global_phase = <value>`
+comment, `gate rzz(...)`/`gate xy(...)` custom blocks recognized and skipped by name, never
+semantically parsed) but not Magritte-exclusive: also reads plain unitary-only QASM2 from
+other tools (e.g. Qiskit) using a `q`-named register and this gate vocabulary — `h, x, y, z,
+s, sdg, t, tdg, sx, cx, cz, rx, ry, rz, rzz, xy`, all already existing Qaravan gates — including
+symbolic-`pi` angle expressions (`pi/2`, `-pi/4`, etc., evaluated via a small `ast`-based
+expression walker, never `eval`). Same uniform `angle / 2` halving as Task 22,
+`NotImplementedError` by name for anything outside this vocabulary. `creg`/measurement are
+permanently out of scope, not a gap — Qaravan has no classical-register concept in this
+pipeline. Tested with hand-written QASM fixtures only — no runtime dependency on
+`greens_functions_experiment`/`datacraft`.
+
+**Status:** Implemented and tested (`tests/test_interop/test_qasm.py`, 30 tests) — pending
+example notebook, report, and your review per the development protocol before this entry is
+removed.
+
+**Acceptance:** Hand-written fixtures covering every gate in the vocabulary above, the
+angle-halving check, symbolic-pi expressions, both custom-gate-block cases, global-phase
+present and absent, and a multi-layer circuit with `barrier` lines — all passing.
+
+---
+
+### Task 23 — All-to-all connectivity for the environment sweep
+
+**Do this before Task 14, not after.** Task 14 generalizes the environment sweep to
+`DynamicCircuit` targets; this task generalizes it to a different axis first — circuit
+*connectivity* — while staying with static (non-dynamic) circuits throughout.
+
+**Goal:** `environment_state_prep`/`_environment_update` (`applications/compilation.py`)
+currently gets exercised only against `brickwall_skeleton`-style nearest-neighbor skeletons
+(`applications/circuit_library.py`). Generalize the workflow to all-to-all connectivity circuits
+— every qubit pair a candidate gate site, not just lattice-adjacent ones.
+
+**Note:** `environment_state_prep`'s `skeleton: list[list[int]]` parameter is already just a
+flat list of qubit-index pairs — it doesn't itself assume adjacency, so the constraint today is
+entirely that `brickwall_skeleton` is the only skeleton *generator* in the library. Confirm
+during the proposal whether anything beyond a new `all_to_all_skeleton(n)`-style generator is
+actually needed (e.g. whether `_environment_update`/`two_local_circuit` implicitly rely on
+brickwall-style non-overlapping sublayers anywhere), or whether this is a smaller task than it
+looks.
+
+**Acceptance:** TBD in proposal.
 
 ---
 

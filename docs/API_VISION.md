@@ -46,6 +46,24 @@ final_walkers = MonteCarloSimulator(circ, initial_walkers, pauli_nm).run()
 exp = final_walkers.expectation(obs)
 ```
 
+### Apply a circuit directly to a state
+
+Every `State` subclass carries a `default_simulator`, so `Simulator(circ, state).run()` can be
+written as `state.apply(circ)` when the default simulator (and its default options) suffice —
+no need to name the simulator class up front:
+
+```python
+final_sv = initial_sv.apply(circ)
+exp = final_sv.expectation(obs)
+
+final_dm = initial_dm.apply(circ, noise_model=thermal_nm)
+exp = final_dm.expectation(obs)
+```
+
+`Walkers.apply()` raises `NotImplementedError`: Monte Carlo needs a pure `State` (e.g.
+`Statevector`) as its initial state, not a `Walkers` collection, so build it explicitly with
+`MonteCarloSimulator(circ, initial_walkers, pauli_nm).run()` instead.
+
 ### Simulate dynamic quantum circuits
 
 ```python 

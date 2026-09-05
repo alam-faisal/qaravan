@@ -1,9 +1,7 @@
 """Builders for DynamicCircuit instances for concrete DQC protocols."""
 
 from __future__ import annotations
-
 from typing import Callable
-
 from qaravan.applications.circuit_library import (
     bell_basis_circuit,
     ghz_cluster_prep_circuit,

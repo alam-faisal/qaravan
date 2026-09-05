@@ -1,10 +1,8 @@
 """Monte Carlo backend — Walkers(State) and MonteCarloSimulator(Simulator)."""
 
 from __future__ import annotations
-
-
 import numpy as np
-
+from qaravan.backends.statevector import Statevector, op_action
 from qaravan.core.base import (
     Gate,
     IncompatibleStateError,
@@ -15,7 +13,6 @@ from qaravan.core.base import (
 )
 from qaravan.core.circuit import Circuit
 from qaravan.core.gates import X, Y, Z
-from qaravan.backends.statevector import Statevector, op_action
 
 _PAULI_GATE_MAP = {"X": X, "Y": Y, "Z": Z}
 

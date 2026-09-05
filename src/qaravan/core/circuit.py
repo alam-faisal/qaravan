@@ -1,9 +1,7 @@
 """Circuit class and gate-embedding helpers."""
 
 from __future__ import annotations
-
 import numpy as np
-
 from qaravan.core.base import Gate
 from qaravan.core.gates import ParametricGate
 

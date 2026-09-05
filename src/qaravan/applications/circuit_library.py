@@ -1,21 +1,19 @@
 """Common circuit instances and parametric layer factories."""
 
 from __future__ import annotations
-
 import numpy as np
-
 from qaravan.core.circuit import Circuit
 from qaravan.core.gates import (
     CNOT,
-    H,
-    Gate,
-    MatrixGate,
     RX,
-    RY,
-    RZ,
     RXX,
+    RY,
     RYY,
+    RZ,
     RZZ,
+    Gate,
+    H,
+    MatrixGate,
     random_unitary,
 )
 

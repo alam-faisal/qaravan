@@ -1,10 +1,9 @@
 """Concrete Gate subclasses: MatrixGate, ParametricGate, and all named gates."""
 
 from __future__ import annotations
+from abc import ABC, abstractmethod
 import numpy as np
-from abc import abstractmethod, ABC
 from qaravan.core.base import Gate
-
 
 # ---------------------------------------------------------------------------
 # MatrixGate and ParametricGate — base concrete classes

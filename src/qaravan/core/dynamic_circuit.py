@@ -1,10 +1,8 @@
 """DynamicRound and DynamicCircuit: containers for multi-round DQC protocols."""
 
 from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Callable
-
 from qaravan.core.base import State
 from qaravan.core.circuit import Circuit
 

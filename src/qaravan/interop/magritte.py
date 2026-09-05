@@ -7,10 +7,8 @@ datacraft. This module imports only that vendored proto plus `protobuf` -- never
 """
 
 from __future__ import annotations
-
 import numpy as np
 from google.protobuf.json_format import ParseDict
-
 from qaravan.core.base import Gate as QaravanGate
 from qaravan.core.circuit import Circuit
 from qaravan.core.gates import (

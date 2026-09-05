@@ -1,7 +1,6 @@
 """RunContext: stopping criteria for iterative optimization loops."""
 
 from __future__ import annotations
-
 from dataclasses import dataclass
 
 

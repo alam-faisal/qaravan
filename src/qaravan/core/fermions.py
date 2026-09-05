@@ -22,11 +22,24 @@ class FermionTerm:
     ops=[(a, True), (b, False)].
 
     No implicit normal-ordering -- order is the caller's responsibility and is preserved
-    exactly through Jordan-Wigner. A single FermionTerm need not be individually Hermitian
+    exactly through Jordan-Wigner, so two terms denoting the same operator can hold different
+    ops (n_a n_b vs n_b n_a). Compare them via FermionicSum.normal_order(). A single FermionTerm
+    need not be individually Hermitian
     """
 
     coeff: complex
     ops: list[tuple[int, bool]]
+
+    @property
+    def normal_ordered(self) -> bool:
+        """All creations, then all annihilations, each block strictly ascending in mode."""
+        daggers = [is_dagger for _, is_dagger in self.ops]
+        if daggers != sorted(daggers, reverse=True):
+            return False
+        split = sum(daggers)
+        creations = [mode for mode, _ in self.ops[:split]]
+        annihilations = [mode for mode, _ in self.ops[split:]]
+        return _strictly_ascending(creations) and _strictly_ascending(annihilations)
 
     def dagger(self) -> FermionTerm:
         """(op1...opn)† = opn†...op1†, each dagger flipped, coeff conjugated."""
@@ -53,7 +66,7 @@ class FermionTerm:
         c-dagger_k = (gamma_2k - i*gamma_2k+1)/2), substituted and distributed over the
         product. Expands to up to 2**len(self.ops) MajoranaTerms."""
         num_modes = max((mode for mode, _ in self.ops), default=-1) + 1
-        expansions: list[MajoranaTerm] = [MajoranaTerm(self.coeff, [])]
+        expansions = [MajoranaTerm(self.coeff, [])]
         for mode, is_dagger in self.ops:
             sign = -1j if is_dagger else 1j
             expanded = []
@@ -99,6 +112,72 @@ def density_density(mode_a: int, mode_b: int, coeff: complex) -> list[FermionTer
     return [coeff * (number(mode_a) @ number(mode_b))]
 
 
+# ---------------------------------------------------------------------------
+# Normal ordering
+# ---------------------------------------------------------------------------
+
+
+def _strictly_ascending(modes: list[int]) -> bool:
+    return all(earlier < later for earlier, later in zip(modes, modes[1:]))
+
+
+def _sort_sign(modes: list[int]) -> int:
+    """(-1)^inversions: sign of the permutation sorting distinct modes ascending."""
+    inversions = 0
+    for position, earlier in enumerate(modes):
+        for later in modes[position + 1 :]:
+            if earlier > later:
+                inversions += 1
+    return -1 if inversions % 2 else 1
+
+
+def _sort_blocks(ops: list[tuple[int, bool]]) -> tuple[list[tuple[int, bool]], int]:
+    """Sort each block of an already dagger-segregated ops list; sign 0 if a mode repeats,
+    since c†_i c†_i = c_i c_i = 0."""
+    split = sum(1 for _, is_dagger in ops if is_dagger)
+    creations = [mode for mode, _ in ops[:split]]
+    annihilations = [mode for mode, _ in ops[split:]]
+    if len(set(creations)) != len(creations) or len(set(annihilations)) != len(
+        annihilations
+    ):
+        return [], 0
+    sign = _sort_sign(creations) * _sort_sign(annihilations)
+    sorted_ops = [(mode, True) for mode in sorted(creations)]
+    sorted_ops += [(mode, False) for mode in sorted(annihilations)]
+    return sorted_ops, sign
+
+
+def _normal_order_term(term: FermionTerm) -> list[FermionTerm]:
+    """One term as a sum of normal-ordered terms -- a sum, not a term, because the
+    c_i c†_j = delta_ij - c†_j c_i rewrite spawns a shorter contracted term whenever i == j."""
+    pending = [(term.coeff, list(term.ops))]
+    segregated = []
+    while pending:
+        coeff, ops = pending.pop()
+        position = _first_annihilation_before_creation(ops)
+        if position is None:
+            segregated.append((coeff, ops))
+            continue
+        left, right = ops[position], ops[position + 1]
+        pending.append((-coeff, ops[:position] + [right, left] + ops[position + 2 :]))
+        if left[0] == right[0]:
+            pending.append((coeff, ops[:position] + ops[position + 2 :]))
+
+    ordered = []
+    for coeff, ops in segregated:
+        sorted_ops, sign = _sort_blocks(ops)
+        if sign:
+            ordered.append(FermionTerm(sign * coeff, sorted_ops))
+    return ordered
+
+
+def _first_annihilation_before_creation(ops: list[tuple[int, bool]]) -> int | None:
+    for position in range(len(ops) - 1):
+        if not ops[position][1] and ops[position + 1][1]:
+            return position
+    return None
+
+
 @dataclass
 class FermionicSum:
     """Sum of FermionTerm"""
@@ -127,24 +206,34 @@ class FermionicSum:
             [term.dagger() for term in self.terms], self.num_fermionic_modes
         )
 
-    def is_hermitian(self, atol: float = 1e-9) -> bool:
-        """Encoding-independent Hermiticity check.
+    def normal_order(self, atol: float = 1e-12) -> FermionicSum:
+        """Canonical equivalent: every term normal_ordered, equal monomials merged, coefficients
+        below atol dropped, terms sorted -- so equal operators give equal term lists.
 
-        Naively comparing self's raw (ops-tuple, coeff) pairs against self.dagger()'s is
-        WRONG -- e.g. density_density(a, b)'s dagger reorders n_a n_b -> n_b n_a, a
-        different tuple for the same physical operator, since FermionTerm never
-        normal-orders. This instead JW-maps every term to a PauliSum and checks the
-        coefficients are real, which is exact regardless of mode_order.
+        Returns a plain FermionicSum even from a subclass: the canonical form is a different
+        term decomposition, so a FermionicHamiltonian's trotter_groups would not apply to it.
         """
-        qubit_of = list(range(self.num_fermionic_modes))
-        mapped = [
-            _map_term(term, qubit_of, self.num_fermionic_modes) for term in self.terms
+        merged: dict[tuple[tuple[int, bool], ...], complex] = {}
+        for term in self.terms:
+            for ordered in _normal_order_term(term):
+                key = tuple(ordered.ops)
+                merged[key] = merged.get(key, 0) + ordered.coeff
+        terms = [
+            FermionTerm(coeff, list(ops))
+            for ops, coeff in sorted(merged.items())
+            if abs(coeff) > atol
         ]
-        flat_terms = []
-        for image in mapped:
-            flat_terms.extend(image.terms)
-        combined = PauliSum(flat_terms).simplify()
-        return _is_real(combined, atol)
+        return FermionicSum(terms, self.num_fermionic_modes)
+
+    def is_hermitian(self, atol: float = 1e-9) -> bool:
+        """H is Hermitian iff H and H.dagger() share a normal-ordered form -- purely fermionic,
+        no encoding involved."""
+        canonical = {tuple(t.ops): t.coeff for t in self.normal_order().terms}
+        adjoint = {tuple(t.ops): t.coeff for t in self.dagger().normal_order().terms}
+        return all(
+            abs(canonical.get(ops, 0) - adjoint.get(ops, 0)) < atol
+            for ops in set(canonical) | set(adjoint)
+        )
 
     def __repr__(self) -> str:
         return " + ".join(repr(term) for term in self.terms)

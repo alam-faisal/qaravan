@@ -22,7 +22,7 @@ class Hamiltonian:
     """Generic Hamiltonian: a list of local HamiltonianTerms with a declared Trotter grouping.
 
     trotter_groups is a partition of terms into sublists. Within each sublist all terms
-    act on disjoint sites (so they commute and form a single Trotter layer). 
+    act on disjoint sites (so they commute and form a single Trotter layer).
     """
 
     def __init__(

@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from qaravan.applications.circuit_library import (
     brickwall_skeleton,
     two_local_circuit,
@@ -11,7 +10,6 @@ from qaravan.applications.compilation import environment_state_prep
 from qaravan.applications.run_context import RunContext
 from qaravan.backends.statevector import Statevector
 from qaravan.core.gates import is_unitary
-
 
 # ---------------------------------------------------------------------------
 # Argument validation

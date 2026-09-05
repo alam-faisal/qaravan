@@ -3,14 +3,13 @@
 import numpy as np
 import pytest
 from scipy.linalg import expm
-
 from qaravan.applications.algorithms import ground_state, trotter_circuit
-from qaravan.core.fermions import FermionicEncoding
-from qaravan.core.hamiltonians import AndersonImpurity, bath_interleaved_mode_order
+from qaravan.core.fermions import FermionicEncoding, bath_interleaved_mode_order
+from qaravan.core.hamiltonians import AndersonImpurity
 
 
 def _identity_encoding(aim: AndersonImpurity) -> FermionicEncoding:
-    return FermionicEncoding("jordan_wigner", num_modes=aim.num_modes)
+    return FermionicEncoding("jordan_wigner", num_modes=aim.num_fermionic_modes)
 
 
 # ---------------------------------------------------------------------------
@@ -23,7 +22,7 @@ def test_star_num_modes():
         eps_d=0.3, U=1.0, eps_bath=[0.1, -0.2, 0.4], V=[0.5, 0.3, 0.2]
     )
     assert aim.num_bath == 3
-    assert aim.num_modes == 8  # 2 * (3 + 1)
+    assert aim.num_fermionic_modes == 8  # 2 * (3 + 1)
 
 
 def test_chain_num_modes():
@@ -31,7 +30,7 @@ def test_chain_num_modes():
         eps_d=0.3, U=1.0, eps_chain=[0.1, -0.2, 0.4], t_chain=[0.5, 0.3], V=0.6
     )
     assert aim.num_bath == 3
-    assert aim.num_modes == 8
+    assert aim.num_fermionic_modes == 8
 
 
 def test_star_mismatched_lengths_raises():
@@ -126,7 +125,7 @@ def test_star_equals_chain_for_single_bath():
 def test_star_fixed_particle_number_ground_state_has_correct_n():
     aim = AndersonImpurity.star(eps_d=0.3, U=2.0, eps_bath=[0.1, -0.2], V=[0.5, 0.4])
     ham = aim.encode(_identity_encoding(aim))
-    num_qubits = aim.num_modes
+    num_qubits = aim.num_fermionic_modes
     n_op = np.diag([float(bin(i).count("1")) for i in range(2**num_qubits)])
     for n_elec in [1, 2, 3]:
         sv = ground_state(ham, fixed_particle_number=n_elec)
@@ -140,7 +139,7 @@ def test_chain_fixed_particle_number_ground_state_has_correct_n():
         eps_d=0.3, U=2.0, eps_chain=[0.1, -0.2], t_chain=[0.3], V=0.5
     )
     ham = aim.encode(_identity_encoding(aim))
-    num_qubits = aim.num_modes
+    num_qubits = aim.num_fermionic_modes
     n_op = np.diag([float(bin(i).count("1")) for i in range(2**num_qubits)])
     for n_elec in [1, 2, 3]:
         sv = ground_state(ham, fixed_particle_number=n_elec)
@@ -212,10 +211,10 @@ def test_bath_interleaved_mode_order_annotate_returns_order_and_string():
 def test_bath_interleaved_mode_order_matches_stacked_spectrum():
     # Applying a different mode_order must not change the physics.
     aim = AndersonImpurity.star(eps_d=0.3, U=2.0, eps_bath=[0.1, -0.2], V=[0.5, 0.4])
-    stacked = FermionicEncoding("jordan_wigner", num_modes=aim.num_modes)
+    stacked = FermionicEncoding("jordan_wigner", num_modes=aim.num_fermionic_modes)
     reordered = FermionicEncoding(
         "jordan_wigner",
-        num_modes=aim.num_modes,
+        num_modes=aim.num_fermionic_modes,
         mode_order=bath_interleaved_mode_order(2),
     )
     E_stacked = np.linalg.eigvalsh(aim.encode(stacked).as_matrix())[0]

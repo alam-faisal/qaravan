@@ -2,18 +2,17 @@
 
 import numpy as np
 import pytest
-
 from qaravan.core.base import (
     Gate,
-    State,
-    Simulator,
-    Observable,
-    NoiseModel,
     IncompatibleNoiseError,
     IncompatibleStateError,
+    NoiseModel,
+    Observable,
+    Simulator,
+    State,
 )
-from qaravan.core.gates import MatrixGate
 from qaravan.core.circuit import Circuit, _embed_gate
+from qaravan.core.gates import MatrixGate
 
 # ---------------------------------------------------------------------------
 # Helpers — minimal concrete subclasses for abstract class tests

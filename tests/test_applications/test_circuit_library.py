@@ -1,7 +1,6 @@
 """Tests for brickwall_skeleton and two_local_circuit in applications/circuit_library.py."""
 
 import numpy as np
-
 from qaravan.applications.circuit_library import (
     bell_basis_circuit,
     brickwall_skeleton,
@@ -10,7 +9,6 @@ from qaravan.applications.circuit_library import (
 )
 from qaravan.backends.statevector import Statevector
 from qaravan.core.gates import is_unitary
-
 
 # ---------------------------------------------------------------------------
 # brickwall_skeleton — 1D

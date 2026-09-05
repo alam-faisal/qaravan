@@ -1,14 +1,12 @@
 """Entanglement measures and circuit complexity bounds for statevectors."""
 
 from __future__ import annotations
-
 import numpy as np
-
 from qaravan.backends.statevector import Statevector
 
 
 def entanglement_entropy(sv: Statevector, sites: list[int]) -> float:
-    """Von Neumann entropy S = -Tr[ρ_A log ρ_A] of the reduced state on sites.
+    """Von Neumann entropy S = -Tr[ρ_A log2 ρ_A] of the reduced state on sites, in bits.
 
     Eigenvalues below 1e-12 are treated as numerical zeros and excluded from the sum.
     """
@@ -16,7 +14,7 @@ def entanglement_entropy(sv: Statevector, sites: list[int]) -> float:
     eigenvalues = np.linalg.eigvalsh(rdm)
     eigenvalues = eigenvalues[eigenvalues > 1e-12]
     eigenvalues /= eigenvalues.sum()
-    return float(-np.sum(eigenvalues * np.log(eigenvalues)))
+    return float(-np.sum(eigenvalues * np.log2(eigenvalues)))
 
 
 def entanglement_profile(sv: Statevector) -> np.ndarray:
@@ -33,8 +31,7 @@ def entanglement_profile(sv: Statevector) -> np.ndarray:
 def entanglement_depth(sv: Statevector) -> int:
     """Lower bound on nearest-neighbour brickwall depth to generate sv's entanglement.
 
-    For a depth-d 1D brickwall each cut accumulates at most d * log(2) entropy.
-    Returns ceil(max_k S_k / log(2)).
+    For a depth-d 1D brickwall each cut accumulates at most d bits. Returns ceil(max_k S_k).
     """
     profile = entanglement_profile(sv)
-    return int(np.ceil(profile.max() / np.log(2)))
+    return int(np.ceil(profile.max()))

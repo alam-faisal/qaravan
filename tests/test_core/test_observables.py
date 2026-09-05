@@ -2,7 +2,16 @@
 
 import numpy as np
 import pytest
-from qaravan.core.observables import PauliString, PauliSum, LocalOp, Magnetization
+from qaravan.core.observables import (
+    HamiltonianTerm,
+    LocalOp,
+    Magnetization,
+    PauliString,
+    PauliSum,
+    _embed_local_obs,
+    embed_hamiltonian_terms,
+    restrict_pauli_sum,
+)
 
 _I = np.eye(2, dtype=complex)
 _X = np.array([[0, 1], [1, 0]], dtype=complex)
@@ -228,7 +237,7 @@ def test_compose_requires_equal_length():
 def test_compose_pauli_sum_distributes():
     xx = PauliSum(["XI", "IX"])
     z = PauliString("ZI")
-    composed = z.compose(xx)
+    composed = z @ xx
     assert np.allclose(composed.matrix, z.matrix @ xx.matrix)
 
 
@@ -257,3 +266,56 @@ def test_simplify_drops_near_zero_terms():
     simplified = ps.simplify()
     assert len(simplified.terms) == 1
     assert simplified.terms[0].string == "IY"
+
+
+# ---------------------------------------------------------------------------
+# _embed_local_obs / embed_hamiltonian_terms
+# ---------------------------------------------------------------------------
+
+
+def test_embed_local_obs_pauli_string_interior():
+    ps = PauliString("ZZ", -1.0)
+    [embedded] = _embed_local_obs(ps, [1, 2], 4)
+    assert embedded.string == "IZZI"
+    assert embedded.coeff == -1.0
+
+
+def test_embed_local_obs_pauli_string_boundary():
+    ps = PauliString("X", -0.5)
+    [embedded] = _embed_local_obs(ps, [0], 3)
+    assert embedded.string == "XII"
+    assert embedded.coeff == -0.5
+
+
+def test_embed_local_obs_pauli_string_last_site():
+    ps = PauliString("Z", 2.0)
+    [embedded] = _embed_local_obs(ps, [3], 4)
+    assert embedded.string == "IIIZ"
+    assert embedded.coeff == 2.0
+
+
+def test_embed_local_obs_pauli_sum():
+    obs = PauliSum([PauliString("XX", 1.0), PauliString("YY", 1.0)])
+    result = _embed_local_obs(obs, [1, 2], 4)
+    assert len(result) == 2
+    assert result[0].string == "IXXI"
+    assert result[1].string == "IYYI"
+
+
+def test_embed_hamiltonian_terms_merges_and_simplifies():
+    terms = [
+        HamiltonianTerm([0, 1], PauliString("ZZ", 1.0)),
+        HamiltonianTerm([1, 2], PauliString("ZZ", 1.0)),
+    ]
+    embedded = embed_hamiltonian_terms(terms, 3)
+    assert isinstance(embedded, PauliSum)
+    expected = PauliString("ZZI", 1.0).matrix + PauliString("IZZ", 1.0).matrix
+    assert np.allclose(embedded.matrix, expected)
+
+
+def test_restrict_pauli_sum_is_inverse_of_embed():
+    full = PauliSum([PauliString("IZZI", 0.5), PauliString("IZIY", -1.0)])
+    term = restrict_pauli_sum(full)
+    assert term.sites == [1, 2, 3]
+    reembedded = embed_hamiltonian_terms([term], 4)
+    assert np.allclose(reembedded.matrix, full.simplify().matrix)

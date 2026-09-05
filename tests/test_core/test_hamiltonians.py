@@ -3,53 +3,9 @@
 import numpy as np
 import pytest
 from scipy.linalg import expm
-
 from qaravan.applications.algorithms import ground_state, trotter_circuit
-from qaravan.core.hamiltonians import (
-    Hamiltonian,
-    HamiltonianTerm,
-    Heisenberg1D,
-    TFI,
-    _embed_local_obs,
-)
+from qaravan.core.hamiltonians import TFI, Hamiltonian, HamiltonianTerm, Heisenberg1D
 from qaravan.core.observables import PauliString
-
-
-# ---------------------------------------------------------------------------
-# _embed_local_obs
-# ---------------------------------------------------------------------------
-
-
-def test_embed_local_obs_pauli_string_interior():
-    ps = PauliString("ZZ", -1.0)
-    [embedded] = _embed_local_obs(ps, [1, 2], 4)
-    assert embedded.string == "IZZI"
-    assert embedded.coeff == -1.0
-
-
-def test_embed_local_obs_pauli_string_boundary():
-    ps = PauliString("X", -0.5)
-    [embedded] = _embed_local_obs(ps, [0], 3)
-    assert embedded.string == "XII"
-    assert embedded.coeff == -0.5
-
-
-def test_embed_local_obs_pauli_string_last_site():
-    ps = PauliString("Z", 2.0)
-    [embedded] = _embed_local_obs(ps, [3], 4)
-    assert embedded.string == "IIIZ"
-    assert embedded.coeff == 2.0
-
-
-def test_embed_local_obs_pauli_sum():
-    from qaravan.core.observables import PauliSum
-
-    obs = PauliSum([PauliString("XX", 1.0), PauliString("YY", 1.0)])
-    result = _embed_local_obs(obs, [1, 2], 4)
-    assert len(result) == 2
-    assert result[0].string == "IXXI"
-    assert result[1].string == "IYYI"
-
 
 # ---------------------------------------------------------------------------
 # Generic Hamiltonian — hermiticity
@@ -78,11 +34,13 @@ def test_hamiltonian_repr_matches_as_observable_repr():
 
 def test_as_observable_merges_duplicate_strings_without_changing_matrix():
     from qaravan.core.fermions import FermionicEncoding
-    from qaravan.core.hamiltonians import FermiHubbard1D, _embed_local_obs
-    from qaravan.core.observables import PauliSum
+    from qaravan.core.hamiltonians import FermiHubbard1D
+    from qaravan.core.observables import PauliSum, _embed_local_obs
 
-    fh = FermiHubbard1D(num_fermions=4, t=1.0, U=2.0, mu=0.3)
-    ham = fh.encode(FermionicEncoding("jordan_wigner", num_modes=fh.num_modes))
+    fh = FermiHubbard1D(num_fermionic_sites=4, t=1.0, U=2.0, mu=0.3)
+    ham = fh.encode(
+        FermionicEncoding("jordan_wigner", num_modes=fh.num_fermionic_modes)
+    )
 
     unsimplified = []
     for term in ham.terms:
@@ -124,47 +82,51 @@ def test_tfi_ground_state_against_exact_diag():
 
 
 # ---------------------------------------------------------------------------
-# ground_state(method="lanczos") -- opt-in scipy.sparse.linalg.eigsh path
+# ground_state(method="naive_lanczos") -- opt-in scipy.sparse.linalg.eigsh path
 # ---------------------------------------------------------------------------
 
 
-def test_ground_state_lanczos_matches_exact_energy():
+def test_ground_state_naive_lanczos_matches_naive_energy():
     for n in [3, 4, 5]:
         tfi = TFI(n, J=1.0, h=0.5, periodic=False)
         e_exact = (
-            ground_state(tfi, method="exact").expectation(tfi.as_observable()).real
+            ground_state(tfi, method="naive").expectation(tfi.as_observable()).real
         )
         e_lanczos = (
-            ground_state(tfi, method="lanczos").expectation(tfi.as_observable()).real
+            ground_state(tfi, method="naive_lanczos")
+            .expectation(tfi.as_observable())
+            .real
         )
         assert abs(e_exact - e_lanczos) < 1e-9, (
             f"n={n}: exact={e_exact}, lanczos={e_lanczos}"
         )
 
 
-def test_ground_state_lanczos_matches_exact_with_fixed_particle_number():
-    from qaravan.core.hamiltonians import FermiHubbard1D
+def test_ground_state_naive_lanczos_matches_naive_in_sector():
     from qaravan.core.fermions import FermionicEncoding
+    from qaravan.core.hamiltonians import FermiHubbard1D
 
-    fh = FermiHubbard1D(num_fermions=3, t=1.0, U=2.0, mu=0.0)
-    ham = fh.encode(FermionicEncoding("jordan_wigner", num_modes=fh.num_modes))
+    fh = FermiHubbard1D(num_fermionic_sites=3, t=1.0, U=2.0, mu=0.0)
+    ham = fh.encode(
+        FermionicEncoding("jordan_wigner", num_modes=fh.num_fermionic_modes)
+    )
     e_exact = (
-        ground_state(ham, method="exact", fixed_particle_number=3)
+        ground_state(ham, method="naive", fixed_particle_number=3)
         .expectation(ham.as_observable())
         .real
     )
     e_lanczos = (
-        ground_state(ham, method="lanczos", fixed_particle_number=3)
+        ground_state(ham, method="naive_lanczos", fixed_particle_number=3)
         .expectation(ham.as_observable())
         .real
     )
     assert abs(e_exact - e_lanczos) < 1e-9
 
 
-def test_ground_state_lanczos_raises_for_tiny_matrix():
+def test_ground_state_naive_lanczos_raises_for_tiny_matrix():
     ham = Hamiltonian([HamiltonianTerm([0], PauliString("Z"))], 1)  # 2x2
     with pytest.raises(ValueError, match="lanczos"):
-        ground_state(ham, method="lanczos")
+        ground_state(ham, method="naive_lanczos")
 
 
 def test_ground_state_unknown_method_raises():

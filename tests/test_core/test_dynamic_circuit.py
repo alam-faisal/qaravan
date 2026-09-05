@@ -1,12 +1,10 @@
 """Tests for DynamicRound and DynamicCircuit in core/dynamic_circuit.py."""
 
 import numpy as np
-
 from qaravan.backends.statevector import Statevector
 from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
 from qaravan.core.gates import H, X
-
 
 # ---------------------------------------------------------------------------
 # DynamicRound — decoder calling convention

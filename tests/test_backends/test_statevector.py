@@ -2,13 +2,11 @@
 
 import numpy as np
 import pytest
-
 from qaravan.backends.statevector import Statevector, StatevectorSimulator
-from qaravan.core.base import IncompatibleNoiseError, IncompatibleStateError
+from qaravan.core.base import IncompatibleNoiseError, IncompatibleStateError, NoiseModel
 from qaravan.core.circuit import Circuit
-from qaravan.core.gates import H, CNOT
-from qaravan.core.base import NoiseModel
-from qaravan.core.observables import PauliString, LocalOp, Magnetization
+from qaravan.core.gates import CNOT, H
+from qaravan.core.observables import LocalOp, Magnetization, PauliString
 
 
 class _MinimalNoise(NoiseModel):

@@ -5,7 +5,6 @@ so no post-encoding re-chunking by size is needed."""
 import numpy as np
 import pytest
 from scipy.linalg import expm
-
 from qaravan.applications.algorithms import trotter_circuit
 from qaravan.core.fermions import FermionicEncoding, c, hopping, number
 from qaravan.core.hamiltonians import FermionicHamiltonian
@@ -13,16 +12,16 @@ from qaravan.core.hamiltonians import FermionicHamiltonian
 
 def test_rejects_non_hermitian_terms():
     with pytest.raises(ValueError, match="not Hermitian"):
-        FermionicHamiltonian([c(0)], num_modes=2)
+        FermionicHamiltonian([c(0)], num_fermionic_modes=2)
 
 
 def test_accepts_hermitian_terms_with_no_groups():
-    fh = FermionicHamiltonian(hopping(0, 1, -1.0), num_modes=2)
+    fh = FermionicHamiltonian(hopping(0, 1, -1.0), num_fermionic_modes=2)
     assert fh.trotter_groups is None
 
 
 def test_encode_without_groups_gives_ungrouped_hamiltonian():
-    fh = FermionicHamiltonian([number(0)], num_modes=1)
+    fh = FermionicHamiltonian([number(0)], num_fermionic_modes=1)
     encoding = FermionicEncoding("jordan_wigner", num_modes=1)
     ham = fh.encode(encoding)
     assert ham.trotter_groups is None
@@ -30,7 +29,7 @@ def test_encode_without_groups_gives_ungrouped_hamiltonian():
 
 
 def test_encode_raises_on_mode_mismatch():
-    fh = FermionicHamiltonian([number(0)], num_modes=1)
+    fh = FermionicHamiltonian([number(0)], num_fermionic_modes=1)
     encoding = FermionicEncoding("jordan_wigner", num_modes=2)
     with pytest.raises(ValueError, match="modes"):
         fh.encode(encoding)
@@ -43,7 +42,7 @@ def test_encode_with_custom_groups_preserves_group_structure():
     onsite = [number(0), number(1)]
     groups = [hop, onsite]
     terms = hop + onsite
-    fh = FermionicHamiltonian(terms, num_modes=2, trotter_groups=groups)
+    fh = FermionicHamiltonian(terms, num_fermionic_modes=2, trotter_groups=groups)
 
     encoding = FermionicEncoding("jordan_wigner", num_modes=2)
     ham = fh.encode(encoding)
@@ -66,7 +65,7 @@ def test_encode_with_custom_groups_matches_exact_propagator():
     groups = [hop01, hop12, onsite]
     terms = hop01 + hop12 + onsite
 
-    fh = FermionicHamiltonian(terms, num_modes=3, trotter_groups=groups)
+    fh = FermionicHamiltonian(terms, num_fermionic_modes=3, trotter_groups=groups)
     encoding = FermionicEncoding("jordan_wigner", num_modes=3)
     ham = fh.encode(encoding)
 

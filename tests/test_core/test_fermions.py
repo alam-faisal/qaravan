@@ -2,10 +2,10 @@
 
 import numpy as np
 import pytest
-
+from qaravan.backends.statevector import Statevector
 from qaravan.core.fermions import (
-    FermionicSum,
     FermionicEncoding,
+    FermionicSum,
     c,
     density_density,
     gamma,
@@ -14,10 +14,8 @@ from qaravan.core.fermions import (
     majorana_bilinear,
     majorana_observable,
     number,
-    to_majorana,
 )
 from qaravan.core.observables import PauliString, PauliSum
-from qaravan.backends.statevector import Statevector
 
 # ---------------------------------------------------------------------------
 # Ladder operators -> Jordan-Wigner (the two building blocks every fermionic
@@ -94,7 +92,7 @@ def test_fermion_operator_add_and_scale():
     op2 = FermionicSum(hopping(0, 1, -1.0), 2)
     combined = op1 + 2 * op2
     assert len(combined.terms) == 3
-    assert combined.num_modes == 2
+    assert combined.num_fermionic_modes == 2
 
 
 def test_fermion_operator_add_mismatched_num_modes_raises():
@@ -198,7 +196,7 @@ def test_to_majorana_round_trips_through_jordan_wigner():
     # number(0) mapped via fermion JW should match number(0) mapped via majorana_observable
     # after to_majorana -- two independent routes to the same operator.
     direct = jordan_wigner([number(0)], 1)[0].local_obs.matrix
-    via_majorana = majorana_observable(to_majorana(number(0)).terms, 1).matrix
+    via_majorana = majorana_observable(number(0).to_majorana().terms, 1).matrix
     assert np.allclose(direct, via_majorana)
 
 
@@ -207,8 +205,8 @@ def test_to_majorana_on_hopping_term_matches_direct_jw():
         0
     ]  # cdag(0) c(1) scaled -- not Hermitian alone, that's fine here
     direct = jordan_wigner([term, term.dagger()], 2)[0].local_obs.matrix
-    maj = to_majorana(term)
-    maj_dagger = to_majorana(term.dagger())
+    maj = term.to_majorana()
+    maj_dagger = term.dagger().to_majorana()
     combined = maj + maj_dagger
     via_majorana = majorana_observable(combined.terms, 2).matrix
     assert np.allclose(direct, via_majorana)

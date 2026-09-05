@@ -2,9 +2,7 @@
 
 import numpy as np
 import pytest
-
 from qaravan.core.noise import DepolarizingNoise, PauliNoise
-
 
 # ---------------------------------------------------------------------------
 # PauliNoise

@@ -10,7 +10,6 @@ actual exported file.
 import numpy as np
 import pytest
 from google.protobuf.json_format import MessageToDict
-
 from qaravan.core.gates import (
     CNOT,
     CZ,

@@ -9,16 +9,16 @@ description = "Unified classical simulation of noiseless and noisy quantum circu
 authors = [{ name = "Faisal Alam", email = "faisal@phasecraft.io" }]
 requires-python = ">=3.11"
 dependencies = [
-    "numpy>=1.23,<2.0",
+    "numpy>=2.0,<3.0",
     "scipy>=1.10,<2.0",
-    "sympy>=1.10",
     "matplotlib>=3.7,<4.0",
-    "tqdm>=4.67.1",
-    "ncon_torch>=0.3",
-    "torch>=2.1",
-    "stim>=1.14.0",
+    "ncon>=2.0",
     "protobuf>=5.28,<7",
 ]
+
+[project.optional-dependencies]
+torch = ["ncon_torch>=0.3", "torch>=2.1"]
+legacy = ["sympy>=1.10", "tqdm>=4.67.1", "stim>=1.14.0"]
 
 [dependency-groups]
 dev = [
@@ -52,5 +52,8 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F"]
+select = ["E", "F", "I"]
 ignore = ["E501", "E742"]
+
+[tool.ruff.lint.isort]
+no-lines-before = ["standard-library", "third-party", "first-party", "local-folder"]

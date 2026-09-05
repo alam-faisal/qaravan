@@ -374,10 +374,8 @@ class FermionicEncoding:
         return self.mode_order.index(mode)
 
     def spin_qubits(self) -> tuple[list[int], list[int]]:
-        """Qubits holding the up modes and the down modes, for an operator whose modes are
-        labelled spinfully: modes [0, M) up and [M, 2M) down, the labelling every spinful
-        model here uses. Meaningless for a spinless operator -- only call it when spin
-        labelling applies. Raises if num_modes is odd."""
+        """Qubits holding the up and the down modes, under the spinful mode labelling
+        [0, M) up and [M, 2M) down. Meaningless for a spinless operator."""
         if self.num_modes % 2:
             raise ValueError(
                 f"Spinful mode labelling needs an even mode count; got {self.num_modes}."
@@ -413,7 +411,9 @@ def interleaved_mode_order(
 
     def label(mode: int) -> str:
         return (
-            f"↑{mode}" if mode < num_fermionic_sites else f"↓{mode - num_fermionic_sites}"
+            f"↑{mode}"
+            if mode < num_fermionic_sites
+            else f"↓{mode - num_fermionic_sites}"
         )
 
     annotation = " ".join(f"q{q}={label(mode)}" for q, mode in enumerate(order))

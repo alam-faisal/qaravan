@@ -2,21 +2,20 @@
 
 import numpy as np
 import pytest
-
 from qaravan.applications.circuit_library import (
     ghz_circuit,
     nn_pairs,
     rx_layer,
-    ry_layer,
-    rz_layer,
     rxx_layer,
+    ry_layer,
     ryy_layer,
+    rz_layer,
     rzz_layer,
     two_local_circuit,
 )
 from qaravan.backends.statevector import Statevector
 from qaravan.core.circuit import Circuit
-from qaravan.core.gates import CNOT, H, RX, RY, RXX, RYY, RZZ, X, Z
+from qaravan.core.gates import CNOT, RX, RXX, RY, RYY, RZZ, H, X, Z
 
 H_MATRIX = np.array([[1, 1], [1, -1]]) / np.sqrt(2)
 INV_SQRT2 = 1.0 / np.sqrt(2)

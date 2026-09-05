@@ -2,14 +2,13 @@
 
 import numpy as np
 import pytest
-
+from qaravan.backends.monte_carlo import MonteCarloSimulator, Walkers
+from qaravan.backends.statevector import Statevector, StatevectorSimulator
 from qaravan.core.circuit import Circuit
-from qaravan.core.gates import CNOT, H, RX, Z as ZGate
+from qaravan.core.gates import CNOT, RX, H
+from qaravan.core.gates import Z as ZGate
 from qaravan.core.noise import DepolarizingNoise
 from qaravan.core.observables import PauliString
-from qaravan.backends.statevector import Statevector, StatevectorSimulator
-from qaravan.backends.monte_carlo import MonteCarloSimulator, Walkers
-
 
 # ---------------------------------------------------------------------------
 # Helpers

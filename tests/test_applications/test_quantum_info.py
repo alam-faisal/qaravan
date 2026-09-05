@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from qaravan.applications.circuit_library import ghz_circuit
 from qaravan.applications.quantum_info import (
     entanglement_depth,
@@ -10,7 +9,6 @@ from qaravan.applications.quantum_info import (
     entanglement_profile,
 )
 from qaravan.backends.statevector import Statevector
-
 
 # ---------------------------------------------------------------------------
 # entanglement_entropy
@@ -30,9 +28,9 @@ def test_entanglement_entropy_product_state_multi_site_cut():
 
 
 def test_entanglement_entropy_bell_state():
-    """Bell state |00⟩+|11⟩ / √2 has S = log(2) for the [0]|[1] cut."""
+    """Bell state |00⟩+|11⟩ / √2 has S = 1 bit for the [0]|[1] cut."""
     sv = Statevector(bitstring="00").apply(ghz_circuit(2))
-    assert entanglement_entropy(sv, [0]) == pytest.approx(np.log(2), abs=1e-10)
+    assert entanglement_entropy(sv, [0]) == pytest.approx(1.0, abs=1e-10)
 
 
 def test_entanglement_entropy_bell_state_symmetric():
@@ -70,11 +68,11 @@ def test_entanglement_profile_product_state_all_zero():
 
 
 def test_entanglement_profile_ghz():
-    """GHZ on n qubits: every bipartition [0..k] | [k+1..n-1] has S = log(2)."""
+    """GHZ on n qubits: every bipartition [0..k] | [k+1..n-1] has S = 1 bit."""
     n = 4
     sv = Statevector(bitstring="0" * n).apply(ghz_circuit(n))
     profile = entanglement_profile(sv)
-    np.testing.assert_allclose(profile, np.log(2), atol=1e-10)
+    np.testing.assert_allclose(profile, 1.0, atol=1e-10)
 
 
 # ---------------------------------------------------------------------------
@@ -95,9 +93,9 @@ def test_entanglement_depth_ghz():
 
 
 def test_entanglement_depth_formula():
-    """Depth equals ceil(max_S / log2) for a known state.
+    """Depth equals ceil(max_S) for a known state.
 
-    Bell state on 2 qubits: max_S = log(2), so depth = ceil(1.0) = 1.
+    Bell state on 2 qubits: max_S = 1 bit, so depth = ceil(1.0) = 1.
     """
     sv = Statevector(bitstring="00").apply(ghz_circuit(2))
     assert entanglement_depth(sv) == 1

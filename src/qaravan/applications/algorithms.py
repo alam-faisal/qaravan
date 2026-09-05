@@ -1,85 +1,234 @@
-"""Numerical algorithms applied to a Hamiltonian, kept off the Hamiltonian class itself.
-
-Hamiltonian stays a pure data container (terms, trotter_groups, and the intrinsic
-representations as_matrix()/as_observable()) plus __repr__ -- nothing that "runs an
-algorithm" is a method on it. Two different reasons land a function here rather than in
-core/hamiltonians.py:
-
-- ground_state() *has* to be here: it hands back a Statevector, and core/ must not depend on
-  backends/ (backends/ already depends on core/) -- putting it on Hamiltonian caused a real
-  circular import that only bit depending on which module a caller happened to import first.
-- trotter_circuit() doesn't have that problem -- it returns a plain core/ Circuit, no backend
-  involved. It moved here anyway, for symmetry with ground_state: Suzuki-Trotter
-  decomposition is "an algorithm applied to a Hamiltonian," the same shape as diagonalization,
-  and Hamiltonian carrying no algorithm methods at all is a simpler, more consistent line to
-  hold than carrying some and not others.
-"""
+"""Numerical algorithms applied to a Hamiltonian, kept off the Hamiltonian class itself."""
 
 from __future__ import annotations
-
 import numpy as np
 from scipy.linalg import expm
 from scipy.sparse.linalg import eigsh
-
 from qaravan.backends.statevector import Statevector
 from qaravan.core.circuit import Circuit
+from qaravan.core.fermions import FermionicEncoding
 from qaravan.core.gates import MatrixGate
-from qaravan.core.hamiltonians import Hamiltonian, HamiltonianTerm
+from qaravan.core.hamiltonians import (
+    FermionicHamiltonian,
+    Hamiltonian,
+    HamiltonianTerm,
+)
+
+METHODS = ("naive", "naive_lanczos", "lanczos")
+
+
+# ---------------------------------------------------------------------------
+# Eigensolvers
+# ---------------------------------------------------------------------------
 
 
 def ground_state(
     hamiltonian: Hamiltonian,
-    method: str = "exact",
+    method: str = "naive",
     fixed_particle_number: int | None = None,
+    sector: np.ndarray | None = None,
 ) -> Statevector:
-    """Ground state of hamiltonian's full 2^n x 2^n matrix.
+    """Ground state of a qubit Hamiltonian, including a JW-encoded one. See METHODS.
 
-    method="exact" (default): full dense diagonalization (numpy.linalg.eigh). Computes the
-    whole spectrum even though only the bottom eigenvector is kept -- O(n^3), but robust at
-    any size, including the tiny systems (n<20) most tests use.
-    method="lanczos": scipy.sparse.linalg.eigsh(k=1) -- only the extremal eigenpair,
-    O(n^2) per iteration instead of diagonalizing everything. Much faster once n is large
-    enough that "compute everything" is wasteful; raises ValueError if the (possibly
-    sector-restricted) matrix is too small for that to make sense -- use "exact" there.
-    For a degenerate ground level, either method returns *some* vector spanning the ground
-    subspace, not necessarily the same one run to run.
-
-    fixed_particle_number restricts to the popcount-k sector of the computational basis
-    before diagonalizing -- meaningful whenever the Hamiltonian conserves total
-    occupation number, e.g. any Jordan-Wigner-encoded fermionic Hamiltonian.
+    fixed_particle_number restricts to the popcount-k sector before diagonalizing --
+    valid whenever total occupation is conserved (Heisenberg/XXZ total S^z, any
+    number-conserving encoded fermionic model). sector is the general form: explicit
+    basis indices, as the fermionic wrappers pass for spin-resolved sectors.
     """
-    H = hamiltonian.as_matrix()
-    num_sites = hamiltonian.num_sites
-    if fixed_particle_number is None:
-        sector = None
-        H_reduced = H
-    else:
-        sector = [
-            i for i in range(2**num_sites) if bin(i).count("1") == fixed_particle_number
-        ]
-        H_reduced = H[np.ix_(sector, sector)]
+    if fixed_particle_number is not None:
+        if sector is not None:
+            raise ValueError("Pass at most one of fixed_particle_number, sector.")
+        sector = _number_sector(hamiltonian.num_sites, fixed_particle_number)
 
-    if method == "exact":
-        _, evecs = np.linalg.eigh(H_reduced)
-        ground_vec = evecs[:, 0]
-    elif method == "lanczos":
-        n = H_reduced.shape[0]
-        ncv = min(n - 1, max(3, 20))
-        if ncv <= 1:
-            raise ValueError(
-                f"method='lanczos' needs a larger matrix than {n}x{n}; use method='exact'."
-            )
-        _, evecs = eigsh(H_reduced, k=1, which="SA", ncv=ncv)
-        ground_vec = evecs[:, 0]
-    else:
-        raise ValueError(f"Unknown method {method!r}; expected 'exact' or 'lanczos'.")
+    if method == "lanczos":
+        return _matrix_free_lanczos(hamiltonian, 1, sector, True)
+    matrix = hamiltonian.as_matrix()
+    if sector is not None:
+        matrix = matrix[np.ix_(sector, sector)]
+    _, evecs = _lowest_eigenpairs(matrix, method, 1, True)
 
+    ground_vec = evecs[:, 0]
     if sector is None:
         return Statevector(array=ground_vec)
-    full_vec = np.zeros(2**num_sites, dtype=complex)
-    for local_idx, global_idx in enumerate(sector):
-        full_vec[global_idx] = ground_vec[local_idx]
+    full_vec = np.zeros(2**hamiltonian.num_sites, dtype=complex)
+    full_vec[sector] = ground_vec
     return Statevector(array=full_vec)
+
+
+def spectrum(
+    hamiltonian: Hamiltonian,
+    method: str = "naive",
+    num_eigenvalues: int | None = None,
+    fixed_particle_number: int | None = None,
+    sector: np.ndarray | None = None,
+) -> np.ndarray:
+    """Ascending eigenvalues of a qubit Hamiltonian; num_eigenvalues=None gives all of them.
+    Sector arguments as in ground_state."""
+    if fixed_particle_number is not None:
+        if sector is not None:
+            raise ValueError("Pass at most one of fixed_particle_number, sector.")
+        sector = _number_sector(hamiltonian.num_sites, fixed_particle_number)
+
+    if method == "lanczos":
+        return _matrix_free_lanczos(hamiltonian, num_eigenvalues, sector, False)
+    matrix = hamiltonian.as_matrix()
+    if sector is not None:
+        matrix = matrix[np.ix_(sector, sector)]
+    evals, _ = _lowest_eigenpairs(matrix, method, num_eigenvalues, False)
+    return evals
+
+
+def fermionic_ground_state(
+    hamiltonian: FermionicHamiltonian,
+    encoding: FermionicEncoding,
+    method: str = "naive",
+    fixed_particle_number: int | None = None,
+    fixed_spin_numbers: tuple[int, int] | None = None,
+) -> Statevector:
+    """Ground state of hamiltonian.encode(encoding), optionally in a particle-number sector.
+
+    fixed_spin_numbers=(n_up, n_down) restricts each spin species separately, using
+    encoding.spin_qubits() to locate the two registers -- only meaningful when N_up and
+    N_down are separately conserved. Passing both sector arguments requires them to agree.
+    """
+    encoded = hamiltonian.encode(encoding)
+    sector = _fermionic_sector(
+        encoding, encoded.num_sites, fixed_particle_number, fixed_spin_numbers
+    )
+    return ground_state(encoded, method, sector=sector)
+
+
+def fermionic_spectrum(
+    hamiltonian: FermionicHamiltonian,
+    encoding: FermionicEncoding,
+    method: str = "naive",
+    num_eigenvalues: int | None = None,
+    fixed_particle_number: int | None = None,
+    fixed_spin_numbers: tuple[int, int] | None = None,
+) -> np.ndarray:
+    """Ascending eigenvalues of hamiltonian.encode(encoding); sector arguments as in
+    fermionic_ground_state."""
+    encoded = hamiltonian.encode(encoding)
+    sector = _fermionic_sector(
+        encoding, encoded.num_sites, fixed_particle_number, fixed_spin_numbers
+    )
+    return spectrum(encoded, method, num_eigenvalues, sector=sector)
+
+
+# ---------------------------------------------------------------------------
+# Sectors
+# ---------------------------------------------------------------------------
+
+
+def _number_sector(num_sites: int, num_particles: int) -> np.ndarray:
+    """Computational-basis indices whose popcount is num_particles."""
+    indices = np.arange(2**num_sites, dtype=np.int64)
+    return np.flatnonzero(np.bitwise_count(indices) == num_particles)
+
+
+def _fermionic_sector(
+    encoding: FermionicEncoding,
+    num_sites: int,
+    fixed_particle_number: int | None,
+    fixed_spin_numbers: tuple[int, int] | None,
+) -> np.ndarray | None:
+    """Basis indices for the requested sector, or None if unrestricted."""
+    if fixed_spin_numbers is None:
+        if fixed_particle_number is None:
+            return None
+        return _number_sector(num_sites, fixed_particle_number)
+
+    num_up, num_down = fixed_spin_numbers
+    if fixed_particle_number is not None and num_up + num_down != fixed_particle_number:
+        raise ValueError(
+            f"fixed_spin_numbers {fixed_spin_numbers} sums to {num_up + num_down}, "
+            f"but fixed_particle_number is {fixed_particle_number}."
+        )
+
+    up_qubits, down_qubits = encoding.spin_qubits()
+    # qubit q is bit num_sites-1-q of the basis index: qubit 0 is the most significant
+    up_mask = sum(1 << (num_sites - 1 - qubit) for qubit in up_qubits)
+    down_mask = sum(1 << (num_sites - 1 - qubit) for qubit in down_qubits)
+    indices = np.arange(2**num_sites, dtype=np.int64)
+    in_sector = (np.bitwise_count(indices & up_mask) == num_up) & (
+        np.bitwise_count(indices & down_mask) == num_down
+    )
+    return np.flatnonzero(in_sector)
+
+
+# ---------------------------------------------------------------------------
+# Diagonalization
+# ---------------------------------------------------------------------------
+
+
+def _lowest_eigenpairs(
+    matrix: np.ndarray,
+    method: str,
+    num_eigenvalues: int | None,
+    return_eigenvectors: bool,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Ascending eigenvalues and, when asked, the matching eigenvectors as columns.
+
+    num_eigenvalues=None means the whole spectrum and so requires method="naive";
+    "naive_lanczos" only ever computes the k extremal pairs.
+    """
+    if method == "naive":
+        if not return_eigenvectors:
+            evals = np.linalg.eigvalsh(matrix)
+            return evals[:num_eigenvalues], None
+        evals, evecs = np.linalg.eigh(matrix)
+        return evals[:num_eigenvalues], evecs[:, :num_eigenvalues]
+
+    if method != "naive_lanczos":
+        raise ValueError(f"Unknown method {method!r}; expected one of {METHODS}.")
+
+    if num_eigenvalues is None:
+        raise ValueError(
+            "method='naive_lanczos' needs num_eigenvalues; use 'naive' for the full spectrum."
+        )
+    dim = matrix.shape[0]
+    if dim <= num_eigenvalues + 1:
+        raise ValueError(
+            f"method='naive_lanczos' needs a matrix bigger than {num_eigenvalues + 1}; "
+            f"got {dim}x{dim}. Use method='naive'."
+        )
+    ncv = min(dim - 1, max(2 * num_eigenvalues + 1, 20))
+    out = eigsh(
+        matrix,
+        k=num_eigenvalues,
+        which="SA",
+        ncv=ncv,
+        return_eigenvectors=return_eigenvectors,
+    )
+    if not return_eigenvectors:
+        return np.sort(out), None
+    evals, evecs = out
+    order = np.argsort(evals)
+    return evals[order], evecs[:, order]
+
+
+def _matrix_free_lanczos(
+    hamiltonian: Hamiltonian,
+    num_eigenvalues: int | None,
+    sector: np.ndarray | None,
+    return_eigenvectors: bool,
+):
+    """Lanczos over an implicit H: apply hamiltonian.as_observable() term by term to each
+    Krylov vector via op_action, never forming the 2^n x 2^n matrix. O(num_terms * 2^n)
+    time and O(2^n) memory per matvec, against O(4^n) for both under naive_lanczos.
+
+    Missing pieces: apply_pauli_sum(pauli_sum, statevector) built on statevector.op_action
+    (_expectation_pauli_string is the read-only half of that pattern), and a sector-indexed
+    Krylov basis so the restriction costs nothing.
+    """
+    raise NotImplementedError(
+        "method='lanczos' (matrix-free) is not implemented yet; use 'naive_lanczos'."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Trotter
+# ---------------------------------------------------------------------------
 
 
 def trotter_circuit(hamiltonian: Hamiltonian, dt: float, order: int = 2) -> Circuit:

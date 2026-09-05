@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from qaravan.applications.dynamic_circuit_library import (
     _kept_sites,
     build_ghz_decoder,

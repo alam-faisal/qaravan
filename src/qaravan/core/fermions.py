@@ -80,6 +80,8 @@ class FermionTerm:
         ops_str = " ".join(
             f"c†_{mode}" if is_dagger else f"c_{mode}" for mode, is_dagger in self.ops
         )
+        # "1" is the identity term normal_order's contractions produce
+        ops_str = ops_str or "1"
         if self.coeff == 1.0:
             return ops_str
         return f"{self.coeff} * {ops_str}"

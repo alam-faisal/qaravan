@@ -10,11 +10,14 @@ from qaravan.core.fermions import (
     MajoranaSum,
     _is_real,
     _map_term,
+    bath_interleaved_mode_order,
     c,
     cdag,
     density_density,
     gamma,
     hopping,
+    interleaved_mode_order,
+    jordan_wigner,
     jordan_wigner_hamiltonian,
     jordan_wigner_majorana,
     majorana_bilinear,
@@ -285,16 +288,12 @@ def test_normal_order_output_is_normal_ordered_and_idempotent():
 
 
 def _matrix_via_jw(op: FermionicSum) -> np.ndarray:
-    """Raw JW matrix. Uses _map_term rather than encode(), which routes through
-    jordan_wigner_hamiltonian and refuses operators whose terms have no Hermitian-conjugate partner."""
+    """Encoded matrix. encode() handles non-Hermitian operators, so no reimplementation here."""
     dim = 2**op.num_fermionic_modes
     if not op.terms:
         return np.zeros((dim, dim), dtype=complex)
-    qubit_of = list(range(op.num_fermionic_modes))
-    flat = []
-    for term in op.terms:
-        flat.extend(_map_term(term, qubit_of, op.num_fermionic_modes).terms)
-    return PauliSum(flat).simplify().to_matrix()
+    encoding = FermionicEncoding("jordan_wigner", num_modes=op.num_fermionic_modes)
+    return op.encode(encoding).to_matrix()
 
 
 @pytest.mark.parametrize("num_modes", [2, 3, 4])
@@ -474,3 +473,90 @@ def test_dagger_is_the_conjugate_transpose(num_modes):
             _matrix_via_jw(FermionicSum([term], num_modes)).conj().T,
             atol=1e-10,
         )
+
+
+# ---------------------------------------------------------------------------
+# Encoding layers: plain map vs Hermitian-paired
+# ---------------------------------------------------------------------------
+
+
+def test_fermionic_sum_encodes_a_bare_ladder_operator():
+    """c_0 -> (X + iY)/2. The paired path refuses this; the plain one is what JW says."""
+    encoding = FermionicEncoding("jordan_wigner", num_modes=1)
+    annihilate = FermionicSum([c(0)], 1).encode(encoding).to_matrix()
+    create = FermionicSum([cdag(0)], 1).encode(encoding).to_matrix()
+    np.testing.assert_allclose(annihilate, np.array([[0, 1], [0, 0]]), atol=1e-12)
+    np.testing.assert_allclose(create, annihilate.conj().T, atol=1e-12)
+
+
+def test_jordan_wigner_hamiltonian_still_requires_pairing():
+    """The merge is what makes each HamiltonianTerm exponentiable; only that path needs it."""
+    with pytest.raises(ValueError, match="no Hermitian-conjugate partner"):
+        jordan_wigner_hamiltonian([c(0)], 1)
+    assert len(jordan_wigner([c(0)], 1).terms) == 2  # the plain map is fine with it
+
+
+def _spinful_models():
+    from qaravan.core.hamiltonians import AndersonImpurity, FermiHubbard1D
+
+    models = [FermiHubbard1D(L, t=1.0, U=2.0, mu=0.3) for L in [2, 3]]
+    models.append(FermiHubbard1D(3, t=1.0, U=2.0, periodic=True))
+    models.append(
+        AndersonImpurity.star(eps_d=-1.0, U=2.0, eps_bath=[0.5, -0.5], V=[0.3, 0.4])
+    )
+    return models
+
+
+def test_plain_and_paired_paths_agree_on_hermitian_operators():
+    """The plain map replaced a site-restrict-and-re-embed round trip; same operator either way."""
+    for model in _spinful_models():
+        encoding = FermionicEncoding(
+            "jordan_wigner", num_modes=model.num_fermionic_modes
+        )
+        plain = FermionicSum(model.terms, model.num_fermionic_modes).encode(encoding)
+        paired = model.encode(encoding)  # FermionicHamiltonian: still the paired route
+        np.testing.assert_allclose(
+            plain.to_matrix(), paired.to_matrix(), atol=1e-10, err_msg=repr(model)[:40]
+        )
+
+
+def test_hamiltonian_encode_terms_stay_individually_hermitian():
+    """What the pairing buys: trotter_circuit exponentiates each term into a unitary."""
+    for model in _spinful_models():
+        encoding = FermionicEncoding(
+            "jordan_wigner", num_modes=model.num_fermionic_modes
+        )
+        for term in model.encode(encoding).terms:
+            mat = term.local_obs.to_matrix()
+            assert np.allclose(mat, mat.conj().T), (repr(model)[:40], term.sites)
+
+
+@pytest.mark.parametrize(
+    "num_modes,mode_order",
+    [(4, None), (6, interleaved_mode_order(3)), (6, bath_interleaved_mode_order(2))],
+)
+def test_qubit_of_table_matches_the_encoding(num_modes, mode_order):
+    from qaravan.core.fermions import _qubit_of
+
+    encoding = FermionicEncoding(
+        "jordan_wigner", num_modes=num_modes, mode_order=mode_order
+    )
+    table = _qubit_of(num_modes, mode_order)
+    assert table == [encoding.qubit_of(mode) for mode in range(num_modes)]
+
+
+def test_pairing_can_fail_on_a_hermitian_operator_and_normal_order_fixes_it():
+    """is_hermitian is global; pairing is pairwise, and greedy. 0.5A + 0.5A + A-dagger is
+    Hermitian and constructs fine, yet no single term pairs with 0.5A."""
+    from qaravan.core.hamiltonians import FermionicHamiltonian
+
+    creation, annihilation = cdag(0) @ c(1), cdag(1) @ c(0)
+    split = [0.5 * creation, 0.5 * creation, annihilation]
+
+    assert FermionicSum(split, 2).is_hermitian()
+    FermionicHamiltonian(split, 2)  # constructs -- the assertion is global
+    with pytest.raises(ValueError, match="normal_order"):
+        jordan_wigner_hamiltonian(split, 2)
+
+    merged = FermionicSum(split, 2).normal_order()
+    assert len(jordan_wigner_hamiltonian(merged.terms, 2)) == 1

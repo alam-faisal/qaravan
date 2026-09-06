@@ -16,7 +16,6 @@ from qaravan.core.observables import (
     HamiltonianTerm,
     PauliString,
     PauliSum,
-    embed_hamiltonian_terms,
     restrict_pauli_sum,
 )
 
@@ -220,15 +219,15 @@ class FermionicSum:
         )
 
     def encode(self, encoding: FermionicEncoding) -> PauliSum:
-        """Apply a fermion-to-qubit encoding, converting the abstract fermionic algebra
-        into concrete qubit operators."""
+        """Apply a fermion-to-qubit encoding, converting the abstract fermionic algebra into
+        concrete qubit operators. No Hermiticity requirement -- that belongs to
+        FermionicHamiltonian.encode(), whose terms get exponentiated."""
         if encoding.num_modes != self.num_fermionic_modes:
             raise ValueError(
                 f"Encoding is for {encoding.num_modes} modes; operator has "
                 f"{self.num_fermionic_modes}."
             )
-        terms = encoding.encode_hamiltonian_terms(self.terms)
-        return embed_hamiltonian_terms(terms, encoding.num_qubits)
+        return encoding.encode_fermionic_terms(self.terms)
 
     def __repr__(self) -> str:
         return join_terms(elide([repr(term) for term in self.terms]))
@@ -420,6 +419,24 @@ def _is_real(pauli_sum: PauliSum, atol: float = 1e-9) -> bool:
     return all(abs(term.coeff.imag) < atol for term in pauli_sum.terms)
 
 
+def jordan_wigner(
+    terms: list[FermionicTerm],
+    num_modes: int,
+    mode_order: tuple[int, ...] | None = None,
+) -> PauliSum:
+    """Map a flat list of FermionicTerms to one full-register PauliSum via Jordan-Wigner.
+
+    No Hermiticity requirement: each term maps on its own, so a bare c_0 encodes to
+    0.5 X + 0.5j Y. Use jordan_wigner_hamiltonian when the result must be exponentiated,
+    which needs every term individually Hermitian.
+    """
+    qubit_of = _qubit_of(num_modes, mode_order)
+    mapped = []
+    for term in terms:
+        mapped.extend(_map_term(term, qubit_of, num_modes).terms)
+    return PauliSum(mapped).simplify()
+
+
 def jordan_wigner_hamiltonian(
     terms: list[FermionicTerm],
     num_modes: int,
@@ -455,8 +472,9 @@ def jordan_wigner_hamiltonian(
             )
             if partner is None:
                 raise ValueError(
-                    f"FermionicTerm {terms[i]} has no Hermitian-conjugate partner among the "
-                    "remaining terms; the operator, as given, is not Hermitian."
+                    f"FermionicTerm {terms[i]} has no Hermitian-conjugate partner among "
+                    "the remaining terms. The operator may still be Hermitian overall -- "
+                    "normal_order() merges monomials split across several terms."
                 )
             combined = (image + images[partner]).simplify()
             used[partner] = True
@@ -471,8 +489,8 @@ def jordan_wigner_majorana(
     num_modes: int,
     mode_order: tuple[int, ...] | None = None,
 ) -> PauliSum:
-    """JW-map and sum a list of MajoranaTerms into one full-register PauliSum observable.
-    Each term maps to exactly one PauliString"""
+    """Flat list of MajoranaTerms -> one full-register PauliSum. Each term maps to exactly
+    one PauliString, with no fan-out."""
     qubit_of = _qubit_of(num_modes, mode_order)
 
     mapped = []
@@ -529,6 +547,10 @@ class FermionicEncoding:
     ) -> list[HamiltonianTerm]:
         """Currently always applies Jordan-Wigner, regardless of self.name."""
         return jordan_wigner_hamiltonian(terms, self.num_modes, self.mode_order)
+
+    def encode_fermionic_terms(self, terms: list[FermionicTerm]) -> PauliSum:
+        """Currently always applies Jordan-Wigner, regardless of self.name."""
+        return jordan_wigner(terms, self.num_modes, self.mode_order)
 
     def encode_majorana_terms(self, terms: list[MajoranaTerm]) -> PauliSum:
         """Currently always applies Jordan-Wigner, regardless of self.name."""

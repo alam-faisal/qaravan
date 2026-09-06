@@ -41,6 +41,7 @@ from qaravan.core.hamiltonians import (
 )
 from qaravan.core.lattices import LinearLattice
 from qaravan.core.observables import (
+    PAULI_MATRICES,
     LocalOp,
     Magnetization,
     NumberOperator,
@@ -64,6 +65,7 @@ __all__ = [
     "DynamicCircuit",
     "PauliString",
     "PauliSum",
+    "PAULI_MATRICES",
     "LocalOp",
     "Magnetization",
     "NumberOperator",

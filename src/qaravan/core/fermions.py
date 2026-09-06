@@ -42,13 +42,7 @@ class FermionicTerm:
         return _strictly_ascending(creations) and _strictly_ascending(annihilations)
 
     def normal_order(self) -> list[FermionicTerm]:
-        """Canonical form of this term: creations left, modes ascending in each block.
-
-        A list, not one term, because c_i c†_j = delta_ij - c†_j c_i spawns a shorter
-        contracted term whenever i == j; empty when the term vanishes. Not a FermionicSum --
-        a bare term does not know the register size, and inventing one from max(mode) would
-        be wrong for a term that misses the top mode.
-        """
+        """Canonical form of this term: creations left, modes ascending in each block"""
         pending = [(self.coeff, list(self.ops))]
         segregated = []
         while pending:
@@ -207,8 +201,7 @@ class FermionicSum:
         return FermionicSum(terms, self.num_fermionic_modes)
 
     def is_hermitian(self, atol: float = 1e-9) -> bool:
-        """H is Hermitian iff H and H.dagger() share a normal-ordered form -- purely fermionic,
-        no encoding involved."""
+        """H is Hermitian iff H and H.dagger() share a normal-ordered form."""
         canonical = {tuple(t.ops): t.coeff for t in self.normal_order().terms}
         adjoint = {tuple(t.ops): t.coeff for t in self.dagger().normal_order().terms}
         return all(

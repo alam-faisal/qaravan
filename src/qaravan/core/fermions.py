@@ -380,6 +380,15 @@ def majorana_bilinear(index_a: int, index_b: int, coeff: complex = 1j) -> Majora
 # ---------------------------------------------------------------------------
 
 
+def _qubit_of(num_modes: int, mode_order: tuple[int, ...] | None) -> list[int]:
+    """qubit_of[mode] = the qubit that mode occupies; mode_order=None is the identity."""
+    mode_order = mode_order or tuple(range(num_modes))
+    table = [0] * num_modes
+    for qubit, mode in enumerate(mode_order):
+        table[mode] = qubit
+    return table
+
+
 def _majorana_pauli_string(qubit: int, is_odd: bool, num_modes: int) -> PauliString:
     """gamma_2k -> Z_{<q} X_q ; gamma_2k+1 -> Z_{<q} Y_q (q = qubit_of[mode]). Single string,
     coeff 1 -- no PauliSum needed for one Majorana operator."""
@@ -426,10 +435,7 @@ def jordan_wigner(
     ValueError if no such partner exists. Near-zero results are dropped rather than
     returned as empty HamiltonianTerms.
     """
-    mode_order = mode_order or tuple(range(num_modes))
-    qubit_of = [0] * num_modes
-    for qubit, mode in enumerate(mode_order):
-        qubit_of[mode] = qubit
+    qubit_of = _qubit_of(num_modes, mode_order)
 
     images = [_map_term(term, qubit_of, num_modes) for term in terms]
     used = [False] * len(terms)
@@ -467,10 +473,7 @@ def jordan_wigner_majorana(
 ) -> PauliSum:
     """JW-map and sum a list of MajoranaTerms into one full-register PauliSum observable.
     Each term maps to exactly one PauliString"""
-    mode_order = mode_order or tuple(range(num_modes))
-    qubit_of = [0] * num_modes
-    for qubit, mode in enumerate(mode_order):
-        qubit_of[mode] = qubit
+    qubit_of = _qubit_of(num_modes, mode_order)
 
     mapped = []
     for term in terms:

@@ -109,3 +109,36 @@ def latex_term(coeff: complex, operator: str, spec: str = ".4g") -> str:
     if coeff == -1.0:
         return f"-{operator}"
     return f"{latex_coefficient(coeff, spec)} \\, {operator}"
+
+
+def math_body(part) -> str:
+    """LaTeX body of one part, undelimited. A str becomes \\text{...}; anything with
+    _repr_latex_ contributes its own body; anything else falls back to \\text{repr}."""
+    if isinstance(part, str):
+        return rf"\text{{{part}}}"
+    latex = getattr(part, "_repr_latex_", None)
+    if latex is None:
+        return rf"\text{{{part!r}}}"
+    return latex().strip("$")
+
+
+def display_math(*parts, sep: str = r"\quad ") -> None:
+    """Render strings and algebraic objects as ONE typeset line in Jupyter.
+
+    The substitute for print() in a notebook: print writes to a stdout stream, which carries no
+    MIME bundle and so can never typeset. display(a, b) does typeset, but emits one output block
+    per argument and shows strings quoted.
+
+        display_math("as written:", forward, "vs", backward)
+    """
+    from IPython.display import Math, display
+
+    display(Math(sep.join(math_body(part) for part in parts)))
+
+
+def display_terms(operator) -> None:
+    """One typeset line per term, rather than one long sum -- readable for a 20-term model."""
+    from IPython.display import Math, display
+
+    for term in operator.terms:
+        display(Math(math_body(term)))

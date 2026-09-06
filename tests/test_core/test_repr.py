@@ -146,3 +146,37 @@ def test_hamiltonian_latex_names_the_model():
 
 def test_statevector_latex_renders_kets():
     assert r"\lvert 01 \rangle" in Statevector(bitstring="01")._repr_latex_()
+
+
+# ---------------------------------------------------------------------------
+# display helpers -- the substitute for print() in a notebook
+# ---------------------------------------------------------------------------
+
+
+def test_math_body_mixes_labels_and_operators():
+    from qaravan.core._repr import math_body
+
+    assert math_body("as written:") == r"\text{as written:}"
+    assert math_body(cdag(0) @ c(1)) == r"c^{\dagger}_{0} c_{1}"
+    assert math_body(True) == r"\text{True}"  # no _repr_latex_ -> plain fallback
+
+
+def test_display_math_emits_one_block(monkeypatch):
+    import IPython.display as ipd
+    from qaravan.core._repr import display_math
+
+    shown = []
+    monkeypatch.setattr(ipd, "display", lambda obj: shown.append(obj.data))
+    display_math("label:", cdag(0) @ c(1))
+    assert len(shown) == 1
+    assert shown[0] == r"\text{label:}\quad c^{\dagger}_{0} c_{1}"
+
+
+def test_display_terms_emits_one_block_per_term(monkeypatch):
+    import IPython.display as ipd
+    from qaravan.core._repr import display_terms
+
+    shown = []
+    monkeypatch.setattr(ipd, "display", lambda obj: shown.append(obj.data))
+    display_terms(FermionicSum(hopping(0, 1, -1.0), 2))
+    assert len(shown) == 2

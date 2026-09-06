@@ -13,58 +13,20 @@ in CLAUDE.md.
 
 ---
 
-### Pending (Faisal, not Claude) — review + commit/push checkpoints
+### Task 25 — Monte Carlo noise and dynamic circuits
 
-- [ ] Review `examples/devbooks/fermi_hubbard_jw.ipynb`, `fh_pbc.ipynb`, `fh_entanglement.ipynb`
-      (all three repaired 2026-08-16, see `reports/2026-08-16-task20-cleanup.md`), then commit +
-      push those notebooks plus the rest of the `src/` changes from that report.
-- [ ] Review the Anderson impurity notebooks/code, then commit + push.
+**Goal:** Depolarizing noise under `Walkers`/`MonteCarloSimulator` (`backends/monte_carlo.py`),
+plus `Reset` and mid-circuit measurement, so dynamic circuits run on this backend. Extends the
+sampler added in Task 19 and absorbs what was previously listed as "Monte Carlo backend
+extensions" under v0.2.5, including the full `PauliLindbladNoise` sampler.
 
----
-
-### Task 21 — Anderson impurity model
-
-**Goal:** Single-impurity Anderson model, built on `core/fermions.py`'s `FermionicSum`/
-`jordan_wigner`: `H = ε_d n_d↑ + ε_d n_d↓ + U n_d↑ n_d↓ + Σ_k ε_k n_k + Σ_k V_k (c†_d c_k +
-h.c.)` — a star topology (impurity coupled to every bath mode), unlike FH's nearest-neighbor
-chain. JW strings between the impurity and each bath mode will generally have non-trivial
-length depending on `mode_order`.
-
-**Acceptance:** TBD in proposal — at minimum, the free-fermion limit (`U=0`) matches exact
-diagonalization of the quadratic form, and the atomic limit (`V_k=0`) reproduces the isolated
-impurity spectrum.
+**Acceptance:** TBD in proposal — at minimum, depolarizing-channel expectation values converge
+to the `DensityMatrix` result as shots grow, and a reset mid-circuit reproduces the same
+post-measurement statistics as `measure_and_collapse` on a `Statevector`.
 
 ---
 
-### Task 24 — QASM-text consumer for Magritte-emitted circuits
-
-**Goal:** `qaravan/interop/qasm.py` (`from_unitary_qasm(qasm_text: str, num_sites: int) ->
-Circuit`), a QASM-text sibling to the existing protobuf/JSON converter (`interop/magritte.py`,
-Task 22) — a parallel import path, not a replacement. Built for the OpenQASM 2 dialect
-`greens_functions_experiment`'s `qasm_export.py` emits (header/`qreg`/`barrier` lines, an
-unparsed documentary angle-convention comment, an optional `// global_phase = <value>`
-comment, `gate rzz(...)`/`gate xy(...)` custom blocks recognized and skipped by name, never
-semantically parsed) but not Magritte-exclusive: also reads plain unitary-only QASM2 from
-other tools (e.g. Qiskit) using a `q`-named register and this gate vocabulary — `h, x, y, z,
-s, sdg, t, tdg, sx, cx, cz, rx, ry, rz, rzz, xy`, all already existing Qaravan gates — including
-symbolic-`pi` angle expressions (`pi/2`, `-pi/4`, etc., evaluated via a small `ast`-based
-expression walker, never `eval`). Same uniform `angle / 2` halving as Task 22,
-`NotImplementedError` by name for anything outside this vocabulary. `creg`/measurement are
-permanently out of scope, not a gap — Qaravan has no classical-register concept in this
-pipeline. Tested with hand-written QASM fixtures only — no runtime dependency on
-`greens_functions_experiment`/`datacraft`.
-
-**Status:** Implemented and tested (`tests/test_interop/test_qasm.py`, 30 tests) — pending
-example notebook, report, and your review per the development protocol before this entry is
-removed.
-
-**Acceptance:** Hand-written fixtures covering every gate in the vocabulary above, the
-angle-halving check, symbolic-pi expressions, both custom-gate-block cases, global-phase
-present and absent, and a multi-layer circuit with `barrier` lines — all passing.
-
----
-
-### Task 23 — All-to-all connectivity for the environment sweep
+### Task 26 — All-to-all connectivity for the environment sweep
 
 **Do this before Task 14, not after.** Task 14 generalizes the environment sweep to
 `DynamicCircuit` targets; this task generalizes it to a different axis first — circuit
@@ -87,7 +49,7 @@ looks.
 
 ---
 
-### Task 14 — Environment sweep for DQCs
+### Task 27 — Environment sweep for DQCs
 
 **Goal:** Extend `environment_state_prep` to handle `DynamicCircuit` targets: optimise the
 pre-measurement circuit via environment updates, holding the decoder fixed. Single-round
@@ -144,7 +106,7 @@ circuit for GHZ-from-clusters for a 4-qubit target.
 
 ---
 
-### Task 8 — Concrete `NoiseModel` subclasses in `core/noise.py`
+### Task 28 — Concrete `NoiseModel` subclasses in `core/noise.py`
 
 **Goal:** Port `ThermalNoise`, `PauliNoise`, `PauliLindbladNoise` to the new ABC.
 
@@ -155,7 +117,7 @@ circuit for GHZ-from-clusters for a 4-qubit target.
 
 ---
 
-### Task 9 — Implement second backend: `DensityMatrix` and `DensityMatrixSimulator`
+### Task 29 — Implement second backend: `DensityMatrix` and `DensityMatrixSimulator`
 
 **Goal:** Second backend. First test of the cross-check infrastructure.
 First backend that accepts a `NoiseModel`. Located in
@@ -183,7 +145,7 @@ without asking first.
 
 ---
 
-### Task 11 — First end-to-end workflow: noisy Trotter sweep
+### Task 30 — First end-to-end workflow: noisy Trotter sweep
 
 **Goal:** The workflow in CLAUDE.md "Noisy Trotter evolution with an observable" runs end-to-end.
 Acceptance test for phases 0-2 of the v0.2 rewrite.
@@ -213,13 +175,6 @@ Cross-check against `DensityMatrixSimulator` for noisy circuits.
 ---
 
 ## v0.2.5 — Specialised Simulators
-
----
-
-### Task: Monte Carlo backend extensions
-
-Extend `Walkers` and `MonteCarloSimulator` (implemented in v0.2.2 Task 19) with
-mid-circuit measurement support and the full `PauliLindbladNoise` sampler.
 
 ---
 

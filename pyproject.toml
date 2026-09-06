@@ -13,7 +13,6 @@ dependencies = [
     "scipy>=1.10,<2.0",
     "matplotlib>=3.7,<4.0",
     "ncon>=2.0",
-    "protobuf>=5.28,<7",
 ]
 
 [project.optional-dependencies]
@@ -47,8 +46,6 @@ exclude_lines = ["if TYPE_CHECKING:"]
 exclude = [
     "src/qaravan/legacy",
     "tests/test_legacy",
-    "src/qaravan/interop/proto/hardware_gates_pb2.py",
-    "src/qaravan/interop/proto/hardware_gates_pb2.pyi",
 ]
 
 [tool.ruff.lint]

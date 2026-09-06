@@ -1,12 +1,8 @@
-"""Tests for qaravan.interop.qasm -- unitary-only QASM text -> Qaravan Circuit converter.
+"""Tests for qaravan.interop.qasm -- QASM text <-> Circuit.
 
-Fixtures below are hand-written QASM text, deliberately not sourced from
-greens_functions_experiment/datacraft at runtime (see
-proposals/2026-08-21-task24-qasm-consumer.md), but matching the exact grammar confirmed by
-reading that repo's Magritte exporter (qasm_export.py) and its own test suite: header/qreg/
-barrier line shapes, the exact `gate rzz(...)`/`gate xy(...)` block text, and the conditional
-`// global_phase = <value>` comment. A few also cover symbolic-pi angle expressions
-(`pi/2`, etc.), which the exporter itself never emits but other QASM sources (e.g. Qiskit) do.
+Fixtures are hand-written QASM covering the grammar real exporters emit: header/qreg/barrier
+lines, `gate rzz(...)`/`gate xy(...)` blocks, the conditional `// global_phase = <value>`
+comment, and symbolic-pi angle expressions.
 """
 
 import numpy as np
@@ -274,9 +270,7 @@ def test_qreg_mismatch_raises():
 
 
 # ---------------------------------------------------------------------------
-# End-to-end -- same "hopping bond + onsite energy" shape as
-# test_magritte.py's own end-to-end test (task22 Section 2), via the xy custom
-# block instead of the protobuf path
+# End-to-end -- a hopping bond plus onsite energies, through the xy custom block
 # ---------------------------------------------------------------------------
 
 

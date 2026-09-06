@@ -14,12 +14,12 @@ from qaravan.core.hamiltonians import (
     HamiltonianTerm,
 )
 
-METHODS = ("naive", "naive_lanczos", "lanczos")
-
-
 # ---------------------------------------------------------------------------
 # Eigensolvers
 # ---------------------------------------------------------------------------
+
+
+METHODS = ("naive", "naive_lanczos", "lanczos")
 
 
 def ground_state(

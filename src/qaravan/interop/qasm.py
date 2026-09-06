@@ -18,12 +18,16 @@ from qaravan.core.gates import (
     CNOT,
     CZ,
     RX,
+    RXX,
     RY,
+    RYY,
     RZ,
     RZZ,
+    SWAP,
     SX,
     XY,
     H,
+    I,
     MatrixGate,
     S,
     Sdg,
@@ -32,9 +36,11 @@ from qaravan.core.gates import (
     X,
     Y,
     Z,
+    iSWAP,
 )
 
 _ONE_QUBIT_FIXED = {
+    "id": I,
     "h": H,
     "x": X,
     "y": Y,
@@ -45,9 +51,9 @@ _ONE_QUBIT_FIXED = {
     "tdg": Tdg,
     "sx": SX,
 }
-_TWO_QUBIT_FIXED = {"cx": CNOT, "cz": CZ}
+_TWO_QUBIT_FIXED = {"cx": CNOT, "cz": CZ, "swap": SWAP, "iswap": iSWAP}
 _ONE_QUBIT_PARAMETERISED = {"rx": RX, "ry": RY, "rz": RZ}
-_TWO_QUBIT_PARAMETERISED = {"rzz": RZZ, "xy": XY}
+_TWO_QUBIT_PARAMETERISED = {"rxx": RXX, "ryy": RYY, "rzz": RZZ, "xy": XY}
 
 _GLOBAL_PHASE_RE = re.compile(r"^//\s*global_phase\s*=\s*(.+)$")
 _QREG_RE = re.compile(r"^qreg\s+q\[(\d+)\]\s*;$")

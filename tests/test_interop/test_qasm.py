@@ -11,16 +11,21 @@ barrier line shapes, the exact `gate rzz(...)`/`gate xy(...)` block text, and th
 
 import numpy as np
 import pytest
+from scipy.linalg import expm
 from qaravan.core.gates import (
     CNOT,
     CZ,
     RX,
+    RXX,
     RY,
+    RYY,
     RZ,
     RZZ,
+    SWAP,
     SX,
     XY,
     H,
+    I,
     S,
     Sdg,
     T,
@@ -28,6 +33,7 @@ from qaravan.core.gates import (
     X,
     Y,
     Z,
+    iSWAP,
 )
 from qaravan.interop.qasm import from_unitary_qasm
 
@@ -36,6 +42,10 @@ _HEADER = (
     'include "qelib1.inc";\n'
     "// Angle convention: exp(-i*theta*P/2) for all parameterised Pauli rotations (rz, rzz, xy)\n"
 )
+
+_X_MAT = np.array([[0, 1], [1, 0]], dtype=complex)
+_Y_MAT = np.array([[0, -1j], [1j, 0]], dtype=complex)
+_Z_MAT = np.array([[1, 0], [0, -1]], dtype=complex)
 
 _RZZ_BLOCK = "gate rzz(theta) a, b { cx a, b; rz(theta) b; cx a, b; }\n"
 _XY_BLOCK = (
@@ -55,6 +65,7 @@ _XY_BLOCK = (
 @pytest.mark.parametrize(
     "qasm_name,expected_cls",
     [
+        ("id", I),
         ("h", H),
         ("x", X),
         ("y", Y),
@@ -87,7 +98,10 @@ def test_one_qubit_fixed_unsupported_raises():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("qasm_name,expected_cls", [("cx", CNOT), ("cz", CZ)])
+@pytest.mark.parametrize(
+    "qasm_name,expected_cls",
+    [("cx", CNOT), ("cz", CZ), ("swap", SWAP), ("iswap", iSWAP)],
+)
 def test_two_qubit_fixed_gates(qasm_name, expected_cls):
     qasm = _HEADER + f"qreg q[2];\n{qasm_name} q[0], q[1];\n"
     circuit = from_unitary_qasm(qasm, num_sites=2)
@@ -99,8 +113,8 @@ def test_two_qubit_fixed_gates(qasm_name, expected_cls):
 
 
 def test_two_qubit_fixed_unsupported_raises():
-    qasm = _HEADER + "qreg q[2];\nswap q[0], q[1];\n"
-    with pytest.raises(NotImplementedError, match="swap"):
+    qasm = _HEADER + "qreg q[2];\nch q[0], q[1];\n"
+    with pytest.raises(NotImplementedError, match="ch"):
         from_unitary_qasm(qasm, num_sites=2)
 
 
@@ -116,6 +130,25 @@ def test_one_qubit_parameterised_gates_halve_angle(qasm_name, expected_cls):
     result = circuit.gates[0]
     assert isinstance(result, expected_cls)
     assert np.allclose(result.matrix, expected_cls(0, 0.4).matrix)
+
+
+@pytest.mark.parametrize(
+    "qasm_name,expected_cls,generator",
+    [
+        ("rxx", RXX, np.kron(_X_MAT, _X_MAT)),
+        ("ryy", RYY, np.kron(_Y_MAT, _Y_MAT)),
+        ("rzz", RZZ, np.kron(_Z_MAT, _Z_MAT)),
+    ],
+)
+def test_two_qubit_rotations_match_qiskit_convention(
+    qasm_name, expected_cls, generator
+):
+    """Anchors against exp(-i theta P / 2) itself, not against Qaravan's own class."""
+    theta = 0.7391
+    qasm = _HEADER + _RZZ_BLOCK + f"qreg q[2];\n{qasm_name}({theta}) q[0], q[1];\n"
+    circuit = from_unitary_qasm(qasm, num_sites=2)
+    assert isinstance(circuit.gates[0], expected_cls)
+    assert np.allclose(circuit.to_matrix(), expm(-0.5j * theta * generator))
 
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,10 @@ from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
 from qaravan.core.gates import CRX, RX, RZZ, XY, X, Z
 
+# ---------------------------------------------------------------------------
+# GHZ preparation by cluster fusion
+# ---------------------------------------------------------------------------
+
 
 def _kept_sites(cluster_idx: int, cluster_size: int, num_clusters: int) -> list[int]:
     """Non-fusion site indices for cluster cluster_idx."""
@@ -229,6 +233,11 @@ def collisional_dqc(
     )
     rounds.append(DynamicRound(meas_sites=list(ancilla_sites), decoder=reset))
     return DynamicCircuit(rounds=rounds)
+
+
+# ---------------------------------------------------------------------------
+# Running a protocol many times
+# ---------------------------------------------------------------------------
 
 
 def dqc_ensemble(

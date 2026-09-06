@@ -26,7 +26,7 @@ def test_dynamic_round_no_measurement_passes_empty_string():
     rnd = DynamicRound(meas_sites=[], decoder=tracking_decoder)
     dqc = DynamicCircuit(rounds=[rnd])
     sv = Statevector(bitstring="0")
-    sv_out, outcomes = dqc.run(sv)
+    sv_out, outcomes = dqc.execute(sv)
 
     assert received == [""], f"decoder received {received!r}, expected ['']"
     assert outcomes == []
@@ -49,7 +49,7 @@ def test_dynamic_round_measurement_calls_decoder_with_outcome():
     rnd = DynamicRound(meas_sites=[0], decoder=tracking_decoder)
     dqc = DynamicCircuit(rounds=[rnd])
     sv = Statevector(bitstring="0")
-    _, outcomes = dqc.run(sv)
+    _, outcomes = dqc.execute(sv)
 
     assert received == ["0"]
     assert outcomes == ["0"]
@@ -73,7 +73,7 @@ def test_dynamic_circuit_run_applies_rounds_in_order():
     )
     dqc = DynamicCircuit(rounds=[round_0, round_1])
 
-    sv_out, outcomes = dqc.run(Statevector(bitstring="0"))
+    sv_out, outcomes = dqc.execute(Statevector(bitstring="0"))
 
     INV_SQRT2 = 1.0 / np.sqrt(2)
     np.testing.assert_allclose(sv_out.to_array(), [INV_SQRT2, -INV_SQRT2], atol=1e-12)
@@ -88,7 +88,7 @@ def test_dynamic_circuit_run_does_not_mutate_init_state():
     sv = Statevector(bitstring="0")
     original = sv.to_array().copy()
     rnd = DynamicRound(meas_sites=[], decoder=lambda _: Circuit([X(0)], num_sites=1))
-    DynamicCircuit(rounds=[rnd]).run(sv)
+    DynamicCircuit(rounds=[rnd]).execute(sv)
     np.testing.assert_array_equal(sv.to_array(), original)
 
 
@@ -105,7 +105,7 @@ def test_dynamic_circuit_run_returns_only_measurement_outcomes():
     no_meas = DynamicRound(meas_sites=[], decoder=lambda _: Circuit([], num_sites=2))
     meas = DynamicRound(meas_sites=[0], decoder=lambda _: Circuit([], num_sites=2))
     dqc = DynamicCircuit(rounds=[no_meas, meas, no_meas])
-    _, outcomes = dqc.run(Statevector(bitstring="00"))
+    _, outcomes = dqc.execute(Statevector(bitstring="00"))
     assert len(outcomes) == 1
 
 
@@ -116,7 +116,7 @@ def test_dynamic_circuit_outcome_string_lengths():
     """
     rnd = DynamicRound(meas_sites=[0, 1], decoder=lambda _: Circuit([], num_sites=2))
     dqc = DynamicCircuit(rounds=[rnd])
-    _, outcomes = dqc.run(Statevector(bitstring="00"))
+    _, outcomes = dqc.execute(Statevector(bitstring="00"))
     assert len(outcomes) == 1
     assert len(outcomes[0]) == 2
 
@@ -129,7 +129,7 @@ def test_dynamic_circuit_empty_correction_is_no_op():
     sv = Statevector(bitstring="0")
     original = sv.to_array().copy()
     rnd = DynamicRound(meas_sites=[0], decoder=lambda _: Circuit([], num_sites=1))
-    sv_out, _ = DynamicCircuit(rounds=[rnd]).run(sv)
+    sv_out, _ = DynamicCircuit(rounds=[rnd]).execute(sv)
     np.testing.assert_allclose(sv_out.to_array(), original, atol=1e-12)
 
 
@@ -145,7 +145,7 @@ def test_dynamic_circuit_two_measurement_rounds():
     """
     rnd = DynamicRound(meas_sites=[0], decoder=lambda _: Circuit([], num_sites=1))
     dqc = DynamicCircuit(rounds=[rnd, rnd])
-    _, outcomes = dqc.run(Statevector(bitstring="0"))
+    _, outcomes = dqc.execute(Statevector(bitstring="0"))
     assert len(outcomes) == 2
     for o in outcomes:
         assert o in ("0", "1")
@@ -161,7 +161,7 @@ def test_observer_sees_every_round_after_its_decoder():
     flip_0 = DynamicRound(decoder=lambda _: Circuit([X(0)], num_sites=2))
     flip_1 = DynamicRound(decoder=lambda _: Circuit([X(1)], num_sites=2))
     seen = []
-    DynamicCircuit([flip_0, flip_1]).run(
+    DynamicCircuit([flip_0, flip_1]).execute(
         Statevector(bitstring="00"),
         observer=lambda index, state: seen.append((index, state.to_array().copy())),
     )
@@ -178,7 +178,7 @@ def test_observer_is_optional():
     circuit = DynamicCircuit(
         [DynamicRound(decoder=lambda _: Circuit([X(0)], num_sites=1))]
     )
-    state, outcomes = circuit.run(Statevector(bitstring="0"))
+    state, outcomes = circuit.execute(Statevector(bitstring="0"))
     assert outcomes == []
     assert np.allclose(state.to_array(), np.array([0, 1], dtype=complex))
 
@@ -202,15 +202,17 @@ def _resampling_dqc(num_rounds: int) -> DynamicCircuit:
 def test_run_with_a_seed_is_reproducible():
     dqc = _resampling_dqc(12)
     initial = Statevector(bitstring="0")
-    first = dqc.run(initial, rng=np.random.default_rng(11))[1]
-    second = dqc.run(initial, rng=np.random.default_rng(11))[1]
+    first = dqc.execute(initial, measurement_rng=np.random.default_rng(11))[1]
+    second = dqc.execute(initial, measurement_rng=np.random.default_rng(11))[1]
     assert first == second
 
 
 def test_run_advances_the_generator_across_rounds():
     """A generator rebuilt per round would give the same bit every time."""
     dqc = _resampling_dqc(24)
-    _, outcomes = dqc.run(Statevector(bitstring="0"), rng=np.random.default_rng(11))
+    _, outcomes = dqc.execute(
+        Statevector(bitstring="0"), measurement_rng=np.random.default_rng(11)
+    )
     assert set(outcomes) == {"0", "1"}
 
 
@@ -218,8 +220,8 @@ def test_run_with_different_seeds_differs():
     dqc = _resampling_dqc(24)
     initial = Statevector(bitstring="0")
     assert (
-        dqc.run(initial, rng=np.random.default_rng(1))[1]
-        != dqc.run(initial, rng=np.random.default_rng(2))[1]
+        dqc.execute(initial, measurement_rng=np.random.default_rng(1))[1]
+        != dqc.execute(initial, measurement_rng=np.random.default_rng(2))[1]
     )
 
 
@@ -237,13 +239,80 @@ def test_sample_accepts_a_seed():
     assert np.array_equal(first, second)
 
 
-def test_run_rejects_a_state_that_returns_many_outcomes():
-    """Walkers measures every walker independently, so there is no single branch to decode."""
+def test_execute_rejects_an_ensemble_initial_state():
+    """One decoder branches on one outcome, so an ensemble has to be run a trajectory at a
+    time -- see dqc_ensemble."""
     from qaravan.backends.monte_carlo import Walkers
 
     plus = Statevector(bitstring="0").apply(Circuit([H(0)], num_sites=1))
     dqc = DynamicCircuit(
         [DynamicRound(meas_sites=[0], decoder=lambda _: Circuit([], num_sites=1))]
     )
-    with pytest.raises(TypeError, match="one outcome string"):
-        dqc.run(Walkers([plus] * 4))
+    with pytest.raises(NotImplementedError, match="Statevector"):
+        dqc.execute(Walkers([plus] * 4))
+
+
+def test_execute_defaults_to_the_state_own_simulator():
+    from qaravan.backends.statevector import StatevectorSimulator
+
+    dqc = _resampling_dqc(8)
+    initial = Statevector(bitstring="0")
+    default = dqc.execute(initial, measurement_rng=np.random.default_rng(2))[1]
+    explicit = dqc.execute(
+        initial,
+        simulator=StatevectorSimulator,
+        measurement_rng=np.random.default_rng(2),
+    )[1]
+    assert default == explicit
+
+
+def test_execute_on_a_noisy_backend_is_noiseless_at_zero_error_rate():
+    """Noise is only a backend choice, so a zero-rate model must change nothing.
+
+    Exact, not statistical: measurement and noise draw from separate streams, and
+    DepolarizingNoise.sample_error draws even when it returns identity, so a shared stream
+    would desynchronise the outcomes.
+    """
+    from qaravan.backends.monte_carlo import MonteCarloSimulator
+    from qaravan.core.noise import DepolarizingNoise
+
+    dqc = _resampling_dqc(10)
+    initial = Statevector(bitstring="0")
+    clean_state, clean_outcomes = dqc.execute(
+        initial, measurement_rng=np.random.default_rng(4)
+    )
+    noisy_state, noisy_outcomes = dqc.execute(
+        initial,
+        simulator=MonteCarloSimulator,
+        noise_model=DepolarizingNoise(1, 0.0),
+        rng=np.random.default_rng(99),
+        measurement_rng=np.random.default_rng(4),
+    )
+    assert noisy_outcomes == clean_outcomes
+    assert np.allclose(noisy_state.to_array(), clean_state.to_array())
+
+
+def test_execute_on_a_noisy_backend_perturbs_the_state():
+    """Noise must reach the state, checked across seeds: on one qubit |+> is an X eigenstate,
+    so an individual realisation can leave the final state untouched."""
+    from qaravan.backends.monte_carlo import MonteCarloSimulator
+    from qaravan.core.noise import DepolarizingNoise
+
+    dqc = _resampling_dqc(10)
+    initial = Statevector(bitstring="0")
+    clean, clean_outcomes = dqc.execute(
+        initial, measurement_rng=np.random.default_rng(4)
+    )
+
+    perturbed = 0
+    for seed in range(6):
+        noisy, outcomes = dqc.execute(
+            initial,
+            simulator=MonteCarloSimulator,
+            noise_model=DepolarizingNoise(1, 0.5),
+            rng=np.random.default_rng(seed),
+            measurement_rng=np.random.default_rng(4),
+        )
+        assert outcomes == clean_outcomes  # same measurement stream, same branch
+        perturbed += not np.allclose(noisy.to_array(), clean.to_array())
+    assert perturbed > 0

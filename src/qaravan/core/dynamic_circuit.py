@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 import numpy as np
-from qaravan.core.base import State
+from qaravan.core.base import Simulator, State
 from qaravan.core.circuit import Circuit
 
 
@@ -28,52 +28,45 @@ class DynamicCircuit:
 
     rounds: list[DynamicRound]
 
-    def run(
+    def execute(
         self,
-        init_state: State,
+        initial_state: State,
+        simulator: type[Simulator] | None = None,
         observer: Callable[[int, State], None] | None = None,
-        rng: np.random.Generator | None = None,
-        apply: Callable[[State, Circuit], State] | None = None,
+        measurement_rng: np.random.Generator | None = None,
+        **simulator_kwargs,
     ) -> tuple[State, list[str]]:
-        """Execute all rounds on init_state.
+        """Run every round on initial_state, returning (final_state, one outcome per measured
+        round in round order).
 
-        Returns (final_state, outcomes) where outcomes has one entry per round
-        with non-empty meas_sites, in round order.
+        simulator evolves each round's circuit; it defaults to initial_state's own. Passing
+        MonteCarloSimulator with a noise_model gives one noisy trajectory:
 
-        observer(round_index, state) is called after each round, for per-round diagnostics
-        that the final state alone cannot give.
+            dqc.execute(state, simulator=MonteCarloSimulator, noise_model=noise)
 
-        rng seeds every round's measurement; it is resolved once here, so one seed makes the
-        whole protocol reproducible.
+        measurement_rng is resolved once, so one seed fixes every round's outcome. A
+        simulator's own randomness goes through simulator_kwargs as rng=, keeping the two
+        streams independent -- a shared one would desynchronise the outcomes as soon as the
+        simulator drew from it.
 
-        apply(state, circuit) -> state overrides how each round's circuit is executed; the
-        default is state.apply(circuit). Supply it to run the rounds on a different backend,
-        a noisy one for instance.
+        observer(round_index, state) is called after each round, for per-round diagnostics the
+        final state alone cannot give.
         """
-        rng = np.random.default_rng(rng)
-        if apply is None:
+        rng = np.random.default_rng(measurement_rng)
+        if simulator is None:
+            simulator = initial_state.default_simulator
 
-            def apply(state: State, circuit: Circuit) -> State:
-                return state.apply(circuit)
-
-        sv = init_state
+        sv = initial_state
         outcomes: list[str] = []
         for round_index, rnd in enumerate(self.rounds):
             if rnd.meas_sites:
                 sv, outcome = sv.measure_and_collapse(rnd.meas_sites, rng)
-                if not isinstance(outcome, str):
-                    raise TypeError(
-                        f"{type(sv).__name__}.measure_and_collapse returned "
-                        f"{type(outcome).__name__}, not one outcome string. A DynamicCircuit "
-                        "branches a single decoder on a single outcome, so an ensemble has to "
-                        "be run one trajectory at a time -- see noisy_dqc_trajectories."
-                    )
                 outcomes.append(outcome)
             else:
                 outcome = ""
             circuit = rnd.decoder(outcome)
             if circuit.gates:
-                sv = apply(sv, circuit)
+                sv = simulator(circuit, sv, **simulator_kwargs).run()
             if observer is not None:
                 observer(round_index, sv)
         return sv, outcomes

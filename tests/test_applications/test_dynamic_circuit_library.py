@@ -8,12 +8,13 @@ from qaravan.applications.dynamic_circuit_library import (
     build_ghz_decoder,
     collisional_dqc,
     dissipative_ising_layer,
+    dqc_ensemble,
     ghz_fusion_dqc,
     interleaved_collisional_layout,
-    noisy_dqc_trajectories,
     qcp_layer,
     reset_decoder,
 )
+from qaravan.backends.monte_carlo import MonteCarloSimulator
 from qaravan.backends.statevector import Statevector
 from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
@@ -156,7 +157,7 @@ def test_ghz_fusion_dqc_4qubit_fidelity():
     dqc = ghz_fusion_dqc(4, cluster_size=3)
     init = Statevector(bitstring="000000")
     for _ in range(20):
-        sv, outcomes = dqc.run(init)
+        sv, outcomes = dqc.execute(init)
         assert np.isclose(_ghz_fidelity(sv, [2, 3], outcomes[0]), 1.0, atol=1e-10)
 
 
@@ -169,7 +170,7 @@ def test_ghz_fusion_dqc_4qubit_all_outcomes_covered():
     init = Statevector(bitstring="000000")
     seen: set[str] = set()
     for _ in range(100):
-        _, outcomes = dqc.run(init)
+        _, outcomes = dqc.execute(init)
         seen.add(outcomes[0])
     assert seen == {"00", "01", "10", "11"}
 
@@ -183,7 +184,7 @@ def test_ghz_fusion_dqc_6qubit_fidelity():
     dqc = ghz_fusion_dqc(6, cluster_size=3)
     init = Statevector(bitstring="0" * 12)
     for _ in range(20):
-        sv, outcomes = dqc.run(init)
+        sv, outcomes = dqc.execute(init)
         assert len(outcomes[0]) == 6
         assert np.isclose(
             _ghz_fidelity(sv, [2, 3, 5, 6, 8, 9], outcomes[0]), 1.0, atol=1e-10
@@ -198,7 +199,7 @@ def test_ghz_fusion_dqc_use_cancellations_same_physics():
     init = Statevector(bitstring="000000")
     for _ in range(20):
         dqc = ghz_fusion_dqc(4, cluster_size=3, use_cancellations=True)
-        sv, outcomes = dqc.run(init)
+        sv, outcomes = dqc.execute(init)
         assert np.isclose(_ghz_fidelity(sv, [2, 3], outcomes[0]), 1.0, atol=1e-10)
 
 
@@ -280,7 +281,7 @@ def test_collisional_dqc_resets_ancillas_to_zero():
         [], ancilla_sites, coupling_pairs, 0.0, num_cycles=2, num_sites=4
     )
 
-    final, outcomes = dqc.run(Statevector(bitstring="11" * num_system))
+    final, outcomes = dqc.execute(Statevector(bitstring="11" * num_system))
     assert outcomes[0] == "1" * num_system
     assert outcomes[1] == "0" * num_system
     assert final.expectation(NumberOperator(4, qubits=ancilla_sites)).real < 1e-9
@@ -294,7 +295,7 @@ def test_collisional_dqc_with_zero_coupling_never_decays():
     dqc = collisional_dqc(
         [], ancilla_sites, coupling_pairs, 0.0, num_cycles=5, num_sites=4
     )
-    final, outcomes = dqc.run(Statevector(bitstring="10" * num_system))
+    final, outcomes = dqc.execute(Statevector(bitstring="10" * num_system))
     assert all(outcome == "0" * num_system for outcome in outcomes)
     system_number = NumberOperator(4, qubits=system_sites)
     assert np.isclose(final.expectation(system_number).real, num_system)
@@ -317,7 +318,7 @@ def test_collisional_activity_matches_the_closed_form():
     rng = np.random.default_rng(0)
     activities = np.zeros((num_shots, num_cycles))
     for shot in range(num_shots):
-        _, outcomes = dqc.run(initial, rng=rng)
+        _, outcomes = dqc.execute(initial, measurement_rng=rng)
         for cycle, outcome in enumerate(outcomes):
             activities[shot, cycle] = outcome.count("1") / num_system
 
@@ -333,7 +334,7 @@ def test_reset_decoder_drops_straight_into_a_dynamic_round():
     dqc = DynamicCircuit(
         [DynamicRound(meas_sites=qubits, decoder=reset_decoder(qubits, num_sites=3))]
     )
-    final, outcomes = dqc.run(Statevector(bitstring="111"))
+    final, outcomes = dqc.execute(Statevector(bitstring="111"))
     assert outcomes == ["11"]
     assert np.isclose(final.expectation(NumberOperator(3, qubits=qubits)).real, 0.0)
     # the unmeasured qubit is untouched
@@ -365,10 +366,15 @@ def test_zero_noise_reproduces_the_noiseless_run_exactly():
     initial = Statevector(bitstring="10" * num_system)
 
     measurement_rng, _ = np.random.default_rng(0).spawn(2)
-    clean_state, clean_outcomes = dqc.run(initial, rng=measurement_rng)
+    clean_state, clean_outcomes = dqc.execute(initial, measurement_rng=measurement_rng)
 
-    walkers, records = noisy_dqc_trajectories(
-        dqc, initial, DepolarizingNoise(num_sites, 0.0), 1, rng=np.random.default_rng(0)
+    walkers, records = dqc_ensemble(
+        dqc,
+        initial,
+        1,
+        simulator=MonteCarloSimulator,
+        noise_model=DepolarizingNoise(num_sites, 0.0),
+        rng=np.random.default_rng(0),
     )
     assert records[0] == clean_outcomes
     assert np.allclose(walkers.rdm([0]), clean_state.rdm([0]))
@@ -388,11 +394,12 @@ def test_ghz_fidelity_degrades_with_error_rate():
 
     fidelities = []
     for error_rate in [0.0, 0.05, 0.2]:
-        walkers, _ = noisy_dqc_trajectories(
+        walkers, _ = dqc_ensemble(
             dqc,
             initial,
-            DepolarizingNoise(6, error_rate),
             40,
+            simulator=MonteCarloSimulator,
+            noise_model=DepolarizingNoise(6, error_rate),
             rng=np.random.default_rng(5),
         )
         density = walkers.rdm(kept_sites)
@@ -405,11 +412,12 @@ def test_ghz_fidelity_degrades_with_error_rate():
 def test_noisy_trajectories_explore_different_branches():
     """The ensemble is over noise and outcomes jointly, not noise alone."""
     dqc = ghz_fusion_dqc(4, cluster_size=3)
-    _, records = noisy_dqc_trajectories(
+    _, records = dqc_ensemble(
         dqc,
         Statevector(bitstring="000000"),
-        DepolarizingNoise(6, 0.05),
         40,
+        simulator=MonteCarloSimulator,
+        noise_model=DepolarizingNoise(6, 0.05),
         rng=np.random.default_rng(2),
     )
     assert len({tuple(record) for record in records}) > 1
@@ -417,11 +425,12 @@ def test_noisy_trajectories_explore_different_branches():
 
 def test_noisy_dqc_returns_one_record_per_trajectory():
     dqc = ghz_fusion_dqc(4, cluster_size=3)
-    walkers, records = noisy_dqc_trajectories(
+    walkers, records = dqc_ensemble(
         dqc,
         Statevector(bitstring="000000"),
-        DepolarizingNoise(6, 0.1),
         7,
+        simulator=MonteCarloSimulator,
+        noise_model=DepolarizingNoise(6, 0.1),
         rng=np.random.default_rng(0),
     )
     assert walkers.num_walkers == 7
@@ -431,11 +440,11 @@ def test_noisy_dqc_returns_one_record_per_trajectory():
 def test_noisy_dqc_is_reproducible():
     dqc = ghz_fusion_dqc(4, cluster_size=3)
     initial = Statevector(bitstring="000000")
-    kwargs = dict(noise_model=DepolarizingNoise(6, 0.1), num_trajectories=5)
-    first = noisy_dqc_trajectories(
-        dqc, initial, rng=np.random.default_rng(3), **kwargs
-    )[1]
-    second = noisy_dqc_trajectories(
-        dqc, initial, rng=np.random.default_rng(3), **kwargs
-    )[1]
+    kwargs = dict(
+        num_trajectories=5,
+        simulator=MonteCarloSimulator,
+        noise_model=DepolarizingNoise(6, 0.1),
+    )
+    first = dqc_ensemble(dqc, initial, rng=np.random.default_rng(3), **kwargs)[1]
+    second = dqc_ensemble(dqc, initial, rng=np.random.default_rng(3), **kwargs)[1]
     assert first == second

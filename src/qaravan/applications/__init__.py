@@ -24,9 +24,9 @@ from qaravan.applications.dynamic_circuit_library import (
     build_ghz_decoder,
     collisional_dqc,
     dissipative_ising_layer,
+    dqc_ensemble,
     ghz_fusion_dqc,
     interleaved_collisional_layout,
-    noisy_dqc_trajectories,
     qcp_layer,
     reset_decoder,
 )
@@ -65,7 +65,7 @@ __all__ = [
     "collisional_dqc",
     "dissipative_ising_layer",
     "interleaved_collisional_layout",
-    "noisy_dqc_trajectories",
+    "dqc_ensemble",
     "qcp_layer",
     "reset_decoder",
 ]

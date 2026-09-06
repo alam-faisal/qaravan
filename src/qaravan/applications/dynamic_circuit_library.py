@@ -7,9 +7,8 @@ from qaravan.applications.circuit_library import (
     bell_basis_circuit,
     ghz_cluster_prep_circuit,
 )
-from qaravan.backends.monte_carlo import MonteCarloSimulator, Walkers
-from qaravan.backends.statevector import Statevector
-from qaravan.core.base import Gate, NoiseModel, State
+from qaravan.backends.monte_carlo import Walkers
+from qaravan.core.base import Gate, Simulator, State
 from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
 from qaravan.core.gates import CRX, RX, RZZ, XY, X, Z
@@ -232,39 +231,36 @@ def collisional_dqc(
     return DynamicCircuit(rounds=rounds)
 
 
-def noisy_dqc_trajectories(
+def dqc_ensemble(
     dqc: DynamicCircuit,
-    initial_state: Statevector,
-    noise_model: NoiseModel,
+    initial_state: State,
     num_trajectories: int,
+    simulator: type[Simulator] | None = None,
     rng: np.random.Generator | None = None,
     observer: Callable[[int, State], None] | None = None,
+    **simulator_kwargs,
 ) -> tuple[Walkers, list[list[str]]]:
-    """Run a DynamicCircuit under sampled Pauli noise, once per trajectory.
+    """Execute a DynamicCircuit num_trajectories times, returning (ensemble, one record each).
 
-    Returns (ensemble of final states, one measurement record per trajectory).
+    For a noisy ensemble pass simulator=MonteCarloSimulator and a noise_model; with the default
+    simulator the spread comes from the measurement outcomes alone.
 
-    The ensemble is over noise realisations and measurement outcomes jointly: each trajectory
-    is a single state following its own record down its own decoder branch, which is why the
-    rounds cannot be run on a Walkers ensemble directly.
-
-    Noise follows gates, so a round whose decoder returns no gates picks up none; idling
-    qubits are a duration-aware noise model's job, not this one's.
-
-    Measurement and noise draw from separately spawned streams, so an error_rate of 0 leaves
-    the measurement record identical to a noiseless run from the same seed -- sharing one
-    stream would desynchronise it, since sample_error draws even when it returns identity.
+    Measurement and simulator randomness are spawned from rng as independent streams, so a
+    zero-rate noise model leaves the records identical to the noiseless ones -- sample_error
+    draws even when it returns identity, and one shared stream would desynchronise them.
     """
-    measurement_rng, noise_rng = np.random.default_rng(rng).spawn(2)
+    measurement_rng, simulator_rng = np.random.default_rng(rng).spawn(2)
+    if simulator is not None:
+        simulator_kwargs.setdefault("rng", simulator_rng)
 
-    def apply_noisily(state: State, circuit: Circuit) -> State:
-        return MonteCarloSimulator(circuit, state, noise_model, rng=noise_rng).run()
-
-    finals = []
-    records = []
+    finals, records = [], []
     for _ in range(num_trajectories):
-        final, outcomes = dqc.run(
-            initial_state, observer=observer, rng=measurement_rng, apply=apply_noisily
+        final, outcomes = dqc.execute(
+            initial_state,
+            simulator=simulator,
+            observer=observer,
+            measurement_rng=measurement_rng,
+            **simulator_kwargs,
         )
         finals.append(final)
         records.append(outcomes)

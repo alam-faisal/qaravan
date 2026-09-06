@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import reduce
 import numpy as np
+from qaravan.core._repr import elide, format_coefficient, join_terms
 from qaravan.core.base import Observable
 
 PAULI_MATRICES: dict[str, np.ndarray] = {
@@ -96,7 +97,7 @@ class PauliString(Observable):
     def __repr__(self) -> str:
         if self.coeff == 1.0:
             return self.string
-        return f"({self.coeff})*{self.string}"
+        return f"{format_coefficient(self.coeff)} {self.string}"
 
 
 class PauliSum(Observable):
@@ -173,7 +174,7 @@ class PauliSum(Observable):
         return self.__mul__(scalar)
 
     def __repr__(self) -> str:
-        return " + ".join(repr(t) for t in self.terms)
+        return join_terms(elide([repr(t) for t in self.terms]))
 
 
 @dataclass

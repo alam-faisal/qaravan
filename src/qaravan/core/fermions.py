@@ -3,6 +3,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
+from qaravan.core._repr import elide, format_coefficient, join_terms
 from qaravan.core.observables import (
     HamiltonianTerm,
     PauliString,
@@ -121,7 +122,7 @@ class FermionicTerm:
         ops_str = ops_str or "1"
         if self.coeff == 1.0:
             return ops_str
-        return f"{self.coeff} * {ops_str}"
+        return f"{format_coefficient(self.coeff)} {ops_str}"
 
 
 def c(mode: int) -> FermionicTerm:
@@ -208,7 +209,7 @@ class FermionicSum:
         )
 
     def __repr__(self) -> str:
-        return " + ".join(repr(term) for term in self.terms)
+        return join_terms(elide([repr(term) for term in self.terms]))
 
     def encode(self, encoding: FermionicEncoding) -> PauliSum:
         """Apply a fermion-to-qubit encoding, converting the abstract fermionic algebra
@@ -294,10 +295,13 @@ class MajoranaTerm:
         return self.__mul__(scalar)
 
     def __repr__(self) -> str:
-        ops_str = " ".join(f"γ_{i}" for i in self.ops)
+        # index 2m is gamma_m, 2m+1 is gamma-bar_m -- how the operators are written
+        ops_str = " ".join(
+            f"{'γ̄' if index % 2 else 'γ'}_{index // 2}" for index in self.ops
+        )
         if self.coeff == 1.0:
             return ops_str
-        return f"{self.coeff} * {ops_str}"
+        return f"{format_coefficient(self.coeff)} {ops_str}"
 
 
 @dataclass
@@ -336,7 +340,7 @@ class MajoranaSum:
         return encoding.encode_majorana_terms(self.terms)
 
     def __repr__(self) -> str:
-        return " + ".join(repr(term) for term in self.terms)
+        return join_terms(elide([repr(term) for term in self.terms]))
 
 
 def gamma(index: int) -> MajoranaTerm:

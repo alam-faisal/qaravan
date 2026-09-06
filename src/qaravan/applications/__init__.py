@@ -22,7 +22,11 @@ from qaravan.applications.circuit_library import (
 from qaravan.applications.compilation import environment_state_prep
 from qaravan.applications.dynamic_circuit_library import (
     build_ghz_decoder,
+    collisional_dqc,
+    dissipative_ising_layer,
     ghz_fusion_dqc,
+    interleaved_collisional_layout,
+    qcp_layer,
 )
 from qaravan.applications.quantum_info import (
     entanglement_depth,
@@ -56,4 +60,8 @@ __all__ = [
     "entanglement_profile",
     "build_ghz_decoder",
     "ghz_fusion_dqc",
+    "collisional_dqc",
+    "dissipative_ising_layer",
+    "interleaved_collisional_layout",
+    "qcp_layer",
 ]

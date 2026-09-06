@@ -2,13 +2,20 @@
 
 import numpy as np
 import pytest
+from scipy.linalg import expm
 from qaravan.applications.dynamic_circuit_library import (
     _kept_sites,
     build_ghz_decoder,
+    collisional_dqc,
+    dissipative_ising_layer,
     ghz_fusion_dqc,
+    interleaved_collisional_layout,
+    qcp_layer,
 )
 from qaravan.backends.statevector import Statevector
+from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit
+from qaravan.core.observables import NumberOperator
 
 INV_SQRT2 = 1.0 / np.sqrt(2)
 
@@ -190,3 +197,127 @@ def test_ghz_fusion_dqc_use_cancellations_same_physics():
         dqc = ghz_fusion_dqc(4, cluster_size=3, use_cancellations=True)
         sv, outcomes = dqc.run(init)
         assert np.isclose(_ghz_fidelity(sv, [2, 3], outcomes[0]), 1.0, atol=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# Collisional models
+# ---------------------------------------------------------------------------
+
+_X = np.array([[0, 1], [1, 0]], dtype=complex)
+_Z = np.diag([1.0, -1.0]).astype(complex)
+_I = np.eye(2, dtype=complex)
+_N = (_I - _Z) / 2
+
+
+def _embed(factors: dict[int, np.ndarray], num_sites: int) -> np.ndarray:
+    """Kron single-site factors in site order, identity where unspecified."""
+    matrix = factors.get(0, _I)
+    for site in range(1, num_sites):
+        matrix = np.kron(matrix, factors.get(site, _I))
+    return matrix
+
+
+def test_interleaved_collisional_layout():
+    system_sites, ancilla_sites, coupling_pairs = interleaved_collisional_layout(3)
+    assert system_sites == [0, 2, 4]
+    assert ancilla_sites == [1, 3, 5]
+    assert coupling_pairs == [(0, 1), (2, 3), (4, 5)]
+
+
+@pytest.mark.parametrize("dt", [0.05, 0.02])
+def test_dissipative_ising_layer_is_first_order_trotter(dt):
+    system_sites, _, _ = interleaved_collisional_layout(3)
+    num_sites, omega, field_v = 6, 0.8, 0.6
+
+    exact_generator = np.zeros((2**num_sites, 2**num_sites), dtype=complex)
+    for site in system_sites:
+        exact_generator += omega * _embed({site: _X}, num_sites)
+    for left, right in zip(system_sites, system_sites[1:]):
+        exact_generator += field_v * _embed({left: _Z, right: _Z}, num_sites)
+
+    layer = dissipative_ising_layer(system_sites, omega, field_v, dt)
+    approx = Circuit(layer, num_sites=num_sites).to_matrix()
+    error = np.linalg.norm(approx - expm(-1j * dt * exact_generator), ord="fro")
+    assert error < 20 * dt**2
+
+
+@pytest.mark.parametrize("dt", [0.05, 0.02])
+def test_qcp_layer_is_first_order_trotter(dt):
+    system_sites, _, _ = interleaved_collisional_layout(3)
+    num_sites, omega = 6, 0.8
+
+    exact_generator = np.zeros((2**num_sites, 2**num_sites), dtype=complex)
+    for left, right in zip(system_sites, system_sites[1:]):
+        exact_generator += (omega / 2) * _embed({left: _X, right: _N}, num_sites)
+        exact_generator += (omega / 2) * _embed({left: _N, right: _X}, num_sites)
+
+    layer = qcp_layer(system_sites, omega, dt)
+    approx = Circuit(layer, num_sites=num_sites).to_matrix()
+    error = np.linalg.norm(approx - expm(-1j * dt * exact_generator), ord="fro")
+    assert error < 20 * dt**2
+
+
+def test_collisional_dqc_round_structure():
+    _, ancilla_sites, coupling_pairs = interleaved_collisional_layout(2)
+    dqc = collisional_dqc(
+        [], ancilla_sites, coupling_pairs, 0.3, num_cycles=4, num_sites=4
+    )
+    assert len(dqc.rounds) == 5
+    assert dqc.rounds[0].meas_sites == []
+    assert all(rnd.meas_sites == ancilla_sites for rnd in dqc.rounds[1:])
+
+
+def test_collisional_dqc_resets_ancillas_to_zero():
+    """Ancillas start in |1> with no coupling, so round 1 must measure '11' and flip them
+    back. A reset that wrote |1>, or skipped the last cycle, would leave them occupied.
+    """
+    num_system = 2
+    _, ancilla_sites, coupling_pairs = interleaved_collisional_layout(num_system)
+    dqc = collisional_dqc(
+        [], ancilla_sites, coupling_pairs, 0.0, num_cycles=2, num_sites=4
+    )
+
+    final, outcomes = dqc.run(Statevector(bitstring="11" * num_system))
+    assert outcomes[0] == "1" * num_system
+    assert outcomes[1] == "0" * num_system
+    assert final.expectation(NumberOperator(4, qubits=ancilla_sites)).real < 1e-9
+
+
+def test_collisional_dqc_with_zero_coupling_never_decays():
+    num_system = 2
+    system_sites, ancilla_sites, coupling_pairs = interleaved_collisional_layout(
+        num_system
+    )
+    dqc = collisional_dqc(
+        [], ancilla_sites, coupling_pairs, 0.0, num_cycles=5, num_sites=4
+    )
+    final, outcomes = dqc.run(Statevector(bitstring="10" * num_system))
+    assert all(outcome == "0" * num_system for outcome in outcomes)
+    system_number = NumberOperator(4, qubits=system_sites)
+    assert np.isclose(final.expectation(system_number).real, num_system)
+
+
+def test_collisional_activity_matches_the_closed_form():
+    """omega = V = 0: pairs decouple, so E[k_m] = p (1-p)^(m-1) with p = sin^2(phi).
+
+    Catches a reset that writes |1> (activity would not decay), wrong ancilla indices,
+    and a coupling angle off by a factor of two.
+    """
+    num_system, phi, num_cycles, num_shots = 2, 0.5, 10, 800
+    _, ancilla_sites, coupling_pairs = interleaved_collisional_layout(num_system)
+    dqc = collisional_dqc(
+        [], ancilla_sites, coupling_pairs, phi, num_cycles, 2 * num_system
+    )
+    initial = Statevector(bitstring="10" * num_system)
+
+    np.random.seed(0)
+    activities = np.zeros((num_shots, num_cycles))
+    for shot in range(num_shots):
+        _, outcomes = dqc.run(initial)
+        for cycle, outcome in enumerate(outcomes):
+            activities[shot, cycle] = outcome.count("1") / num_system
+
+    probability = np.sin(phi) ** 2
+    expected = probability * (1 - probability) ** np.arange(num_cycles)
+    sigma = np.sqrt(expected * (1 - expected) / (num_shots * num_system))
+    assert np.all(np.abs(activities.mean(axis=0) - expected) < 4 * sigma + 1e-9)

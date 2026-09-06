@@ -27,15 +27,22 @@ class DynamicCircuit:
 
     rounds: list[DynamicRound]
 
-    def run(self, init_state: State) -> tuple[State, list[str]]:
+    def run(
+        self,
+        init_state: State,
+        observer: Callable[[int, State], None] | None = None,
+    ) -> tuple[State, list[str]]:
         """Execute all rounds on init_state.
 
         Returns (final_state, outcomes) where outcomes has one entry per round
         with non-empty meas_sites, in round order.
+
+        observer(round_index, state) is called after each round, for per-round diagnostics
+        that the final state alone cannot give.
         """
         sv = init_state
         outcomes: list[str] = []
-        for rnd in self.rounds:
+        for round_index, rnd in enumerate(self.rounds):
             if rnd.meas_sites:
                 sv, outcome = sv.measure_and_collapse(rnd.meas_sites)
                 outcomes.append(outcome)
@@ -44,4 +51,6 @@ class DynamicCircuit:
             circuit = rnd.decoder(outcome)
             if circuit.gates:
                 sv = sv.apply(circuit)
+            if observer is not None:
+                observer(round_index, sv)
         return sv, outcomes

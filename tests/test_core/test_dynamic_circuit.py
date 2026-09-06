@@ -148,3 +148,35 @@ def test_dynamic_circuit_two_measurement_rounds():
     assert len(outcomes) == 2
     for o in outcomes:
         assert o in ("0", "1")
+
+
+# ---------------------------------------------------------------------------
+# run(observer=...)
+# ---------------------------------------------------------------------------
+
+
+def test_observer_sees_every_round_after_its_decoder():
+    """X on qubit 0 in round 0, X on qubit 1 in round 1: the observer must see |10> then |11>."""
+    flip_0 = DynamicRound(decoder=lambda _: Circuit([X(0)], num_sites=2))
+    flip_1 = DynamicRound(decoder=lambda _: Circuit([X(1)], num_sites=2))
+    seen = []
+    DynamicCircuit([flip_0, flip_1]).run(
+        Statevector(bitstring="00"),
+        observer=lambda index, state: seen.append((index, state.to_array().copy())),
+    )
+    assert [index for index, _ in seen] == [0, 1]
+    ket_10 = np.zeros(4, dtype=complex)
+    ket_10[2] = 1.0
+    ket_11 = np.zeros(4, dtype=complex)
+    ket_11[3] = 1.0
+    assert np.allclose(seen[0][1], ket_10)
+    assert np.allclose(seen[1][1], ket_11)
+
+
+def test_observer_is_optional():
+    circuit = DynamicCircuit(
+        [DynamicRound(decoder=lambda _: Circuit([X(0)], num_sites=1))]
+    )
+    state, outcomes = circuit.run(Statevector(bitstring="0"))
+    assert outcomes == []
+    assert np.allclose(state.to_array(), np.array([0, 1], dtype=complex))

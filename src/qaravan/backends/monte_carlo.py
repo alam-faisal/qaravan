@@ -12,18 +12,7 @@ from qaravan.core.base import (
     State,
 )
 from qaravan.core.circuit import Circuit
-from qaravan.core.gates import X, Y, Z
-
-_PAULI_GATE_MAP = {"X": X, "Y": Y, "Z": Z}
-
-
-def _pauli_string_to_gates(string: str) -> list[Gate]:
-    """Convert e.g. 'XIZYI' → [X(0), Z(2), Y(3)]. Identity sites are skipped."""
-    gates = []
-    for site, char in enumerate(string.upper()):
-        if char in _PAULI_GATE_MAP:
-            gates.append(_PAULI_GATE_MAP[char](site))
-    return gates
+from qaravan.core.gates import pauli_string_to_gates
 
 
 class Walkers(State):
@@ -132,7 +121,7 @@ class MonteCarloSimulator(Simulator):
         noisy_layers = []
         for layer in circuit.layers:
             noisy_layers.append(layer)
-            noise_gates = _pauli_string_to_gates(nm.sample_error(self._rng))
+            noise_gates = pauli_string_to_gates(nm.sample_error(self._rng))
             if noise_gates:
                 noisy_layers.append(noise_gates)
         circuit.layers = noisy_layers

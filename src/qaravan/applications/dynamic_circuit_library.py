@@ -258,7 +258,7 @@ def noisy_dqc_trajectories(
     measurement_rng, noise_rng = np.random.default_rng(rng).spawn(2)
 
     def apply_noisily(state: State, circuit: Circuit) -> State:
-        return MonteCarloSimulator(circuit, state, noise_model, rng=noise_rng).run_one()
+        return MonteCarloSimulator(circuit, state, noise_model, rng=noise_rng).run()
 
     finals = []
     records = []

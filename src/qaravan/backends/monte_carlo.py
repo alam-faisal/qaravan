@@ -133,14 +133,15 @@ class MonteCarloSimulator(Simulator):
         circuit.layers = noisy_layers
         return circuit
 
-    def run_one(self) -> Statevector:
-        """One noisy trajectory. Noise is resampled per layer, and the initial state is
+    def run(self) -> Statevector:
+        """One noisy trajectory. Noise is resampled per layer and the initial state is
         deep-copied, so repeated calls are independent."""
         return super().run()
 
-    def run(self) -> Walkers:
-        """Run num_trajectories independent trajectories and return a Walkers ensemble."""
-        return Walkers([self.run_one() for _ in range(self.num_trajectories)])
+    def run_ensemble(self, num_trajectories: int | None = None) -> Walkers:
+        """Independent trajectories, bundled. Defaults to the constructor's num_trajectories."""
+        count = self.num_trajectories if num_trajectories is None else num_trajectories
+        return Walkers([self.run() for _ in range(count)])
 
     def translate_gate(self, gate: Gate) -> tuple[np.ndarray, list[int]]:
         return gate.matrix, gate.indices

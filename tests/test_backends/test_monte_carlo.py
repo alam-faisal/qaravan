@@ -122,7 +122,7 @@ def test_walkers_rdm_trace_one():
     mc = MonteCarloSimulator(
         circ, init, num_trajectories=10, rng=np.random.default_rng(0)
     )
-    walkers = mc.run()
+    walkers = mc.run_ensemble()
     rdm = walkers.rdm([0])
     assert abs(np.trace(rdm) - 1.0) < 1e-12
 
@@ -139,7 +139,7 @@ def test_mc_noiseless_matches_sv():
     mc = MonteCarloSimulator(
         circ, init, num_trajectories=200, rng=np.random.default_rng(0)
     )
-    walkers = mc.run()
+    walkers = mc.run_ensemble()
     obs = PauliString("ZZ")
     assert abs(walkers.expectation(obs).real - 1.0) < 1e-10
 
@@ -152,7 +152,7 @@ def test_walkers_expectation_matches_sv_noiseless():
     mc = MonteCarloSimulator(
         circ, init, num_trajectories=1, rng=np.random.default_rng(0)
     )
-    walkers = mc.run()
+    walkers = mc.run_ensemble()
     obs = PauliString("ZI")
     assert abs(walkers.expectation(obs) - sv.expectation(obs)) < 1e-10
 
@@ -182,7 +182,7 @@ def test_mc_depolarizing_z_expectation():
         num_trajectories=5000,
         rng=np.random.default_rng(42),
     )
-    walkers = mc.run()
+    walkers = mc.run_ensemble()
     z_exp = walkers.expectation(PauliString("Z")).real
     # variance per trajectory ≤ 1, std of mean ≤ 1/sqrt(5000) ≈ 0.014; use 4σ margin
     assert abs(z_exp - expected) < 0.06, f"⟨Z⟩ = {z_exp:.4f}, expected {expected:.4f}"
@@ -203,7 +203,7 @@ def test_mc_depolarizing_decays_zz_bell():
         num_trajectories=2000,
         rng=np.random.default_rng(0),
     )
-    walkers = mc.run()
+    walkers = mc.run_ensemble()
     zz_noisy = walkers.expectation(PauliString("ZZ")).real
     assert zz_noisy < 1.0, f"⟨ZZ⟩ = {zz_noisy:.4f} should be < 1.0 under depolarizing"
 
@@ -214,7 +214,27 @@ def test_mc_reproducible_with_seed():
     init = Statevector(bitstring="00")
     noise = DepolarizingNoise(num_sites=2, error_rate=0.2)
     kwargs = dict(noise_model=noise, num_trajectories=50)
-    w1 = MonteCarloSimulator(circ, init, rng=np.random.default_rng(7), **kwargs).run()
-    w2 = MonteCarloSimulator(circ, init, rng=np.random.default_rng(7), **kwargs).run()
+    w1 = MonteCarloSimulator(
+        circ, init, rng=np.random.default_rng(7), **kwargs
+    ).run_ensemble()
+    w2 = MonteCarloSimulator(
+        circ, init, rng=np.random.default_rng(7), **kwargs
+    ).run_ensemble()
     obs = PauliString("ZZ")
     assert abs(w1.expectation(obs) - w2.expectation(obs)) < 1e-14
+
+
+def test_run_returns_one_trajectory_and_run_ensemble_returns_walkers():
+    """Every Simulator means the same thing by run(): evolve once, return the state."""
+    circuit = Circuit([H(0), CNOT([0, 1])], num_sites=2)
+    initial = Statevector(bitstring="00")
+    mc = MonteCarloSimulator(
+        circuit,
+        initial,
+        DepolarizingNoise(2, 0.1),
+        num_trajectories=9,
+        rng=np.random.default_rng(0),
+    )
+    assert isinstance(mc.run(), Statevector)
+    assert mc.run_ensemble().num_walkers == 9
+    assert mc.run_ensemble(4).num_walkers == 4

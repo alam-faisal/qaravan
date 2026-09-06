@@ -411,3 +411,17 @@ def test_majorana_sum_add_rejects_mode_count_mismatch():
     two = MajoranaSum([majorana_bilinear(0, 3)], num_fermionic_modes=2)
     with pytest.raises(ValueError, match="num_fermionic_modes"):
         one + two
+
+
+def test_fermionic_term_normal_order_fans_out():
+    """c_0 c†_0 = 1 - c†_0 c_0: one term in, two out, at the term level."""
+    ordered = (c(0) @ cdag(0)).normal_order()
+    assert {tuple(t.ops): t.coeff for t in ordered} == {
+        (): 1.0,
+        ((0, True), (0, False)): -1.0,
+    }
+    assert all(t.normal_ordered for t in ordered)
+
+
+def test_fermionic_term_normal_order_vanishes():
+    assert (cdag(0) @ cdag(0)).normal_order() == []

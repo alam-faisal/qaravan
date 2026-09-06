@@ -41,6 +41,36 @@ class FermionicTerm:
         annihilations = [mode for mode, _ in self.ops[split:]]
         return _strictly_ascending(creations) and _strictly_ascending(annihilations)
 
+    def normal_order(self) -> list[FermionicTerm]:
+        """Canonical form of this term: creations left, modes ascending in each block.
+
+        A list, not one term, because c_i c†_j = delta_ij - c†_j c_i spawns a shorter
+        contracted term whenever i == j; empty when the term vanishes. Not a FermionicSum --
+        a bare term does not know the register size, and inventing one from max(mode) would
+        be wrong for a term that misses the top mode.
+        """
+        pending = [(self.coeff, list(self.ops))]
+        segregated = []
+        while pending:
+            coeff, ops = pending.pop()
+            position = _first_annihilation_before_creation(ops)
+            if position is None:
+                segregated.append((coeff, ops))
+                continue
+            left, right = ops[position], ops[position + 1]
+            pending.append(
+                (-coeff, ops[:position] + [right, left] + ops[position + 2 :])
+            )
+            if left[0] == right[0]:
+                pending.append((coeff, ops[:position] + ops[position + 2 :]))
+
+        ordered = []
+        for coeff, ops in segregated:
+            sorted_ops, sign = _sort_blocks(ops)
+            if sign:
+                ordered.append(FermionicTerm(sign * coeff, sorted_ops))
+        return ordered
+
     def dagger(self) -> FermionicTerm:
         """(op1...opn)† = opn†...op1†, each dagger flipped, coeff conjugated."""
         return FermionicTerm(
@@ -151,7 +181,7 @@ class FermionicSum:
         """
         merged: dict[tuple[tuple[int, bool], ...], complex] = {}
         for term in self.terms:
-            for ordered in _normal_order_term(term):
+            for ordered in term.normal_order():
                 key = tuple(ordered.ops)
                 merged[key] = merged.get(key, 0) + ordered.coeff
         terms = [
@@ -219,30 +249,6 @@ def _sort_blocks(ops: list[tuple[int, bool]]) -> tuple[list[tuple[int, bool]], i
     sorted_ops = [(mode, True) for mode in sorted(creations)]
     sorted_ops += [(mode, False) for mode in sorted(annihilations)]
     return sorted_ops, sign
-
-
-def _normal_order_term(term: FermionicTerm) -> list[FermionicTerm]:
-    """One term as a sum of normal-ordered terms -- a sum, not a term, because the
-    c_i c†_j = delta_ij - c†_j c_i rewrite spawns a shorter contracted term whenever i == j."""
-    pending = [(term.coeff, list(term.ops))]
-    segregated = []
-    while pending:
-        coeff, ops = pending.pop()
-        position = _first_annihilation_before_creation(ops)
-        if position is None:
-            segregated.append((coeff, ops))
-            continue
-        left, right = ops[position], ops[position + 1]
-        pending.append((-coeff, ops[:position] + [right, left] + ops[position + 2 :]))
-        if left[0] == right[0]:
-            pending.append((coeff, ops[:position] + ops[position + 2 :]))
-
-    ordered = []
-    for coeff, ops in segregated:
-        sorted_ops, sign = _sort_blocks(ops)
-        if sign:
-            ordered.append(FermionicTerm(sign * coeff, sorted_ops))
-    return ordered
 
 
 def _first_annihilation_before_creation(ops: list[tuple[int, bool]]) -> int | None:

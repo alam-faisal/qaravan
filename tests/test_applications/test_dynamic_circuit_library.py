@@ -11,10 +11,11 @@ from qaravan.applications.dynamic_circuit_library import (
     ghz_fusion_dqc,
     interleaved_collisional_layout,
     qcp_layer,
+    reset_decoder,
 )
 from qaravan.backends.statevector import Statevector
 from qaravan.core.circuit import Circuit
-from qaravan.core.dynamic_circuit import DynamicCircuit
+from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
 from qaravan.core.observables import NumberOperator
 
 INV_SQRT2 = 1.0 / np.sqrt(2)
@@ -321,3 +322,23 @@ def test_collisional_activity_matches_the_closed_form():
     expected = probability * (1 - probability) ** np.arange(num_cycles)
     sigma = np.sqrt(expected * (1 - expected) / (num_shots * num_system))
     assert np.all(np.abs(activities.mean(axis=0) - expected) < 4 * sigma + 1e-9)
+
+
+def test_reset_decoder_drops_straight_into_a_dynamic_round():
+    """The point of the factory form: usable as decoder= with no wrapping."""
+    qubits = [0, 2]
+    dqc = DynamicCircuit(
+        [DynamicRound(meas_sites=qubits, decoder=reset_decoder(qubits, num_sites=3))]
+    )
+    final, outcomes = dqc.run(Statevector(bitstring="111"))
+    assert outcomes == ["11"]
+    assert np.isclose(final.expectation(NumberOperator(3, qubits=qubits)).real, 0.0)
+    # the unmeasured qubit is untouched
+    assert np.isclose(final.expectation(NumberOperator(3, qubits=[1])).real, 1.0)
+
+
+def test_reset_decoder_leaves_zeros_alone():
+    decoder = reset_decoder([0, 1], num_sites=2)
+    assert decoder("00").gates == []
+    assert len(decoder("10").gates) == 1
+    assert decoder("10").gates[0].indices == [0]

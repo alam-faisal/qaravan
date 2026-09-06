@@ -180,13 +180,19 @@ def qcp_layer(system_sites: list[int], omega: float, dt: float = 1.0) -> list[Ga
     return gates
 
 
-def reset_decoder(outcome: str, qubits: list[int]) -> list[Gate]:
-    """X on each of qubits that measured 1, which returns them all to |0>.
+def reset_decoder(qubits: list[int], num_sites: int) -> Callable[[str], Circuit]:
+    """Decoder returning X on each of qubits that measured 1, so all of them end in |0>.
 
-    outcome is the bitstring from measuring qubits in that order, so this is only valid on the
-    already-collapsed state.
+    Returns decoder(outcome) -> Circuit.
+    outcome: bitstring of len(qubits), in the order qubits were measured. Valid only on the
+    already-collapsed state, where the flip is deterministic rather than a Kraus map.
     """
-    return [X(site) for site, bit in zip(qubits, outcome) if bit == "1"]
+
+    def decoder(outcome: str) -> Circuit:
+        gates = [X(site) for site, bit in zip(qubits, outcome) if bit == "1"]
+        return Circuit(gates, num_sites=num_sites)
+
+    return decoder
 
 
 def collisional_dqc(
@@ -212,22 +218,15 @@ def collisional_dqc(
     ]
     evolution = Circuit(list(system_layer) + coupling_gates, num_sites=num_sites)
 
+    reset = reset_decoder(ancilla_sites, num_sites)
+
     def reset_then_evolve(outcome: str) -> Circuit:
-        return Circuit(
-            reset_decoder(outcome, ancilla_sites) + evolution.gates, num_sites=num_sites
-        )
+        return Circuit(reset(outcome).gates + evolution.gates, num_sites=num_sites)
 
     rounds = [DynamicRound(decoder=lambda _: evolution)]
     rounds.extend(
         DynamicRound(meas_sites=list(ancilla_sites), decoder=reset_then_evolve)
         for _ in range(num_cycles - 1)
     )
-    rounds.append(
-        DynamicRound(
-            meas_sites=list(ancilla_sites),
-            decoder=lambda outcome: Circuit(
-                reset_decoder(outcome, ancilla_sites), num_sites=num_sites
-            ),
-        )
-    )
+    rounds.append(DynamicRound(meas_sites=list(ancilla_sites), decoder=reset))
     return DynamicCircuit(rounds=rounds)

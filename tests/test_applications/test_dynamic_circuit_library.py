@@ -302,7 +302,8 @@ def test_collisional_activity_matches_the_closed_form():
     """omega = V = 0: pairs decouple, so E[k_m] = p (1-p)^(m-1) with p = sin^2(phi).
 
     Catches a reset that writes |1> (activity would not decay), wrong ancilla indices,
-    and a coupling angle off by a factor of two.
+    and a coupling angle off by a factor of two. Seeded, so the 4-sigma band is a fixed
+    bound rather than a per-run coin flip.
     """
     num_system, phi, num_cycles, num_shots = 2, 0.5, 10, 800
     _, ancilla_sites, coupling_pairs = interleaved_collisional_layout(num_system)
@@ -311,10 +312,10 @@ def test_collisional_activity_matches_the_closed_form():
     )
     initial = Statevector(bitstring="10" * num_system)
 
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
     activities = np.zeros((num_shots, num_cycles))
     for shot in range(num_shots):
-        _, outcomes = dqc.run(initial)
+        _, outcomes = dqc.run(initial, rng=rng)
         for cycle, outcome in enumerate(outcomes):
             activities[shot, cycle] = outcome.count("1") / num_system
 

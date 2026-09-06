@@ -31,7 +31,8 @@ def test_hamiltonian_repr_headers_the_model_then_shows_the_algebra():
     header, algebra = repr(tfi).split("\n", 1)
     assert header == "TFI(num_sites=3)"
     assert algebra == repr(tfi.as_observable())
-    assert str(tfi) == repr(tfi)  # __str__ falls back to __repr__; neither is defined twice
+    # __str__ falls back to __repr__; neither is defined twice
+    assert str(tfi) == repr(tfi)
 
 
 def test_as_observable_merges_duplicate_strings_without_changing_matrix():

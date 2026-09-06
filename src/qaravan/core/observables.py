@@ -289,7 +289,10 @@ class Magnetization(PauliSum):
 
 
 class NumberOperator(PauliSum):
-    """n_q = (I - Z_q)/2, eigenvalue 1 on |1> and 0 on |0>. Unnormalized -- it counts particles."""
+    """
+    n_q = (I - Z_q)/2, eigenvalue 1 on |1> and 0 on |0>. Unnormalized -- it counts particles.
+    if qubits is passed, it counts only those qubits; otherwise it counts all n qubits.
+    """
 
     def __init__(self, n: int, qubits: list[int] | None = None):
         self.n = n

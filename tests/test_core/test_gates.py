@@ -2,11 +2,13 @@
 
 import numpy as np
 import pytest
+from scipy.linalg import expm
 from qaravan.core.base import IncompatibleStateError, Simulator, State
 from qaravan.core.circuit import Circuit
 from qaravan.core.gates import (
     CNOT,
     CNOT3,
+    CRX,
     CZ,
     H01,
     RX,
@@ -126,8 +128,6 @@ def test_xy_limit():
 
 
 def test_xy_matches_expm():
-    from scipy.linalg import expm
-
     X_mat = np.array([[0, 1], [1, 0]], dtype=complex)
     Y_mat = np.array([[0, -1j], [1j, 0]], dtype=complex)
     xx_plus_yy = np.kron(X_mat, X_mat) + np.kron(Y_mat, Y_mat)
@@ -349,3 +349,36 @@ def test_state_apply():
     circ = Circuit([H(0), CNOT([0, 1])], num_sites=2)
     result = _MinState().apply(circ)
     assert isinstance(result, State)
+
+
+# ---------------------------------------------------------------------------
+# CRX
+# ---------------------------------------------------------------------------
+
+
+def test_crx_matches_exponential_of_generator():
+    """exp(-i θ n_control ⊗ X_target), with n = (I - Z)/2."""
+    theta = 0.7391
+    number_op = (np.eye(2) - Z_MATRIX) / 2
+    expected = expm(-1j * theta * np.kron(number_op, X_MATRIX))
+    assert np.allclose(CRX([0, 1], theta).matrix, expected)
+
+
+def test_crx_zero_angle_is_identity():
+    assert np.allclose(CRX([0, 1], 0.0).matrix, np.eye(4))
+
+
+def test_crx_dagger_negates_the_angle():
+    theta = 0.31
+    assert np.allclose(CRX([0, 1], theta).dagger().matrix, CRX([0, 1], -theta).matrix)
+
+
+def test_crx_control_and_target_are_not_interchangeable():
+    """Control on 1 / target on 0 is a different operator, and to_matrix must show it."""
+    theta = 0.4517
+    forward = Circuit([CRX([0, 1], theta)], num_sites=2).to_matrix()
+    reversed_ = Circuit([CRX([1, 0], theta)], num_sites=2).to_matrix()
+    assert not np.allclose(forward, reversed_)
+
+    number_op = (np.eye(2) - Z_MATRIX) / 2
+    assert np.allclose(reversed_, expm(-1j * theta * np.kron(X_MATRIX, number_op)))

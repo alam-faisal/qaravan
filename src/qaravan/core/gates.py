@@ -223,6 +223,27 @@ class iSWAP(MatrixGate):
         super().__init__("iSWAP", indices, mat, time)
 
 
+class CRX(ParametricGate):
+    """Controlled-RX in (control, target) ordering: exp(-i θ n_control X_target).
+
+    Full angle, matching RX -- a source writing CR_x(Ω) for exp(-i(Ω/2)X) needs CRX(..., Ω/2).
+    """
+
+    def __init__(self, indices: list[int], theta: float, time: float | None = None):
+        super().__init__("CRX", indices, (theta,), time)
+
+    def _build_matrix(self) -> np.ndarray:
+        c, s = np.cos(self.params[0]), np.sin(self.params[0])
+        return np.array(
+            [
+                [1, 0, 0, 0],
+                [0, 1, 0, 0],
+                [0, 0, c, -1j * s],
+                [0, 0, -1j * s, c],
+            ],
+        )
+
+
 # ---------------------------------------------------------------------------
 # Two-qubit ParametricGate subclasses
 # Convention: exp(-i θ P⊗P), full angle.

@@ -15,7 +15,7 @@ from qaravan.core.fermions import (
     density_density,
     gamma,
     hopping,
-    jordan_wigner,
+    jordan_wigner_hamiltonian,
     jordan_wigner_majorana,
     majorana_bilinear,
     number,
@@ -29,7 +29,7 @@ from qaravan.core.observables import PauliString, PauliSum
 
 
 def test_number_maps_to_occupation_projector():
-    terms = jordan_wigner([number(0)], 1)
+    terms = jordan_wigner_hamiltonian([number(0)], 1)
     assert len(terms) == 1
     expected = 0.5 * np.eye(2) - 0.5 * PauliString("Z").to_matrix()
     assert np.allclose(terms[0].local_obs.to_matrix(), expected)
@@ -40,7 +40,7 @@ def test_hopping_bond_maps_to_weight_two_xx_plus_yy():
     # doc eq. 15: c-dagger_a c_b + h.c. -> (1/2)(XX + YY); hopping's coeff scales the whole
     # bilinear, matching the physical Hamiltonian's -t prefactor directly.
     t = 1.3
-    terms = jordan_wigner(hopping(0, 1, -t), 2)
+    terms = jordan_wigner_hamiltonian(hopping(0, 1, -t), 2)
     assert len(terms) == 1
     expected = (-t / 2) * (
         PauliString("XX").to_matrix() + PauliString("YY").to_matrix()
@@ -52,7 +52,7 @@ def test_hopping_bond_maps_to_weight_two_xx_plus_yy():
 def test_hopping_with_spectator_gives_weight_three_form():
     # doc eq. 6/8: one spectator mode in between leaves a residual Z (weight-3 XZX + YZY).
     t = 0.7
-    terms = jordan_wigner(hopping(0, 2, -t), 3)
+    terms = jordan_wigner_hamiltonian(hopping(0, 2, -t), 3)
     assert len(terms) == 1
     expected = (-t / 2) * (
         PauliString("XZX").to_matrix() + PauliString("YZY").to_matrix()
@@ -63,7 +63,7 @@ def test_hopping_with_spectator_gives_weight_three_form():
 
 def test_density_density_maps_to_diagonal_form():
     U = 2.0
-    terms = jordan_wigner(density_density(0, 1, U), 2)
+    terms = jordan_wigner_hamiltonian(density_density(0, 1, U), 2)
     n = 0.5 * np.eye(2) - 0.5 * PauliString("Z").to_matrix()
     expected = U * np.kron(n, n)
     assert np.allclose(terms[0].local_obs.to_matrix(), expected)
@@ -71,8 +71,10 @@ def test_density_density_maps_to_diagonal_form():
 
 def test_jordan_wigner_respects_mode_order():
     # Swapping which qubit a mode lands on should permute which qubits the term touches.
-    terms_identity = jordan_wigner(hopping(0, 1, -1.0), 2, mode_order=(0, 1))
-    terms_swapped = jordan_wigner(hopping(0, 1, -1.0), 2, mode_order=(1, 0))
+    terms_identity = jordan_wigner_hamiltonian(
+        hopping(0, 1, -1.0), 2, mode_order=(0, 1)
+    )
+    terms_swapped = jordan_wigner_hamiltonian(hopping(0, 1, -1.0), 2, mode_order=(1, 0))
     assert terms_identity[0].sites == [0, 1]
     assert terms_swapped[0].sites == [0, 1]
     assert np.allclose(
@@ -82,13 +84,13 @@ def test_jordan_wigner_respects_mode_order():
 
 def test_jordan_wigner_drops_zero_terms():
     # mu=0 -> the term is identically zero and shouldn't appear as a degenerate HamiltonianTerm.
-    terms = jordan_wigner([0.0 * number(0)], 1)
+    terms = jordan_wigner_hamiltonian([0.0 * number(0)], 1)
     assert terms == []
 
 
 def test_jordan_wigner_raises_on_unpaired_non_hermitian_term():
     with pytest.raises(ValueError, match="Hermitian-conjugate partner"):
-        jordan_wigner([c(0)], 1)
+        jordan_wigner_hamiltonian([c(0)], 1)
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +98,7 @@ def test_jordan_wigner_raises_on_unpaired_non_hermitian_term():
 # ---------------------------------------------------------------------------
 
 
-def test_fermion_operator_add_and_scale():
+def test_fermionic_sum_add_and_scale():
     op1 = FermionicSum([number(0)], 2)
     op2 = FermionicSum(hopping(0, 1, -1.0), 2)
     combined = op1 + 2 * op2
@@ -104,32 +106,33 @@ def test_fermion_operator_add_and_scale():
     assert combined.num_fermionic_modes == 2
 
 
-def test_fermion_operator_add_mismatched_num_modes_raises():
+def test_fermionic_sum_add_mismatched_num_modes_raises():
     op1 = FermionicSum([number(0)], 2)
     op2 = FermionicSum([number(0)], 3)
     with pytest.raises(ValueError):
         op1 + op2
 
 
-def test_fermion_operator_dagger_of_hopping_is_itself():
+def test_fermionic_sum_dagger_of_hopping_is_itself():
     op = FermionicSum(hopping(0, 1, -1.0), 2)
     dagger_matrix_sum = sum(
-        jw.local_obs.to_matrix() for jw in jordan_wigner(op.dagger().terms, 2)
+        jw.local_obs.to_matrix()
+        for jw in jordan_wigner_hamiltonian(op.dagger().terms, 2)
     )
     original_matrix_sum = sum(
-        jw.local_obs.to_matrix() for jw in jordan_wigner(op.terms, 2)
+        jw.local_obs.to_matrix() for jw in jordan_wigner_hamiltonian(op.terms, 2)
     )
     assert np.allclose(dagger_matrix_sum, original_matrix_sum)
 
 
-def test_fermion_operator_encode_raises_on_mode_mismatch():
+def test_fermionic_sum_encode_raises_on_mode_mismatch():
     op = FermionicSum([number(0)], 2)
     encoding = FermionicEncoding("jordan_wigner", num_modes=3)
     with pytest.raises(ValueError, match="modes"):
         op.encode(encoding)
 
 
-def test_fermion_operator_encode_returns_pauli_sum_with_correct_qubits():
+def test_fermionic_sum_encode_returns_pauli_sum_with_correct_qubits():
     """FermionicSum has no trotter_groups concept, so .encode() returns a plain PauliSum,
     not a Hamiltonian -- FermionicHamiltonian overrides encode() to return a Hamiltonian
     instead, since it's the one that carries trotter_groups."""
@@ -208,7 +211,7 @@ def test_jordan_wigner_majorana_expectation_on_statevector():
 def test_to_majorana_round_trips_through_jordan_wigner():
     # number(0) mapped via fermion JW should match number(0) mapped via jordan_wigner_majorana
     # after to_majorana -- two independent routes to the same operator.
-    direct = jordan_wigner([number(0)], 1)[0].local_obs.to_matrix()
+    direct = jordan_wigner_hamiltonian([number(0)], 1)[0].local_obs.to_matrix()
     via_majorana = jordan_wigner_majorana(number(0).to_majorana().terms, 1).to_matrix()
     assert np.allclose(direct, via_majorana)
 
@@ -217,7 +220,9 @@ def test_to_majorana_on_hopping_term_matches_direct_jw():
     term = hopping(0, 1, -1.0)[
         0
     ]  # cdag(0) c(1) scaled -- not Hermitian alone, that's fine here
-    direct = jordan_wigner([term, term.dagger()], 2)[0].local_obs.to_matrix()
+    direct = jordan_wigner_hamiltonian([term, term.dagger()], 2)[
+        0
+    ].local_obs.to_matrix()
     maj = term.to_majorana()
     maj_dagger = term.dagger().to_majorana()
     combined = maj + maj_dagger
@@ -281,7 +286,7 @@ def test_normal_order_output_is_normal_ordered_and_idempotent():
 
 def _matrix_via_jw(op: FermionicSum) -> np.ndarray:
     """Raw JW matrix. Uses _map_term rather than encode(), which routes through
-    jordan_wigner and refuses operators whose terms have no Hermitian-conjugate partner."""
+    jordan_wigner_hamiltonian and refuses operators whose terms have no Hermitian-conjugate partner."""
     dim = 2**op.num_fermionic_modes
     if not op.terms:
         return np.zeros((dim, dim), dtype=complex)

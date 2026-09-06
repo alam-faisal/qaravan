@@ -161,11 +161,11 @@ class FermionicHamiltonian(FermionicSum):
             )
 
     def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
-        """Encodes each trotter_groups entry independently via jordan_wigner, preserving the
+        """Encodes each trotter_groups entry independently via jordan_wigner_hamiltonian, preserving the
         grouping into the returned Hamiltonian.trotter_groups.
 
         Each group must contain both halves of any Hermitian-conjugate pair it holds (e.g.
-        hopping()'s two terms) -- jordan_wigner needs the partner in the same call to pair
+        hopping()'s two terms) -- jordan_wigner_hamiltonian needs the partner in the same call to pair
         them into one HamiltonianTerm.
         """
         if encoding.num_modes != self.num_fermionic_modes:
@@ -174,10 +174,10 @@ class FermionicHamiltonian(FermionicSum):
                 f"{self.num_fermionic_modes}."
             )
         if self.trotter_groups is None:
-            terms = encoding.encode_fermion_terms(self.terms)
+            terms = encoding.encode_hamiltonian_terms(self.terms)
             return Hamiltonian(terms, encoding.num_qubits, None)
         encoded_groups = [
-            encoding.encode_fermion_terms(group) for group in self.trotter_groups
+            encoding.encode_hamiltonian_terms(group) for group in self.trotter_groups
         ]
         terms = [term for group in encoded_groups for term in group]
         return Hamiltonian(terms, encoding.num_qubits, encoded_groups)

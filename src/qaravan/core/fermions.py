@@ -153,7 +153,7 @@ def number(mode: int) -> FermionicTerm:
 
 def hopping(mode_a: int, mode_b: int, coeff: complex) -> list[FermionicTerm]:
     """coeff * (c-dagger_a c_b + c-dagger_b c_a) -- two FermionicTerms, neither individually
-    Hermitian; jordan_wigner re-pairs them automatically at encode time."""
+    Hermitian; jordan_wigner_hamiltonian re-pairs them automatically at encode time."""
     return [coeff * (cdag(mode_a) @ c(mode_b)), coeff * (cdag(mode_b) @ c(mode_a))]
 
 
@@ -227,7 +227,7 @@ class FermionicSum:
                 f"Encoding is for {encoding.num_modes} modes; operator has "
                 f"{self.num_fermionic_modes}."
             )
-        terms = encoding.encode_fermion_terms(self.terms)
+        terms = encoding.encode_hamiltonian_terms(self.terms)
         return embed_hamiltonian_terms(terms, encoding.num_qubits)
 
     def __repr__(self) -> str:
@@ -420,7 +420,7 @@ def _is_real(pauli_sum: PauliSum, atol: float = 1e-9) -> bool:
     return all(abs(term.coeff.imag) < atol for term in pauli_sum.terms)
 
 
-def jordan_wigner(
+def jordan_wigner_hamiltonian(
     terms: list[FermionicTerm],
     num_modes: int,
     mode_order: tuple[int, ...] | None = None,
@@ -524,9 +524,11 @@ class FermionicEncoding:
         down = [self.qubit_of(mode) for mode in range(half, self.num_modes)]
         return up, down
 
-    def encode_fermion_terms(self, terms: list[FermionicTerm]) -> list[HamiltonianTerm]:
+    def encode_hamiltonian_terms(
+        self, terms: list[FermionicTerm]
+    ) -> list[HamiltonianTerm]:
         """Currently always applies Jordan-Wigner, regardless of self.name."""
-        return jordan_wigner(terms, self.num_modes, self.mode_order)
+        return jordan_wigner_hamiltonian(terms, self.num_modes, self.mode_order)
 
     def encode_majorana_terms(self, terms: list[MajoranaTerm]) -> PauliSum:
         """Currently always applies Jordan-Wigner, regardless of self.name."""

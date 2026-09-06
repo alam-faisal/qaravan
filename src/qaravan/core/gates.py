@@ -61,12 +61,9 @@ class ParametricGate(Gate, ABC):
     def dagger(self) -> ParametricGate:
         return type(self)(self.indices, *(-p for p in self.params), time=self.time)
 
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         params_str = ", ".join(f"{p:.4g}" for p in self.params)
         return f"{self.name}({self.indices}, {params_str})"
-
-    def __repr__(self) -> str:
-        return str(self)
 
 
 # ---------------------------------------------------------------------------

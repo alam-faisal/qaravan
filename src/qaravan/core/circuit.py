@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import numpy as np
+from qaravan.core._repr import elide
 from qaravan.core.base import Gate
 from qaravan.core.gates import ParametricGate
 
@@ -142,11 +143,9 @@ class Circuit:
             self.gates[key], num_sites=self.num_sites, local_dim=self.local_dim
         )
 
-    def __str__(self) -> str:
-        return f"Circuit(num_sites={self.num_sites}, gates={self.gates})"
-
     def __repr__(self) -> str:
-        return str(self)
+        gates = ", ".join(elide([repr(g) for g in self.gates]))
+        return f"Circuit(num_sites={self.num_sites}, gates=[{gates}])"
 
 
 def _embed_gate(gate: Gate, num_sites: int, local_dim: int) -> np.ndarray:

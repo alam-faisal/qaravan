@@ -5,6 +5,7 @@ import copy
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 import numpy as np
+from qaravan.core._repr import named
 
 if TYPE_CHECKING:
     from qaravan.core.circuit import Circuit
@@ -57,11 +58,8 @@ class Gate(ABC):
     @abstractmethod
     def dagger(self) -> Gate: ...
 
-    def __str__(self) -> str:
-        return f"{self.name}({self.indices})"
-
     def __repr__(self) -> str:
-        return str(self)
+        return named(self.name, self.indices)
 
 
 # ---------------------------------------------------------------------------
@@ -117,9 +115,6 @@ class State(ABC):
     @abstractmethod
     def __repr__(self) -> str: ...
 
-    def __str__(self) -> str:
-        return repr(self)
-
 
 # ---------------------------------------------------------------------------
 # Observable (ABC)
@@ -139,8 +134,8 @@ class Observable(ABC):
         observables are full-register, so this allocates exponentially in num_sites."""
         ...
 
-    def __str__(self) -> str:
-        return f"{self.name}({self.indices})"
+    def __repr__(self) -> str:
+        return named(self.name, self.indices)
 
 
 # ---------------------------------------------------------------------------

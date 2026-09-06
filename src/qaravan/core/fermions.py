@@ -21,7 +21,7 @@ class FermionicTerm:
     """coeff * product of ladder operators in the given order, e.g. c-dagger_a c_b ->
     ops=[(a, True), (b, False)].
 
-    No implicit normal-ordering. 
+    No implicit normal-ordering.
     A single FermionicTerm need not be individually Hermitian
     """
 

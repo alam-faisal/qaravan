@@ -13,7 +13,7 @@ from qaravan.applications.circuit_library import (
     rzz_layer,
     two_local_circuit,
 )
-from qaravan.backends.statevector import Statevector
+from qaravan.backends.statevector import Statevector, StatevectorSimulator
 from qaravan.core.circuit import Circuit
 from qaravan.core.gates import CNOT, RX, RXX, RY, RYY, RZZ, H, X, Z
 
@@ -476,3 +476,41 @@ def test_bind_physics():
     bound = circ.bind([np.pi / 2])
     expected = RX(0, np.pi / 2).matrix
     assert np.allclose(bound.to_matrix(), expected)
+
+
+# ---------------------------------------------------------------------------
+# to_matrix respects gate index order
+# ---------------------------------------------------------------------------
+
+
+def test_to_matrix_respects_index_order_for_asymmetric_gates():
+    """CNOT([1, 0]) controls on qubit 1. Every other two-qubit gate is symmetric under
+    index exchange, so this is the only gate that can catch _embed_gate sorting indices."""
+    forward = Circuit([CNOT([0, 1])], num_sites=2).to_matrix()
+    reversed_ = Circuit([CNOT([1, 0])], num_sites=2).to_matrix()
+    assert not np.allclose(forward, reversed_)
+
+    # |01> -> |11>: qubit 1 is set, so the target qubit 0 flips
+    ket_01 = np.zeros(4, dtype=complex)
+    ket_01[1] = 1.0
+    ket_11 = np.zeros(4, dtype=complex)
+    ket_11[3] = 1.0
+    assert np.allclose(reversed_ @ ket_01, ket_11)
+
+
+def test_to_matrix_matches_simulator_for_reversed_indices():
+    circuit = Circuit([CNOT([1, 0])], num_sites=2)
+    matrix = circuit.to_matrix()
+    for bitstring in ("00", "01", "10", "11"):
+        evolved = StatevectorSimulator(circuit, Statevector(bitstring=bitstring)).run()
+        index = int(bitstring, 2)
+        assert np.allclose(matrix[:, index], evolved.to_array())
+
+
+def test_to_matrix_respects_index_order_when_non_contiguous():
+    """The permutation branch, not the contiguous fast path: control 2, target 0."""
+    circuit = Circuit([CNOT([2, 0])], num_sites=3)
+    matrix = circuit.to_matrix()
+    for bitstring in ("000", "001", "011", "101", "111"):
+        evolved = StatevectorSimulator(circuit, Statevector(bitstring=bitstring)).run()
+        assert np.allclose(matrix[:, int(bitstring, 2)], evolved.to_array())

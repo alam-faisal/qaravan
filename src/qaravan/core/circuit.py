@@ -154,16 +154,18 @@ def _embed_gate(gate: Gate, num_sites: int, local_dim: int) -> np.ndarray:
     For debugging and to_matrix(); real backends apply gates without building full matrices.
     """
     k = gate.num_sites
-    sorted_indices = sorted(gate.indices)
+    indices = list(gate.indices)
 
-    if sorted_indices == list(range(sorted_indices[0], sorted_indices[0] + k)):
-        left_dim = local_dim ** sorted_indices[0]
-        right_dim = local_dim ** (num_sites - sorted_indices[0] - k)
+    # gate.matrix's axes follow indices in the order given, so the fast path needs them
+    # ascending as well as contiguous -- CNOT([1, 0]) is not CNOT([0, 1]).
+    if indices == list(range(indices[0], indices[0] + k)):
+        left_dim = local_dim ** indices[0]
+        right_dim = local_dim ** (num_sites - indices[0] - k)
         return np.kron(np.kron(np.eye(left_dim), gate.matrix), np.eye(right_dim))
 
-    # non-contiguous sites: permute basis, apply gate on leading sites, permute back
+    # otherwise: permute basis, apply gate on leading sites, permute back
     dim = local_dim**num_sites
-    perm = sorted_indices + [i for i in range(num_sites) if i not in sorted_indices]
+    perm = indices + [i for i in range(num_sites) if i not in indices]
     perm_mat = np.zeros((dim, dim))
     for i in range(dim):
         digits = _int_to_digits(i, local_dim, num_sites)

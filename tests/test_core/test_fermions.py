@@ -451,3 +451,21 @@ def test_to_majorana_lets_disjoint_terms_be_added():
 def test_to_majorana_rejects_too_small_a_register():
     with pytest.raises(ValueError, match="needs at least 3 modes"):
         (cdag(0) @ c(2)).to_majorana(num_fermionic_modes=2)
+
+
+@pytest.mark.parametrize("num_modes", [2, 3])
+def test_dagger_is_the_conjugate_transpose(num_modes):
+    """is_hermitian is 'H and H.dagger() normal-order alike', so dagger carries the whole
+    check. Verified against the matrix directly, for terms longer than hopping's two ops."""
+    rng = np.random.default_rng(num_modes)
+    for _ in range(8):
+        ops = [
+            (int(rng.integers(0, num_modes)), bool(rng.integers(0, 2)))
+            for _ in range(int(rng.integers(1, 5)))
+        ]
+        term = FermionicTerm(complex(rng.normal(), rng.normal()), ops)
+        np.testing.assert_allclose(
+            _matrix_via_jw(FermionicSum([term.dagger()], num_modes)),
+            _matrix_via_jw(FermionicSum([term], num_modes)).conj().T,
+            atol=1e-10,
+        )

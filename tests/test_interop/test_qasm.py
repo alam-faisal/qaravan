@@ -12,6 +12,7 @@ barrier line shapes, the exact `gate rzz(...)`/`gate xy(...)` block text, and th
 import numpy as np
 import pytest
 from scipy.linalg import expm
+from qaravan.core.circuit import Circuit
 from qaravan.core.gates import (
     CNOT,
     CZ,
@@ -26,6 +27,7 @@ from qaravan.core.gates import (
     XY,
     H,
     I,
+    MatrixGate,
     S,
     Sdg,
     T,
@@ -35,7 +37,7 @@ from qaravan.core.gates import (
     Z,
     iSWAP,
 )
-from qaravan.interop.qasm import from_unitary_qasm
+from qaravan.interop.qasm import from_unitary_qasm, to_unitary_qasm
 
 _HEADER = (
     "OPENQASM 2.0;\n"
@@ -295,3 +297,91 @@ def test_from_unitary_qasm_end_to_end_matches_hand_built_circuit():
     for actual_gate, expected_gate in zip(circuit.gates, expected):
         assert type(actual_gate) is type(expected_gate)
         assert np.allclose(actual_gate.matrix, expected_gate.matrix)
+
+
+# ---------------------------------------------------------------------------
+# Export -- to_unitary_qasm
+# ---------------------------------------------------------------------------
+
+
+def _every_supported_gate() -> Circuit:
+    gates = [
+        I(0),
+        H(1),
+        X(2),
+        Y(0),
+        Z(1),
+        S(2),
+        Sdg(0),
+        T(1),
+        Tdg(2),
+        SX(0),
+        CNOT([0, 1]),
+        CZ([1, 2]),
+        SWAP([0, 2]),
+        iSWAP([1, 2]),
+        RX(0, 0.3123),
+        RY(1, -0.7311),
+        RZ(2, 1.1907),
+        RXX([0, 1], 0.4471),
+        RYY([1, 2], -0.2213),
+        RZZ([0, 2], 0.9137),
+        XY([1, 2], 0.6029),
+    ]
+    return Circuit(gates, num_sites=3)
+
+
+def test_round_trip_preserves_the_unitary():
+    circuit = _every_supported_gate()
+    back = from_unitary_qasm(to_unitary_qasm(circuit), num_sites=3)
+    assert len(back.gates) == len(circuit.gates)
+    assert np.allclose(back.to_matrix(), circuit.to_matrix())
+
+
+def test_round_trip_preserves_angles_bit_exactly():
+    """repr() round-trips float64; a %.6f style would silently lose the low bits."""
+    rng = np.random.default_rng(0)
+    angles = rng.uniform(-np.pi, np.pi, size=8)
+    circuit = Circuit([RZ(0, angle) for angle in angles], num_sites=1)
+    back = from_unitary_qasm(to_unitary_qasm(circuit), num_sites=1)
+    assert [gate.params[0] for gate in back.gates] == list(angles)
+
+
+def test_export_doubles_the_angle():
+    """Pins the convention. A round trip alone cannot: doubling then halving always cancels."""
+    assert "rx(0.6)" in to_unitary_qasm(Circuit([RX(0, 0.3)], num_sites=1))
+
+
+def test_global_phase_round_trips():
+    phase = 0.7
+    phase_gate = MatrixGate("GlobalPhase", [0], np.exp(1j * phase) * np.eye(2))
+    circuit = Circuit([phase_gate, H(0)], num_sites=1)
+    text = to_unitary_qasm(circuit)
+    assert "// global_phase = 0.7" in text
+    assert np.allclose(
+        from_unitary_qasm(text, num_sites=1).to_matrix(), circuit.to_matrix()
+    )
+
+
+def test_no_global_phase_comment_when_absent():
+    assert "global_phase" not in to_unitary_qasm(Circuit([H(0)], num_sites=1))
+
+
+def test_declarations_only_for_gates_used():
+    text = to_unitary_qasm(Circuit([H(0), CNOT([0, 1])], num_sites=2))
+    assert "gate " not in text  # h and cx are both in qelib1
+    text = to_unitary_qasm(Circuit([RZZ([0, 1], 0.4)], num_sites=2))
+    assert "gate rzz(theta) a, b { }" in text
+    assert "gate xy" not in text
+
+
+def test_export_rejects_qutrit_circuits():
+    circuit = Circuit([H(0)], num_sites=1, local_dim=3)
+    with pytest.raises(NotImplementedError, match="local_dim"):
+        to_unitary_qasm(circuit)
+
+
+def test_export_rejects_unsupported_gate():
+    circuit = Circuit([MatrixGate("Custom", [0], np.eye(2))], num_sites=1)
+    with pytest.raises(NotImplementedError, match="Custom"):
+        to_unitary_qasm(circuit)

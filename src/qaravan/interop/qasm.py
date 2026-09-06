@@ -195,3 +195,115 @@ def from_unitary_qasm(qasm_text: str, num_sites: int) -> Circuit:
             0, MatrixGate("GlobalPhase", [0], np.exp(1j * global_phase) * np.eye(2))
         )
     return Circuit(gates, num_sites=num_sites)
+
+
+# ---------------------------------------------------------------------------
+# Export
+# ---------------------------------------------------------------------------
+
+_QELIB1 = frozenset(
+    {
+        "id",
+        "h",
+        "x",
+        "y",
+        "z",
+        "s",
+        "sdg",
+        "t",
+        "tdg",
+        "cx",
+        "cz",
+        "swap",
+        "rx",
+        "ry",
+        "rz",
+    }
+)
+"""Names qelib1.inc already defines. Anything else needs a `gate` declaration."""
+
+
+def _build_qasm_names() -> dict[type, tuple[str, bool]]:
+    """Gate class -> (qasm name, takes an angle), inverting the four import tables."""
+    names = {}
+    for table in (_ONE_QUBIT_FIXED, _TWO_QUBIT_FIXED):
+        for qasm_name, gate_cls in table.items():
+            names[gate_cls] = (qasm_name, False)
+    for table in (_ONE_QUBIT_PARAMETERISED, _TWO_QUBIT_PARAMETERISED):
+        for qasm_name, gate_cls in table.items():
+            names[gate_cls] = (qasm_name, True)
+    return names
+
+
+_QASM_NAMES = _build_qasm_names()
+
+
+def _qasm_line(gate) -> str:
+    """One Gate -> one QASM instruction.
+
+    Angles are doubled to reach Qiskit's convention and written as repr(float(...)), the shortest
+    string that reads back as the same float64. The float() is load-bearing: a numpy scalar reprs
+    as "np.float64(0.5)", which is not a QASM angle expression.
+    """
+    entry = _QASM_NAMES.get(type(gate))
+    if entry is None:
+        raise NotImplementedError(
+            f"Gate '{gate.name}' has no QASM equivalent -- not part of the gate vocabulary "
+            "this exporter supports."
+        )
+    qasm_name, parameterised = entry
+    qubits = ", ".join(f"q[{index}]" for index in gate.indices)
+    if not parameterised:
+        return f"{qasm_name} {qubits};"
+    return f"{qasm_name}({float(2 * gate.params[0])!r}) {qubits};"
+
+
+def _declarations(gates: list) -> list[str]:
+    """Bare `gate` declarations for every non-qelib1 name used, in first-use order.
+
+    The body is empty: a reader dispatches on the invocation name, exactly as the importer does.
+    """
+    lines = []
+    declared = set()
+    for gate in gates:
+        entry = _QASM_NAMES.get(type(gate))
+        if entry is None:
+            continue
+        qasm_name, parameterised = entry
+        if qasm_name in _QELIB1 or qasm_name in declared:
+            continue
+        declared.add(qasm_name)
+        operands = ", ".join("abc"[: len(gate.indices)])
+        signature = f"{qasm_name}(theta)" if parameterised else qasm_name
+        lines.append(f"gate {signature} {operands} {{ }}")
+    return lines
+
+
+def to_unitary_qasm(circuit: Circuit) -> str:
+    """Serialise a Circuit as unitary-only QASM text (see module docstring for the conventions).
+
+    A GlobalPhase gate becomes the `// global_phase` comment, so a re-imported circuit carries
+    it at index 0 rather than wherever it sat before -- the same unitary, a different position.
+    Raises NotImplementedError for qutrit circuits and for gates outside the vocabulary.
+    """
+    if circuit.local_dim != 2:
+        raise NotImplementedError(
+            f"QASM is qubit-only; circuit has local_dim={circuit.local_dim}."
+        )
+
+    global_phase = 0.0
+    gates = []
+    for gate in circuit.gates:
+        if gate.name == "GlobalPhase":
+            global_phase += float(np.angle(gate.matrix[0, 0]))
+        else:
+            gates.append(gate)
+
+    lines = ["OPENQASM 2.0;", 'include "qelib1.inc";']
+    if abs(global_phase) > 0:
+        lines.append(f"// global_phase = {global_phase!r}")
+    lines.extend(_declarations(gates))
+    lines.append(f"qreg q[{circuit.num_sites}];")
+    for gate in gates:
+        lines.append(_qasm_line(gate))
+    return "\n".join(lines) + "\n"

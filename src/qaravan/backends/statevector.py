@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import numpy as np
 from qaravan.backends._ncon_compat import ncon, permute
+from qaravan.core._repr import elide, format_coefficient, join_terms
 from qaravan.core.base import (
     Gate,
     IncompatibleStateError,
@@ -101,16 +102,6 @@ def partial_overlap(
 # ---------------------------------------------------------------------------
 # Repr helper
 # ---------------------------------------------------------------------------
-
-
-def _fmt_coeff(a: complex, threshold: float = 1e-9) -> str:
-    """Format a complex amplitude for display: real-only, imag-only, or (r+ij)."""
-    r, i = a.real, a.imag
-    if abs(i) < threshold:
-        return f"{r:.4f}"
-    if abs(r) < threshold:
-        return f"{i:.4f}i"
-    return f"({r:.4f}{i:+.4f}i)"
 
 
 # ---------------------------------------------------------------------------
@@ -336,8 +327,8 @@ class Statevector(State):
                 digits.append(tmp % d)
                 tmp //= d
             ket = "".join(map(str, reversed(digits)))
-            terms.append(f"{_fmt_coeff(amp)}|{ket}⟩")
-        return " + ".join(terms) if terms else "0"
+            terms.append(f"{format_coefficient(amp, spec='.4f')}|{ket}⟩")
+        return join_terms(elide(terms))
 
 
 # ---------------------------------------------------------------------------

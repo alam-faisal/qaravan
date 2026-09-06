@@ -4,7 +4,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import reduce
 import numpy as np
-from qaravan.core._repr import elide, format_coefficient, join_terms
+from qaravan.core._repr import (
+    as_math,
+    elide,
+    format_coefficient,
+    join_terms,
+    latex_pauli_string,
+    latex_term,
+)
 from qaravan.core.base import Observable
 
 PAULI_MATRICES: dict[str, np.ndarray] = {
@@ -99,6 +106,9 @@ class PauliString(Observable):
             return self.string
         return f"{format_coefficient(self.coeff)} {self.string}"
 
+    def _repr_latex_(self) -> str:
+        return as_math(latex_term(self.coeff, latex_pauli_string(self.string)))
+
 
 class PauliSum(Observable):
     """Linear combination of PauliStrings. All terms must have the same length."""
@@ -175,6 +185,10 @@ class PauliSum(Observable):
 
     def __repr__(self) -> str:
         return join_terms(elide([repr(t) for t in self.terms]))
+
+    def _repr_latex_(self) -> str:
+        parts = [latex_term(t.coeff, latex_pauli_string(t.string)) for t in self.terms]
+        return as_math(join_terms(elide(parts)))
 
 
 @dataclass

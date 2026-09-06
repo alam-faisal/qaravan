@@ -4,7 +4,13 @@ from __future__ import annotations
 import copy
 import numpy as np
 from qaravan.backends._ncon_compat import ncon, permute
-from qaravan.core._repr import elide, format_coefficient, join_terms
+from qaravan.core._repr import (
+    as_math,
+    elide,
+    format_coefficient,
+    join_terms,
+    latex_coefficient,
+)
 from qaravan.core.base import (
     Gate,
     IncompatibleStateError,
@@ -316,19 +322,33 @@ class Statevector(State):
         """Flat statevector, shape (local_dim**num_sites,), C-order."""
         return self._tensor.reshape(self.local_dim**self.num_sites)
 
-    def __repr__(self) -> str:
+    def _nonzero_amplitudes(self, threshold: float = 1e-9) -> list[tuple[str, complex]]:
+        """(ket digits, amplitude) for the populated basis states, most significant digit first."""
         d, n = self.local_dim, self.num_sites
-        terms = []
-        for idx, amp in enumerate(self.to_array()):
-            if abs(amp) < 1e-9:
+        populated = []
+        for index, amp in enumerate(self.to_array()):
+            if abs(amp) < threshold:
                 continue
-            digits, tmp = [], idx
+            digits, remainder = [], index
             for _ in range(n):
-                digits.append(tmp % d)
-                tmp //= d
-            ket = "".join(map(str, reversed(digits)))
-            terms.append(f"{format_coefficient(amp, spec='.4f')}|{ket}⟩")
-        return join_terms(elide(terms))
+                digits.append(remainder % d)
+                remainder //= d
+            populated.append(("".join(map(str, reversed(digits))), amp))
+        return populated
+
+    def __repr__(self) -> str:
+        parts = [
+            f"{format_coefficient(amp, spec='.4f')}|{ket}⟩"
+            for ket, amp in self._nonzero_amplitudes()
+        ]
+        return join_terms(elide(parts))
+
+    def _repr_latex_(self) -> str:
+        parts = [
+            f"{latex_coefficient(amp, '.4f')} \\, \\lvert {ket} \\rangle"
+            for ket, amp in self._nonzero_amplitudes()
+        ]
+        return as_math(join_terms(elide(parts)))
 
 
 # ---------------------------------------------------------------------------

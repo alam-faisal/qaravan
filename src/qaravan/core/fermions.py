@@ -3,7 +3,15 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
-from qaravan.core._repr import elide, format_coefficient, join_terms
+from qaravan.core._repr import (
+    as_math,
+    elide,
+    format_coefficient,
+    join_terms,
+    latex_ladder_ops,
+    latex_majorana_ops,
+    latex_term,
+)
 from qaravan.core.observables import (
     HamiltonianTerm,
     PauliString,
@@ -124,6 +132,9 @@ class FermionicTerm:
             return ops_str
         return f"{format_coefficient(self.coeff)} {ops_str}"
 
+    def _repr_latex_(self) -> str:
+        return as_math(latex_term(self.coeff, latex_ladder_ops(self.ops)))
+
 
 def c(mode: int) -> FermionicTerm:
     """Annihilation operator on mode, as a length-1 FermionicTerm."""
@@ -210,6 +221,10 @@ class FermionicSum:
 
     def __repr__(self) -> str:
         return join_terms(elide([repr(term) for term in self.terms]))
+
+    def _repr_latex_(self) -> str:
+        parts = [latex_term(t.coeff, latex_ladder_ops(t.ops)) for t in self.terms]
+        return as_math(join_terms(elide(parts)))
 
     def encode(self, encoding: FermionicEncoding) -> PauliSum:
         """Apply a fermion-to-qubit encoding, converting the abstract fermionic algebra
@@ -303,6 +318,9 @@ class MajoranaTerm:
             return ops_str
         return f"{format_coefficient(self.coeff)} {ops_str}"
 
+    def _repr_latex_(self) -> str:
+        return as_math(latex_term(self.coeff, latex_majorana_ops(self.ops)))
+
 
 @dataclass
 class MajoranaSum:
@@ -327,6 +345,10 @@ class MajoranaSum:
 
     def __rmul__(self, scalar: complex) -> MajoranaSum:
         return self.__mul__(scalar)
+
+    def _repr_latex_(self) -> str:
+        parts = [latex_term(t.coeff, latex_majorana_ops(t.ops)) for t in self.terms]
+        return as_math(join_terms(elide(parts)))
 
     def encode(self, encoding: FermionicEncoding) -> PauliSum:
         """Apply a fermion-to-qubit encoding. Returns a full-register PauliSum ready for

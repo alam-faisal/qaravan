@@ -48,6 +48,11 @@ class Hamiltonian:
         """Header naming the model, then the algebra it embeds to."""
         return f"{type(self).__name__}(num_sites={self.num_sites})\n{self.as_observable()!r}"
 
+    def _repr_latex_(self) -> str:
+        """Model name, then the algebra it embeds to."""
+        body = self.as_observable()._repr_latex_().strip("$")
+        return f"$\\text{{{type(self).__name__}}}_{{{self.num_sites}}} = {body}$"
+
 
 # ---------------------------------------------------------------------------
 # TFI

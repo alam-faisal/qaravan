@@ -91,11 +91,26 @@ class FermionicTerm:
     def __rmul__(self, scalar: complex) -> FermionicTerm:
         return self.__mul__(scalar)
 
-    def to_majorana(self) -> MajoranaSum:
+    def to_majorana(self, num_fermionic_modes: int | None = None) -> MajoranaSum:
         """Rewrite in the Majorana basis (c_k = (gamma_2k + i*gamma_2k+1)/2,
         c-dagger_k = (gamma_2k - i*gamma_2k+1)/2), substituted and distributed over the
-        product. Expands to up to 2**len(self.ops) MajoranaTerms."""
-        num_modes = max((mode for mode, _ in self.ops), default=-1) + 1
+        product. Expands to up to 2**len(self.ops) MajoranaTerms.
+
+        The Majorana basis is defined relative to a register, so num_fermionic_modes is part
+        of the transform. It defaults to the smallest register this term fits in, which is
+        only the right answer when the term touches the top mode -- pass it explicitly to
+        place the term in a larger register, e.g. before adding MajoranaSums together.
+        """
+        highest_mode = max((mode for mode, _ in self.ops), default=-1)
+        if num_fermionic_modes is None:
+            num_modes = highest_mode + 1
+        elif num_fermionic_modes <= highest_mode:
+            raise ValueError(
+                f"Term acts on mode {highest_mode}, which needs at least "
+                f"{highest_mode + 1} modes; got num_fermionic_modes={num_fermionic_modes}."
+            )
+        else:
+            num_modes = num_fermionic_modes
         expansions = [MajoranaTerm(self.coeff, [])]
         for mode, is_dagger in self.ops:
             sign = -1j if is_dagger else 1j

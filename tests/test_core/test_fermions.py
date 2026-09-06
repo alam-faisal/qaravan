@@ -425,3 +425,29 @@ def test_fermionic_term_normal_order_fans_out():
 
 def test_fermionic_term_normal_order_vanishes():
     assert (cdag(0) @ cdag(0)).normal_order() == []
+
+
+def test_to_majorana_defaults_to_the_smallest_register():
+    assert (cdag(0) @ c(2)).to_majorana().num_fermionic_modes == 3
+
+
+def test_to_majorana_places_the_term_in_a_larger_register():
+    """The Majorana basis is defined relative to a register, so the count is an input."""
+    maj = (cdag(0) @ c(2)).to_majorana(num_fermionic_modes=6)
+    assert maj.num_fermionic_modes == 6
+    encoding = FermionicEncoding("jordan_wigner", num_modes=6)
+    assert maj.encode(encoding).num_sites == 6
+
+
+def test_to_majorana_lets_disjoint_terms_be_added():
+    """Without an explicit register the two summands disagree on num_fermionic_modes."""
+    low = (cdag(0) @ c(1)).to_majorana(num_fermionic_modes=4)
+    high = (cdag(2) @ c(3)).to_majorana(num_fermionic_modes=4)
+    assert (low + high).num_fermionic_modes == 4
+    with pytest.raises(ValueError, match="num_fermionic_modes"):
+        (cdag(0) @ c(1)).to_majorana() + (cdag(2) @ c(3)).to_majorana()
+
+
+def test_to_majorana_rejects_too_small_a_register():
+    with pytest.raises(ValueError, match="needs at least 3 modes"):
+        (cdag(0) @ c(2)).to_majorana(num_fermionic_modes=2)

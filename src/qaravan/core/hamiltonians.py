@@ -45,7 +45,8 @@ class Hamiltonian:
         return self.as_observable().to_matrix()
 
     def __repr__(self) -> str:
-        return repr(self.as_observable())
+        """Header naming the model, then the algebra it embeds to."""
+        return f"{type(self).__name__}(num_sites={self.num_sites})\n{self.as_observable()!r}"
 
 
 # ---------------------------------------------------------------------------

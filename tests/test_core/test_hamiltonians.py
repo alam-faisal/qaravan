@@ -26,10 +26,12 @@ def test_heisenberg_to_matrix_is_hermitian():
     assert np.allclose(mat, mat.conj().T, atol=1e-12)
 
 
-def test_hamiltonian_repr_matches_as_observable_repr():
+def test_hamiltonian_repr_headers_the_model_then_shows_the_algebra():
     tfi = TFI(3, J=1.0, h=0.5)
-    assert repr(tfi) == repr(tfi.as_observable())
-    assert str(tfi) == repr(tfi.as_observable())
+    header, algebra = repr(tfi).split("\n", 1)
+    assert header == "TFI(num_sites=3)"
+    assert algebra == repr(tfi.as_observable())
+    assert str(tfi) == repr(tfi)  # __str__ falls back to __repr__; neither is defined twice
 
 
 def test_as_observable_merges_duplicate_strings_without_changing_matrix():

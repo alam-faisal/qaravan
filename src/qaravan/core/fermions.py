@@ -219,13 +219,6 @@ class FermionicSum:
             for ops in set(canonical) | set(adjoint)
         )
 
-    def __repr__(self) -> str:
-        return join_terms(elide([repr(term) for term in self.terms]))
-
-    def _repr_latex_(self) -> str:
-        parts = [latex_term(t.coeff, latex_ladder_ops(t.ops)) for t in self.terms]
-        return as_math(join_terms(elide(parts)))
-
     def encode(self, encoding: FermionicEncoding) -> PauliSum:
         """Apply a fermion-to-qubit encoding, converting the abstract fermionic algebra
         into concrete qubit operators."""
@@ -236,6 +229,13 @@ class FermionicSum:
             )
         terms = encoding.encode_fermion_terms(self.terms)
         return embed_hamiltonian_terms(terms, encoding.num_qubits)
+
+    def __repr__(self) -> str:
+        return join_terms(elide([repr(term) for term in self.terms]))
+
+    def _repr_latex_(self) -> str:
+        parts = [latex_term(t.coeff, latex_ladder_ops(t.ops)) for t in self.terms]
+        return as_math(join_terms(elide(parts)))
 
 
 # ---------------------------------------------------------------------------
@@ -346,10 +346,6 @@ class MajoranaSum:
     def __rmul__(self, scalar: complex) -> MajoranaSum:
         return self.__mul__(scalar)
 
-    def _repr_latex_(self) -> str:
-        parts = [latex_term(t.coeff, latex_majorana_ops(t.ops)) for t in self.terms]
-        return as_math(join_terms(elide(parts)))
-
     def encode(self, encoding: FermionicEncoding) -> PauliSum:
         """Apply a fermion-to-qubit encoding. Returns a full-register PauliSum ready for
         state.expectation(), with no site restriction -- unlike FermionicSum.encode(), whose
@@ -363,6 +359,10 @@ class MajoranaSum:
 
     def __repr__(self) -> str:
         return join_terms(elide([repr(term) for term in self.terms]))
+
+    def _repr_latex_(self) -> str:
+        parts = [latex_term(t.coeff, latex_majorana_ops(t.ops)) for t in self.terms]
+        return as_math(join_terms(elide(parts)))
 
 
 def gamma(index: int) -> MajoranaTerm:

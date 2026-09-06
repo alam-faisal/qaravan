@@ -21,10 +21,8 @@ class FermionicTerm:
     """coeff * product of ladder operators in the given order, e.g. c-dagger_a c_b ->
     ops=[(a, True), (b, False)].
 
-    No implicit normal-ordering -- order is the caller's responsibility and is preserved
-    exactly through Jordan-Wigner, so two terms denoting the same operator can hold different
-    ops (n_a n_b vs n_b n_a). Compare them via FermionicSum.normal_order(). A single FermionicTerm
-    need not be individually Hermitian
+    No implicit normal-ordering. 
+    A single FermionicTerm need not be individually Hermitian
     """
 
     coeff: complex

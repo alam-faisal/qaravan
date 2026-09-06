@@ -309,8 +309,7 @@ class Statevector(State):
         tensor = sv_post._tensor.copy()
         for site, bit, target in zip(sorted_sites, outcome_str, sorted_targets):
             if int(bit) != target:
-                x_mat = np.array([[0, 1], [1, 0]], dtype=complex)
-                tensor = op_action(x_mat, [site], tensor, self.local_dim)
+                tensor = op_action(PAULI_MATRICES["X"], [site], tensor, self.local_dim)
 
         return Statevector(array=tensor.reshape(-1), local_dim=self.local_dim)
 

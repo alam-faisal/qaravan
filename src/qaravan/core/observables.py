@@ -234,6 +234,8 @@ def embed_hamiltonian_terms(terms: list[HamiltonianTerm], num_sites: int) -> Pau
     embedded: list[PauliString] = []
     for term in terms:
         embedded.extend(_embed_local_obs(term.local_obs, term.sites, num_sites))
+    if not embedded:  # every coupling was zero
+        return PauliSum([PauliString("I" * num_sites, 0.0)])
     return PauliSum(embedded).simplify()
 
 

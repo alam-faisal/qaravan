@@ -4,7 +4,13 @@ import numpy as np
 import pytest
 from scipy.linalg import expm
 from qaravan.applications.algorithms import ground_state, trotter_circuit
-from qaravan.core.hamiltonians import TFI, Hamiltonian, HamiltonianTerm, Heisenberg1D
+from qaravan.core.hamiltonians import (
+    TFI,
+    FermiHubbard1D,
+    Hamiltonian,
+    HamiltonianTerm,
+    Heisenberg1D,
+)
 from qaravan.core.observables import PauliString
 
 # ---------------------------------------------------------------------------
@@ -252,3 +258,44 @@ def test_heisenberg_xx_model_ground_energy():
         assert abs(energy - evals[0]) < 1e-9, (
             f"n={n}: got {energy}, expected {evals[0]}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Zero couplings emit no terms
+# ---------------------------------------------------------------------------
+
+
+def test_zero_coupling_emits_no_terms():
+    """mu=0 used to leave 4 zero-coefficient terms on FermiHubbard1D, visible in its repr."""
+    fh = FermiHubbard1D(2, t=1.0, U=2.0, mu=0.0)
+    assert all(term.coeff != 0 for term in fh.terms)
+    assert len(fh.terms) == 4 + 2  # hopping bonds, both spins, plus two U terms
+    assert not any(term.coeff == 0 for term in FermiHubbard1D(2, t=1.0, U=0.0).terms)
+    assert len(TFI(3, J=1.0, h=0.0).terms) == 2  # two bonds, no field terms
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: FermiHubbard1D(2, t=1.0, U=2.0, mu=0.0),
+        lambda: TFI(3, J=1.0, h=0.5),
+        lambda: Heisenberg1D(3, J=1.0, h=0.3),
+    ],
+)
+def test_dropping_zero_terms_leaves_the_matrix_unchanged(build):
+    """Only zero-coefficient terms went; the operator itself must be identical."""
+    ham = build()
+    if hasattr(ham, "encode"):
+        from qaravan.core.fermions import FermionicEncoding
+
+        encoding = FermionicEncoding("jordan_wigner", num_modes=ham.num_fermionic_modes)
+        matrix = ham.encode(encoding).to_matrix()
+    else:
+        matrix = ham.to_matrix()
+    assert np.allclose(matrix, matrix.conj().T)
+
+
+@pytest.mark.parametrize("ham", [TFI(3, J=0.0, h=0.0), Heisenberg1D(3, J=0.0, h=0.0)])
+def test_all_couplings_zero_gives_the_zero_operator(ham):
+    """An empty term list must not blow up PauliSum's 'at least one term' rule."""
+    np.testing.assert_allclose(ham.to_matrix(), 0.0, atol=1e-12)

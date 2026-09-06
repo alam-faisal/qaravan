@@ -75,11 +75,17 @@ class TFI(Hamiltonian):
         self.periodic = periodic
 
         lattice = LinearLattice(n, periodic=periodic)
-        bond_terms = [
-            HamiltonianTerm([i, j], PauliString("ZZ", -J))
-            for i, j in lattice.nn_pairs()
-        ]
-        field_terms = [HamiltonianTerm([i], PauliString("X", -h)) for i in range(n)]
+        bond_terms = (
+            [
+                HamiltonianTerm([i, j], PauliString("ZZ", -J))
+                for i, j in lattice.nn_pairs()
+            ]
+            if J
+            else []
+        )
+        field_terms = (
+            [HamiltonianTerm([i], PauliString("X", -h)) for i in range(n)] if h else []
+        )
 
         even_bonds = bond_terms[::2]
         odd_bonds = bond_terms[1::2]
@@ -113,16 +119,26 @@ class Heisenberg1D(Hamiltonian):
         self.periodic = periodic
 
         lattice = LinearLattice(n, periodic=periodic)
-        bond_terms = [
-            HamiltonianTerm(
-                [i, j],
-                PauliSum(
-                    [PauliString("XX", J), PauliString("YY", J), PauliString("ZZ", J)]
-                ),
-            )
-            for i, j in lattice.nn_pairs()
-        ]
-        field_terms = [HamiltonianTerm([i], PauliString("Z", -h)) for i in range(n)]
+        bond_terms = (
+            [
+                HamiltonianTerm(
+                    [i, j],
+                    PauliSum(
+                        [
+                            PauliString("XX", J),
+                            PauliString("YY", J),
+                            PauliString("ZZ", J),
+                        ]
+                    ),
+                )
+                for i, j in lattice.nn_pairs()
+            ]
+            if J
+            else []
+        )
+        field_terms = (
+            [HamiltonianTerm([i], PauliString("Z", -h)) for i in range(n)] if h else []
+        )
 
         even_bonds = bond_terms[::2]
         odd_bonds = bond_terms[1::2]
@@ -254,15 +270,12 @@ class FermiHubbard1D(FermionicHamiltonian):
             for a, b in odd_bonds
             for term in hopping(num_fermionic_sites + a, num_fermionic_sites + b, -t)
         ]
-        onsite = [
-            term
-            for j in range(num_fermionic_sites)
-            for term in [
-                mu * number(j),
-                mu * number(num_fermionic_sites + j),
-                *density_density(j, num_fermionic_sites + j, U),
-            ]
-        ]
+        onsite = []
+        for j in range(num_fermionic_sites):
+            if mu:
+                onsite += [mu * number(j), mu * number(num_fermionic_sites + j)]
+            if U:
+                onsite += density_density(j, num_fermionic_sites + j, U)
         return [up_even, up_odd, down_even, down_odd, onsite]
 
 
@@ -356,11 +369,15 @@ class AndersonImpurity(FermionicHamiltonian):
         eps_d: float, U: float, eps_levels: list[float], num_bath: int, mode
     ) -> list:
         """eps_d/U impurity terms plus per-level (bath or chain) on-site number terms."""
-        onsite = [eps_d * number(mode(0, 0)), eps_d * number(mode(0, 1))]
-        onsite += density_density(mode(0, 0), mode(0, 1), U)
+        onsite = []
+        if eps_d:
+            onsite += [eps_d * number(mode(0, 0)), eps_d * number(mode(0, 1))]
+        if U:
+            onsite += density_density(mode(0, 0), mode(0, 1), U)
         for k in range(1, num_bath + 1):
             level = eps_levels[k - 1]
-            onsite += [level * number(mode(k, 0)), level * number(mode(k, 1))]
+            if level:
+                onsite += [level * number(mode(k, 0)), level * number(mode(k, 1))]
         return onsite
 
     @staticmethod

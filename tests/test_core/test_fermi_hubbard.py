@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 from scipy.linalg import expm
 from qaravan.applications.algorithms import ground_state, trotter_circuit
-from qaravan.core.fermions import FermionicEncoding, interleaved_mode_order
-from qaravan.core.hamiltonians import FermiHubbard1D
+from qaravan.core.fermions import FermionicEncoding
+from qaravan.core.hamiltonians import FermiHubbard1D, interleaved_mode_order
 
 
 def _fh_encoding(num_fermionic_sites: int, ordering: str) -> FermionicEncoding:

@@ -10,18 +10,20 @@ from qaravan.core.fermions import (
     MajoranaSum,
     _is_real,
     _map_term,
-    bath_interleaved_mode_order,
     c,
     cdag,
     density_density,
     gamma,
     hopping,
-    interleaved_mode_order,
     jordan_wigner,
     jordan_wigner_hamiltonian,
     jordan_wigner_majorana,
     majorana_bilinear,
     number,
+)
+from qaravan.core.hamiltonians import (
+    bath_interleaved_mode_order,
+    interleaved_mode_order,
 )
 from qaravan.core.observables import PauliString, PauliSum
 
@@ -317,7 +319,10 @@ def test_normal_order_preserves_the_operator(num_modes):
 
 
 def test_is_hermitian_matches_the_jw_oracle_on_real_models():
-    from qaravan.core.hamiltonians import AndersonImpurity, FermiHubbard1D
+    from qaravan.core.hamiltonians import (
+        AndersonImpurity,
+        FermiHubbard1D,
+    )
 
     models = [FermiHubbard1D(L, t=1.0, U=2.0, mu=0.3) for L in [2, 3]]
     models.append(FermiHubbard1D(3, t=1.0, U=2.0, mu=0.3, periodic=True))

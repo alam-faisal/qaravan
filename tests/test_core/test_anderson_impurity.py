@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 from scipy.linalg import expm
 from qaravan.applications.algorithms import ground_state, trotter_circuit
-from qaravan.core.fermions import FermionicEncoding, bath_interleaved_mode_order
-from qaravan.core.hamiltonians import AndersonImpurity
+from qaravan.core.fermions import FermionicEncoding
+from qaravan.core.hamiltonians import AndersonImpurity, bath_interleaved_mode_order
 
 
 def _identity_encoding(aim: AndersonImpurity) -> FermionicEncoding:

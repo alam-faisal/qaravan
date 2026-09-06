@@ -188,6 +188,32 @@ class FermionicHamiltonian(FermionicSum):
 # ---------------------------------------------------------------------------
 
 
+def interleaved_mode_order(
+    num_fermionic_sites: int, annotate: bool = False
+) -> tuple[int, ...] | tuple[tuple[int, ...], str]:
+    """mode_order for FermiHubbard1D's interleaved layout: qubit 2j <- up_j, qubit 2j+1 <- down_j.
+
+    annotate=True also returns a human-readable qubit-layout string, e.g.
+    'q0=↑0 q1=↓0 q2=↑1 q3=↓1', as (mode_order, annotation).
+    """
+    order = [0] * (2 * num_fermionic_sites)
+    for j in range(num_fermionic_sites):
+        order[2 * j], order[2 * j + 1] = j, num_fermionic_sites + j
+    order = tuple(order)
+    if not annotate:
+        return order
+
+    def label(mode: int) -> str:
+        return (
+            f"↑{mode}"
+            if mode < num_fermionic_sites
+            else f"↓{mode - num_fermionic_sites}"
+        )
+
+    annotation = " ".join(f"q{q}={label(mode)}" for q, mode in enumerate(order))
+    return order, annotation
+
+
 class FermiHubbard1D(FermionicHamiltonian):
     """1D Fermi-Hubbard model: H = -t Σ_{j,σ}(c†c + h.c.) + U Σ_j n↑n↓ + μ Σ_{j,σ} n_{j,σ}."""
 
@@ -247,6 +273,34 @@ class FermiHubbard1D(FermionicHamiltonian):
 # ---------------------------------------------------------------------------
 # AndersonImpurity
 # ---------------------------------------------------------------------------
+
+
+def bath_interleaved_mode_order(
+    num_bath: int, annotate: bool = False
+) -> tuple[int, ...] | tuple[tuple[int, ...], str]:
+    """mode_order placing bath modes first (interleaved by spin: bath1_up, bath1_down,
+    bath2_up, bath2_down, ...), impurity last: qubits [b1up,b1down,...,bNup,bNdown,i_up,i_down].
+
+    annotate=True also returns a human-readable qubit-layout string, e.g.
+    'q0=b1↑ q1=b1↓ q2=b2↑ q3=b2↓ q4=i↑ q5=i↓', as (mode_order, annotation).
+    """
+    order = []
+    for k in range(1, num_bath + 1):
+        order.append(k)
+        order.append(num_bath + 1 + k)
+    order.append(0)
+    order.append(num_bath + 1)
+    order = tuple(order)
+    if not annotate:
+        return order
+
+    def label(mode: int) -> str:
+        spin_symbol = "↑" if mode < num_bath + 1 else "↓"
+        site = mode % (num_bath + 1)
+        return f"i{spin_symbol}" if site == 0 else f"b{site}{spin_symbol}"
+
+    annotation = " ".join(f"q{q}={label(mode)}" for q, mode in enumerate(order))
+    return order, annotation
 
 
 class AndersonImpurity(FermionicHamiltonian):

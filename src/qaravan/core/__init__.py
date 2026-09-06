@@ -14,13 +14,11 @@ from qaravan.core.fermions import (
     FermionicTerm,
     MajoranaSum,
     MajoranaTerm,
-    bath_interleaved_mode_order,
     c,
     cdag,
     density_density,
     gamma,
     hopping,
-    interleaved_mode_order,
     jordan_wigner_hamiltonian,
     jordan_wigner_majorana,
     majorana_bilinear,
@@ -38,6 +36,8 @@ from qaravan.core.hamiltonians import (
     Hamiltonian,
     HamiltonianTerm,
     Heisenberg1D,
+    bath_interleaved_mode_order,
+    interleaved_mode_order,
 )
 from qaravan.core.lattices import LinearLattice
 from qaravan.core.observables import (

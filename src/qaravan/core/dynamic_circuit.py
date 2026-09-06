@@ -3,6 +3,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
+import numpy as np
 from qaravan.core.base import State
 from qaravan.core.circuit import Circuit
 
@@ -31,6 +32,7 @@ class DynamicCircuit:
         self,
         init_state: State,
         observer: Callable[[int, State], None] | None = None,
+        rng: np.random.Generator | None = None,
     ) -> tuple[State, list[str]]:
         """Execute all rounds on init_state.
 
@@ -39,12 +41,16 @@ class DynamicCircuit:
 
         observer(round_index, state) is called after each round, for per-round diagnostics
         that the final state alone cannot give.
+
+        rng seeds every round's measurement; it is resolved once here, so one seed makes the
+        whole protocol reproducible.
         """
+        rng = np.random.default_rng(rng)
         sv = init_state
         outcomes: list[str] = []
         for round_index, rnd in enumerate(self.rounds):
             if rnd.meas_sites:
-                sv, outcome = sv.measure_and_collapse(rnd.meas_sites)
+                sv, outcome = sv.measure_and_collapse(rnd.meas_sites, rng)
                 outcomes.append(outcome)
             else:
                 outcome = ""

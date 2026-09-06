@@ -228,18 +228,22 @@ class Statevector(State):
             f"Statevector.expectation: unsupported observable type {type(observable)}"
         )
 
-    def sample(self, num_shots: int) -> np.ndarray:
+    def sample(
+        self, num_shots: int, rng: np.random.Generator | None = None
+    ) -> np.ndarray:
         """Born-rule sampling of full bitstrings; returns (num_shots, num_sites) int8 array."""
         probs = np.abs(self.to_array()) ** 2
-        flat = np.random.default_rng().choice(len(probs), size=num_shots, p=probs)
+        flat = np.random.default_rng(rng).choice(len(probs), size=num_shots, p=probs)
         bits = (flat[:, None] >> np.arange(self.num_sites - 1, -1, -1)) & 1
         return bits.astype(np.int8)
 
-    def measure_and_collapse(self, sites: list[int]) -> tuple[Statevector, str]:
+    def measure_and_collapse(
+        self, sites: list[int], rng: np.random.Generator | None = None
+    ) -> tuple[Statevector, str]:
         """Sample outcome from rdm diagonal, project+renorm; returned state has same num_sites."""
         sorted_sites = sorted(sites)
         probs = np.real(np.diag(self.rdm(sorted_sites)))
-        outcome_idx = np.random.default_rng().choice(len(probs), p=probs)
+        outcome_idx = np.random.default_rng(rng).choice(len(probs), p=probs)
         outcome_str = format(outcome_idx, f"0{len(sites)}b")
         return self.project_and_renorm(sorted_sites, outcome_str), outcome_str
 

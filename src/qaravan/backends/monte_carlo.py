@@ -82,7 +82,9 @@ class Walkers(State):
         """Average reduced density matrix (1/N) Σ_i ρ_i[sites]."""
         return np.mean([sv.rdm(sites) for sv in self._walkers], axis=0)
 
-    def measure_and_collapse(self, sites: list[int]) -> tuple[State, str]:
+    def measure_and_collapse(
+        self, sites: list[int], rng: np.random.Generator | None = None
+    ) -> tuple[State, str]:
         raise NotImplementedError(
             "Walkers does not support measure_and_collapse. "
             "Mid-circuit measurements on a trajectory ensemble are handled by "

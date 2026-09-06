@@ -180,3 +180,57 @@ def test_observer_is_optional():
     state, outcomes = circuit.run(Statevector(bitstring="0"))
     assert outcomes == []
     assert np.allclose(state.to_array(), np.array([0, 1], dtype=complex))
+
+
+# ---------------------------------------------------------------------------
+# run(rng=...) reproducibility
+# ---------------------------------------------------------------------------
+
+
+def _resampling_dqc(num_rounds: int) -> DynamicCircuit:
+    """Each round re-Hadamards qubit 0, so every round's measurement is a fresh coin flip."""
+    reset_to_plus = Circuit([X(0), H(0)], num_sites=1)
+    rounds = [DynamicRound(decoder=lambda _: Circuit([H(0)], num_sites=1))]
+    rounds.extend(
+        DynamicRound(meas_sites=[0], decoder=lambda outcome: reset_to_plus)
+        for _ in range(num_rounds)
+    )
+    return DynamicCircuit(rounds)
+
+
+def test_run_with_a_seed_is_reproducible():
+    dqc = _resampling_dqc(12)
+    initial = Statevector(bitstring="0")
+    first = dqc.run(initial, rng=np.random.default_rng(11))[1]
+    second = dqc.run(initial, rng=np.random.default_rng(11))[1]
+    assert first == second
+
+
+def test_run_advances_the_generator_across_rounds():
+    """A generator rebuilt per round would give the same bit every time."""
+    dqc = _resampling_dqc(24)
+    _, outcomes = dqc.run(Statevector(bitstring="0"), rng=np.random.default_rng(11))
+    assert set(outcomes) == {"0", "1"}
+
+
+def test_run_with_different_seeds_differs():
+    dqc = _resampling_dqc(24)
+    initial = Statevector(bitstring="0")
+    assert (
+        dqc.run(initial, rng=np.random.default_rng(1))[1]
+        != dqc.run(initial, rng=np.random.default_rng(2))[1]
+    )
+
+
+def test_measure_and_collapse_accepts_a_seed():
+    plus = Statevector(bitstring="000").apply(Circuit([H(0), H(1), H(2)], num_sites=3))
+    _, first = plus.measure_and_collapse([0, 1, 2], np.random.default_rng(7))
+    _, second = plus.measure_and_collapse([0, 1, 2], np.random.default_rng(7))
+    assert first == second
+
+
+def test_sample_accepts_a_seed():
+    plus = Statevector(bitstring="00").apply(Circuit([H(0), H(1)], num_sites=2))
+    first = plus.sample(50, rng=np.random.default_rng(4))
+    second = plus.sample(50, rng=np.random.default_rng(4))
+    assert np.array_equal(first, second)

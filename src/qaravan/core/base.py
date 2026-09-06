@@ -84,15 +84,24 @@ class State(ABC):
     def expectation(self, observable: Observable) -> complex: ...
 
     @abstractmethod
-    def sample(self, num_shots: int) -> np.ndarray:
-        """Sample measurement outcomes; returns (num_shots, num_sites) array."""
+    def sample(
+        self, num_shots: int, rng: np.random.Generator | None = None
+    ) -> np.ndarray:
+        """Sample measurement outcomes; returns (num_shots, num_sites) array.
+
+        rng: a Generator, an int seed, or None for fresh entropy.
+        """
         ...
 
     @abstractmethod
-    def measure_and_collapse(self, sites: list[int]) -> tuple[State, str]:
+    def measure_and_collapse(
+        self, sites: list[int], rng: np.random.Generator | None = None
+    ) -> tuple[State, str]:
         """Measure sites under Born rule, collapse to post-measurement state.
 
         Returns (post-measurement State with same num_sites, outcome bitstring).
+        Pass the same Generator across successive measurements; an int seed would
+        restart the stream each call.
         Unphysical State subclasses (Walkers, PauliSum) do not implement this —
         they raise NotImplementedError with a message pointing to their simulator.
         """

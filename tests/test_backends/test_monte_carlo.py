@@ -28,10 +28,78 @@ def bell_state() -> Statevector:
 # ---------------------------------------------------------------------------
 
 
-def test_walkers_measure_and_collapse_raises():
-    walkers = Walkers([Statevector(bitstring="0")])
-    with pytest.raises(NotImplementedError, match="MonteCarloSimulator"):
-        walkers.measure_and_collapse([0])
+def _projected_channel(walkers: list[Statevector], site: int) -> np.ndarray:
+    """sum_b P_b rho P_b for the ensemble, built directly from amplitudes."""
+    num_sites = walkers[0].num_sites
+    dim = 2**num_sites
+    rho = np.zeros((dim, dim), dtype=complex)
+    for state in walkers:
+        amplitudes = state.to_array()
+        rho += np.outer(amplitudes, amplitudes.conj()) / len(walkers)
+
+    channel = np.zeros_like(rho)
+    for bit in (0, 1):
+        diagonal = np.zeros(dim)
+        for index in range(dim):
+            if (index >> (num_sites - 1 - site)) & 1 == bit:
+                diagonal[index] = 1.0
+        projector = np.diag(diagonal)
+        channel += projector @ rho @ projector
+    return channel
+
+
+def test_walkers_measure_and_collapse_returns_one_outcome_per_walker():
+    walkers = Walkers([Statevector(bitstring=b) for b in ("00", "01", "10")])
+    collapsed, outcomes = walkers.measure_and_collapse([0], np.random.default_rng(0))
+    assert isinstance(collapsed, Walkers)
+    assert collapsed.num_walkers == 3
+    assert outcomes == ["0", "0", "1"]
+
+
+def test_walkers_measure_and_collapse_reproduces_the_channel():
+    """Independent per-walker collapse averages to sum_b P_b rho P_b, with no walker weights.
+
+    The 1/sqrt(p) renormalisation is cancelled by sampling that outcome with probability p.
+    Catches any attempt to share one outcome across walkers, which would post-select instead.
+    """
+    rng = np.random.default_rng(0)
+    members = []
+    for seed in range(4):
+        angles = np.random.default_rng(seed).uniform(0, np.pi, 2)
+        circuit = Circuit(
+            [RX(0, angles[0]), RX(1, angles[1]), CNOT([0, 1])], num_sites=2
+        )
+        members.append(Statevector(bitstring="00").apply(circuit))
+
+    expected = _projected_channel(members, site=0)
+
+    dim = 4
+    averaged = np.zeros((dim, dim), dtype=complex)
+    repeats = 3000
+    for _ in range(repeats):
+        collapsed, _ = Walkers(members).measure_and_collapse([0], rng)
+        for state in collapsed._walkers:
+            amplitudes = state.to_array()
+            averaged += np.outer(amplitudes, amplitudes.conj())
+    averaged /= repeats * len(members)
+
+    assert np.allclose(averaged, expected, atol=0.02)
+
+
+def test_walkers_measure_and_collapse_is_seeded():
+    members = [Statevector(bitstring="00").apply(Circuit([H(0)], num_sites=2))] * 6
+    first = Walkers(members).measure_and_collapse([0], np.random.default_rng(5))[1]
+    second = Walkers(members).measure_and_collapse([0], np.random.default_rng(5))[1]
+    assert first == second
+
+
+def test_walkers_measure_and_collapse_gives_walkers_independent_outcomes():
+    """Identical walkers must still draw independently, or the ensemble post-selects."""
+    plus = Statevector(bitstring="0").apply(Circuit([H(0)], num_sites=1))
+    _, outcomes = Walkers([plus] * 40).measure_and_collapse(
+        [0], np.random.default_rng(1)
+    )
+    assert set(outcomes) == {"0", "1"}
 
 
 def test_walkers_apply_raises():

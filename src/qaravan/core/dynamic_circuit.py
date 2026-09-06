@@ -61,6 +61,13 @@ class DynamicCircuit:
         for round_index, rnd in enumerate(self.rounds):
             if rnd.meas_sites:
                 sv, outcome = sv.measure_and_collapse(rnd.meas_sites, rng)
+                if not isinstance(outcome, str):
+                    raise TypeError(
+                        f"{type(sv).__name__}.measure_and_collapse returned "
+                        f"{type(outcome).__name__}, not one outcome string. A DynamicCircuit "
+                        "branches a single decoder on a single outcome, so an ensemble has to "
+                        "be run one trajectory at a time -- see noisy_dqc_trajectories."
+                    )
                 outcomes.append(outcome)
             else:
                 outcome = ""

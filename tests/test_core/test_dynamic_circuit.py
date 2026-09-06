@@ -1,6 +1,7 @@
 """Tests for DynamicRound and DynamicCircuit in core/dynamic_circuit.py."""
 
 import numpy as np
+import pytest
 from qaravan.backends.statevector import Statevector
 from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
@@ -234,3 +235,15 @@ def test_sample_accepts_a_seed():
     first = plus.sample(50, rng=np.random.default_rng(4))
     second = plus.sample(50, rng=np.random.default_rng(4))
     assert np.array_equal(first, second)
+
+
+def test_run_rejects_a_state_that_returns_many_outcomes():
+    """Walkers measures every walker independently, so there is no single branch to decode."""
+    from qaravan.backends.monte_carlo import Walkers
+
+    plus = Statevector(bitstring="0").apply(Circuit([H(0)], num_sites=1))
+    dqc = DynamicCircuit(
+        [DynamicRound(meas_sites=[0], decoder=lambda _: Circuit([], num_sites=1))]
+    )
+    with pytest.raises(TypeError, match="one outcome string"):
+        dqc.run(Walkers([plus] * 4))

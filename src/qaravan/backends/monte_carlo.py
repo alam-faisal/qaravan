@@ -73,12 +73,18 @@ class Walkers(State):
 
     def measure_and_collapse(
         self, sites: list[int], rng: np.random.Generator | None = None
-    ) -> tuple[State, str]:
-        raise NotImplementedError(
-            "Walkers does not support measure_and_collapse. "
-            "Mid-circuit measurements on a trajectory ensemble are handled by "
-            "MonteCarloSimulator, which collapses each walker independently."
-        )
+    ) -> tuple[Walkers, list[str]]:
+        """Measure sites on each walker independently: (collapsed ensemble, one outcome each).
+
+        Deliberately breaks State's `-> tuple[State, str]`: N walkers give N outcomes.
+        """
+        rng = np.random.default_rng(rng)
+        collapsed, outcomes = [], []
+        for walker in self._walkers:
+            state, outcome = walker.measure_and_collapse(sites, rng)
+            collapsed.append(state)
+            outcomes.append(outcome)
+        return Walkers(collapsed), outcomes
 
     def __repr__(self) -> str:
         return f"Walkers(num_walkers={self.num_walkers}, num_sites={self.num_sites})"

@@ -180,6 +180,15 @@ def qcp_layer(system_sites: list[int], omega: float, dt: float = 1.0) -> list[Ga
     return gates
 
 
+def reset_decoder(outcome: str, qubits: list[int]) -> list[Gate]:
+    """X on each of qubits that measured 1, which returns them all to |0>.
+
+    outcome is the bitstring from measuring qubits in that order, so this is only valid on the
+    already-collapsed state.
+    """
+    return [X(site) for site, bit in zip(qubits, outcome) if bit == "1"]
+
+
 def collisional_dqc(
     system_layer: list[Gate],
     ancilla_sites: list[int],
@@ -203,11 +212,10 @@ def collisional_dqc(
     ]
     evolution = Circuit(list(system_layer) + coupling_gates, num_sites=num_sites)
 
-    def reset(outcome: str) -> list[Gate]:
-        return [X(site) for site, bit in zip(ancilla_sites, outcome) if bit == "1"]
-
     def reset_then_evolve(outcome: str) -> Circuit:
-        return Circuit(reset(outcome) + evolution.gates, num_sites=num_sites)
+        return Circuit(
+            reset_decoder(outcome, ancilla_sites) + evolution.gates, num_sites=num_sites
+        )
 
     rounds = [DynamicRound(decoder=lambda _: evolution)]
     rounds.extend(
@@ -217,7 +225,9 @@ def collisional_dqc(
     rounds.append(
         DynamicRound(
             meas_sites=list(ancilla_sites),
-            decoder=lambda outcome: Circuit(reset(outcome), num_sites=num_sites),
+            decoder=lambda outcome: Circuit(
+                reset_decoder(outcome, ancilla_sites), num_sites=num_sites
+            ),
         )
     )
     return DynamicCircuit(rounds=rounds)

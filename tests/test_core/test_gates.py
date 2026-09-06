@@ -247,6 +247,11 @@ def test_all_qubit_gates_unitary(gate):
     assert is_unitary(gate.matrix)
 
 
+def test_sx_squares_to_x():
+    """Pins SX's phase: exp(-i pi X / 4) is also unitary and also squares to X up to phase."""
+    assert np.allclose(SX(0).matrix @ SX(0).matrix, X(0).matrix)
+
+
 # ---------------------------------------------------------------------------
 # ParametricGate dagger roundtrip
 # ---------------------------------------------------------------------------

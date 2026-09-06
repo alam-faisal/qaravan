@@ -133,9 +133,11 @@ class Tdg(MatrixGate):
 
 
 class SX(MatrixGate):
+    """sqrt(X): SX @ SX == X exactly, phase included."""
+
     def __init__(self, indices: int | list[int], time: float | None = None):
         super().__init__(
-            "SX", indices, (1 / np.sqrt(2)) * np.array([[1, -1j], [-1j, 1]]), time
+            "SX", indices, 0.5 * np.array([[1 + 1j, 1 - 1j], [1 - 1j, 1 + 1j]]), time
         )
 
 

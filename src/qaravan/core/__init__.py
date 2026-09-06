@@ -1,4 +1,4 @@
-from qaravan.core._repr import display_math, display_terms
+from qaravan.core._repr import display_math, display_terms, term_limit
 from qaravan.core.base import (
     Gate,
     NoiseModel,
@@ -51,6 +51,7 @@ from qaravan.core.observables import (
 __all__ = [
     "display_math",
     "display_terms",
+    "term_limit",
     "Gate",
     "State",
     "Observable",

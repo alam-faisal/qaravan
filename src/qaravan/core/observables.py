@@ -11,6 +11,7 @@ from qaravan.core._repr import (
     join_terms,
     latex_pauli_string,
     latex_term,
+    math_more,
 )
 from qaravan.core.base import Observable
 
@@ -188,7 +189,7 @@ class PauliSum(Observable):
 
     def _repr_latex_(self) -> str:
         parts = [latex_term(t.coeff, latex_pauli_string(t.string)) for t in self.terms]
-        return as_math(join_terms(elide(parts)))
+        return as_math(join_terms(elide(parts, marker=math_more)))
 
 
 @dataclass

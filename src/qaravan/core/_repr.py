@@ -12,6 +12,7 @@ Conventions:
 """
 
 from __future__ import annotations
+from contextlib import contextmanager
 
 
 def format_coefficient(
@@ -40,11 +41,39 @@ def join_terms(parts: list[str]) -> str:
     return joined
 
 
-def elide(parts: list[str], limit: int = 10) -> list[str]:
-    """First `limit` entries, then how many were dropped."""
-    if len(parts) <= limit:
+TERM_LIMIT = 10
+"""Terms a repr shows before eliding. None shows everything; see term_limit()."""
+
+_DEFAULT = object()
+
+
+def plain_more(count: int) -> str:
+    return f"... ({count} more)"
+
+
+def math_more(count: int) -> str:
+    """\\text{} wrapped -- raw '... (4 more)' in math mode typesets as italic variables."""
+    return rf"\text{{... ({count} more)}}"
+
+
+def elide(parts: list[str], limit=_DEFAULT, marker=plain_more) -> list[str]:
+    """First `limit` entries, then how many were dropped. limit=None keeps all of them."""
+    if limit is _DEFAULT:
+        limit = TERM_LIMIT
+    if limit is None or len(parts) <= limit:
         return parts
-    return [*parts[:limit], f"... ({len(parts) - limit} more)"]
+    return [*parts[:limit], marker(len(parts) - limit)]
+
+
+@contextmanager
+def term_limit(limit: int | None):
+    """Temporarily change how many terms reprs show. term_limit(None) shows everything."""
+    global TERM_LIMIT
+    previous, TERM_LIMIT = TERM_LIMIT, limit
+    try:
+        yield
+    finally:
+        TERM_LIMIT = previous
 
 
 def named(name: str, indices: list[int]) -> str:
@@ -122,7 +151,7 @@ def math_body(part) -> str:
     return latex().strip("$")
 
 
-def display_math(*parts, sep: str = r"\quad ") -> None:
+def display_math(*parts, sep: str = r"\quad ", limit=_DEFAULT) -> None:
     """Render strings and algebraic objects as ONE typeset line in Jupyter.
 
     The substitute for print() in a notebook: print writes to a stdout stream, which carries no
@@ -133,12 +162,15 @@ def display_math(*parts, sep: str = r"\quad ") -> None:
     """
     from IPython.display import Math, display
 
-    display(Math(sep.join(math_body(part) for part in parts)))
+    with term_limit(TERM_LIMIT if limit is _DEFAULT else limit):
+        body = sep.join(math_body(part) for part in parts)
+    display(Math(body))
 
 
-def display_terms(operator) -> None:
+def display_terms(operator, limit=_DEFAULT) -> None:
     """One typeset line per term, rather than one long sum -- readable for a 20-term model."""
     from IPython.display import Math, display
 
-    for term in operator.terms:
-        display(Math(math_body(term)))
+    shown = elide([math_body(term) for term in operator.terms], limit, math_more)
+    for line in shown:
+        display(Math(line))

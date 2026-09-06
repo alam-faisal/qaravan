@@ -60,10 +60,7 @@ class Hamiltonian:
 
 
 class TFI(Hamiltonian):
-    """Transverse-field Ising model: H = -J Σ_{<ij>} Z_i Z_j - h Σ_i X_i.
-
-    Open boundary unless periodic=True.
-    """
+    """Transverse-field Ising model: H = -J Σ_{<ij>} Z_i Z_j - h Σ_i X_i."""
 
     def __init__(
         self,
@@ -101,7 +98,6 @@ class Heisenberg1D(Hamiltonian):
 
     Bond gate is e^{-i dt J (XX+YY+ZZ)}: a single exact 4×4 gate, not decomposed into
     separate RXX/RYY/RZZ rotations (which would introduce O(dt²) intra-bond Trotter error).
-    Open boundary unless periodic=True.
     """
 
     def __init__(
@@ -278,8 +274,9 @@ class FermiHubbard1D(FermionicHamiltonian):
 def bath_interleaved_mode_order(
     num_bath: int, annotate: bool = False
 ) -> tuple[int, ...] | tuple[tuple[int, ...], str]:
-    """mode_order placing bath modes first (interleaved by spin: bath1_up, bath1_down,
-    bath2_up, bath2_down, ...), impurity last: qubits [b1up,b1down,...,bNup,bNdown,i_up,i_down].
+    """mode_order for AndersonImpurity, placing bath modes first
+    (interleaved by spin: bath1_up, bath1_down, bath2_up, bath2_down, ...), impurity last:
+    qubits [b1up,b1down,...,bNup,bNdown,i_up,i_down].
 
     annotate=True also returns a human-readable qubit-layout string, e.g.
     'q0=b1↑ q1=b1↓ q2=b2↑ q3=b2↓ q4=i↑ q5=i↓', as (mode_order, annotation).
@@ -304,8 +301,7 @@ def bath_interleaved_mode_order(
 
 
 class AndersonImpurity(FermionicHamiltonian):
-    """Single-orbital Anderson impurity model (star or chain geometry). Bare -- no qubit
-    encoding until .encode(encoding) is called, exactly like FermiHubbard1D.
+    """Single-orbital Anderson impurity model (star or chain geometry).
 
     Build via .star(...) or .chain(...); the plain constructor is for their internal use --
     the two geometries take different-shaped parameters and there is no conversion between

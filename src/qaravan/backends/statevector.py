@@ -10,6 +10,7 @@ from qaravan.core._repr import (
     format_coefficient,
     join_terms,
     latex_coefficient,
+    math_more,
 )
 from qaravan.core.base import (
     Gate,
@@ -348,7 +349,7 @@ class Statevector(State):
             f"{latex_coefficient(amp, '.4f')} \\, \\lvert {ket} \\rangle"
             for ket, amp in self._nonzero_amplitudes()
         ]
-        return as_math(join_terms(elide(parts)))
+        return as_math(join_terms(elide(parts, marker=math_more)))
 
 
 # ---------------------------------------------------------------------------

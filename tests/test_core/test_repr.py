@@ -180,3 +180,60 @@ def test_display_terms_emits_one_block_per_term(monkeypatch):
     monkeypatch.setattr(ipd, "display", lambda obj: shown.append(obj.data))
     display_terms(FermionicSum(hopping(0, 1, -1.0), 2))
     assert len(shown) == 2
+
+
+# ---------------------------------------------------------------------------
+# Elision: math-safe marker, and caller control
+# ---------------------------------------------------------------------------
+
+
+def _long_sum():
+    return PauliSum([PauliString("I" * i + "Z" + "I" * (14 - i)) for i in range(15)])
+
+
+def test_latex_elision_marker_is_text_not_math():
+    """Raw '... (4 more)' in math mode typesets as italic variables with the space lost."""
+    latex = _long_sum()._repr_latex_()
+    assert r"\text{... (5 more)}" in latex
+    assert "+ ... (" not in latex
+
+
+def test_term_limit_context_manager_controls_elision():
+    from qaravan.core._repr import TERM_LIMIT, term_limit
+
+    op = _long_sum()
+    assert "more)" in repr(op)
+    with term_limit(None):
+        assert "more)" not in repr(op)
+        assert "more" not in op._repr_latex_()
+    with term_limit(3):
+        assert "... (12 more)" in repr(op)
+    from qaravan.core import _repr
+
+    assert _repr.TERM_LIMIT == TERM_LIMIT  # restored on exit
+
+
+def test_term_limit_restores_after_an_exception():
+    from qaravan.core import _repr
+    from qaravan.core._repr import term_limit
+
+    before = _repr.TERM_LIMIT
+    with pytest.raises(RuntimeError):
+        with term_limit(2):
+            raise RuntimeError("boom")
+    assert _repr.TERM_LIMIT == before
+
+
+def test_elide_limit_none_keeps_everything():
+    assert elide(["a", "b", "c"], limit=None) == ["a", "b", "c"]
+    assert elide(["a", "b", "c"], limit=2) == ["a", "b", "... (1 more)"]
+
+
+def test_display_math_limit_is_per_call(monkeypatch):
+    import IPython.display as ipd
+    from qaravan.core._repr import display_math
+
+    shown = []
+    monkeypatch.setattr(ipd, "display", lambda obj: shown.append(obj.data))
+    display_math("all:", _long_sum(), limit=None)
+    assert "more" not in shown[0]

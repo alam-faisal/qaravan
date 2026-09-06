@@ -11,6 +11,7 @@ from qaravan.core._repr import (
     latex_ladder_ops,
     latex_majorana_ops,
     latex_term,
+    math_more,
 )
 from qaravan.core.observables import (
     HamiltonianTerm,
@@ -234,7 +235,7 @@ class FermionicSum:
 
     def _repr_latex_(self) -> str:
         parts = [latex_term(t.coeff, latex_ladder_ops(t.ops)) for t in self.terms]
-        return as_math(join_terms(elide(parts)))
+        return as_math(join_terms(elide(parts, marker=math_more)))
 
 
 # ---------------------------------------------------------------------------
@@ -361,7 +362,7 @@ class MajoranaSum:
 
     def _repr_latex_(self) -> str:
         parts = [latex_term(t.coeff, latex_majorana_ops(t.ops)) for t in self.terms]
-        return as_math(join_terms(elide(parts)))
+        return as_math(join_terms(elide(parts, marker=math_more)))
 
 
 def gamma(index: int) -> MajoranaTerm:

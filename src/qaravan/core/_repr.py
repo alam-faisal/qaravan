@@ -1,7 +1,6 @@
-"""Shared __repr__ helpers, plus the conventions they encode.
+"""Shared __repr__ helpers, plus conventions
 
-Imports nothing from qaravan, deliberately: base.py is the root ABC module and cannot import
-observables.py, so these cannot live beside PauliString. Pass in plain values, get strings back.
+Imports nothing from qaravan. Pass in plain values, get strings back.
 
 Conventions:
   - Define __repr__, never __str__ -- Python falls back str() -> repr() on its own.

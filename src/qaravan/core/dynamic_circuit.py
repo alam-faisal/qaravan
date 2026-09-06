@@ -33,6 +33,7 @@ class DynamicCircuit:
         init_state: State,
         observer: Callable[[int, State], None] | None = None,
         rng: np.random.Generator | None = None,
+        apply: Callable[[State, Circuit], State] | None = None,
     ) -> tuple[State, list[str]]:
         """Execute all rounds on init_state.
 
@@ -44,8 +45,17 @@ class DynamicCircuit:
 
         rng seeds every round's measurement; it is resolved once here, so one seed makes the
         whole protocol reproducible.
+
+        apply(state, circuit) -> state overrides how each round's circuit is executed; the
+        default is state.apply(circuit). Supply it to run the rounds on a different backend,
+        a noisy one for instance.
         """
         rng = np.random.default_rng(rng)
+        if apply is None:
+
+            def apply(state: State, circuit: Circuit) -> State:
+                return state.apply(circuit)
+
         sv = init_state
         outcomes: list[str] = []
         for round_index, rnd in enumerate(self.rounds):
@@ -56,7 +66,7 @@ class DynamicCircuit:
                 outcome = ""
             circuit = rnd.decoder(outcome)
             if circuit.gates:
-                sv = sv.apply(circuit)
+                sv = apply(sv, circuit)
             if observer is not None:
                 observer(round_index, sv)
         return sv, outcomes

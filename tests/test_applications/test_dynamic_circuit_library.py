@@ -10,12 +10,14 @@ from qaravan.applications.dynamic_circuit_library import (
     dissipative_ising_layer,
     ghz_fusion_dqc,
     interleaved_collisional_layout,
+    noisy_dqc_trajectories,
     qcp_layer,
     reset_decoder,
 )
 from qaravan.backends.statevector import Statevector
 from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
+from qaravan.core.noise import DepolarizingNoise
 from qaravan.core.observables import NumberOperator
 
 INV_SQRT2 = 1.0 / np.sqrt(2)
@@ -343,3 +345,97 @@ def test_reset_decoder_leaves_zeros_alone():
     assert decoder("00").gates == []
     assert len(decoder("10").gates) == 1
     assert decoder("10").gates[0].indices == [0]
+
+
+# ---------------------------------------------------------------------------
+# noisy_dqc_trajectories
+# ---------------------------------------------------------------------------
+
+
+def test_zero_noise_reproduces_the_noiseless_run_exactly():
+    """error_rate=0 must be a no-op, outcomes and amplitudes alike.
+
+    Measurement and noise use separately spawned streams, so a zero-rate sample_error -- which
+    still draws -- cannot shift the measurement record. Catches any leakage between the two.
+    """
+    num_system = 2
+    _, ancilla_sites, coupling_pairs = interleaved_collisional_layout(num_system)
+    num_sites = 2 * num_system
+    dqc = collisional_dqc([], ancilla_sites, coupling_pairs, 0.5, 6, num_sites)
+    initial = Statevector(bitstring="10" * num_system)
+
+    measurement_rng, _ = np.random.default_rng(0).spawn(2)
+    clean_state, clean_outcomes = dqc.run(initial, rng=measurement_rng)
+
+    walkers, records = noisy_dqc_trajectories(
+        dqc, initial, DepolarizingNoise(num_sites, 0.0), 1, rng=np.random.default_rng(0)
+    )
+    assert records[0] == clean_outcomes
+    assert np.allclose(walkers.rdm([0]), clean_state.rdm([0]))
+
+
+def test_ghz_fidelity_degrades_with_error_rate():
+    """Catches noise sampled once and reused, or applied to the wrong register.
+
+    Fidelity comes from the kept-qubit density matrix, not drop_sites: noise lands after the
+    measurement too, so the fusion qubits no longer hold the outcome that was recorded.
+    """
+    dqc = ghz_fusion_dqc(4, cluster_size=3)
+    initial = Statevector(bitstring="000000")
+    kept_sites = [0, 1, 4, 5]
+    ghz = np.zeros(2 ** len(kept_sites))
+    ghz[0] = ghz[-1] = INV_SQRT2
+
+    fidelities = []
+    for error_rate in [0.0, 0.05, 0.2]:
+        walkers, _ = noisy_dqc_trajectories(
+            dqc,
+            initial,
+            DepolarizingNoise(6, error_rate),
+            40,
+            rng=np.random.default_rng(5),
+        )
+        density = walkers.rdm(kept_sites)
+        fidelities.append(float(np.real(ghz @ density @ ghz)))
+
+    assert np.isclose(fidelities[0], 1.0, atol=1e-10)
+    assert fidelities[0] > fidelities[1] > fidelities[2]
+
+
+def test_noisy_trajectories_explore_different_branches():
+    """The ensemble is over noise and outcomes jointly, not noise alone."""
+    dqc = ghz_fusion_dqc(4, cluster_size=3)
+    _, records = noisy_dqc_trajectories(
+        dqc,
+        Statevector(bitstring="000000"),
+        DepolarizingNoise(6, 0.05),
+        40,
+        rng=np.random.default_rng(2),
+    )
+    assert len({tuple(record) for record in records}) > 1
+
+
+def test_noisy_dqc_returns_one_record_per_trajectory():
+    dqc = ghz_fusion_dqc(4, cluster_size=3)
+    walkers, records = noisy_dqc_trajectories(
+        dqc,
+        Statevector(bitstring="000000"),
+        DepolarizingNoise(6, 0.1),
+        7,
+        rng=np.random.default_rng(0),
+    )
+    assert walkers.num_walkers == 7
+    assert len(records) == 7
+
+
+def test_noisy_dqc_is_reproducible():
+    dqc = ghz_fusion_dqc(4, cluster_size=3)
+    initial = Statevector(bitstring="000000")
+    kwargs = dict(noise_model=DepolarizingNoise(6, 0.1), num_trajectories=5)
+    first = noisy_dqc_trajectories(
+        dqc, initial, rng=np.random.default_rng(3), **kwargs
+    )[1]
+    second = noisy_dqc_trajectories(
+        dqc, initial, rng=np.random.default_rng(3), **kwargs
+    )[1]
+    assert first == second

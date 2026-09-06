@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 from typing import Callable
+import numpy as np
 from qaravan.applications.circuit_library import (
     bell_basis_circuit,
     ghz_cluster_prep_circuit,
 )
-from qaravan.core.base import Gate
+from qaravan.backends.monte_carlo import MonteCarloSimulator, Walkers
+from qaravan.backends.statevector import Statevector
+from qaravan.core.base import Gate, NoiseModel, State
 from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
 from qaravan.core.gates import CRX, RX, RZZ, XY, X, Z
@@ -184,8 +187,7 @@ def reset_decoder(qubits: list[int], num_sites: int) -> Callable[[str], Circuit]
     """Decoder returning X on each of qubits that measured 1, so all of them end in |0>.
 
     Returns decoder(outcome) -> Circuit.
-    outcome: bitstring of len(qubits), in the order qubits were measured. Valid only on the
-    already-collapsed state, where the flip is deterministic rather than a Kraus map.
+    outcome: bitstring of len(qubits),
     """
 
     def decoder(outcome: str) -> Circuit:
@@ -208,10 +210,8 @@ def collisional_dqc(
     phi is the system-ancilla coupling angle, so a system qubit in |1> decays with
     probability sin^2(phi) per cycle. For a target Lindblad rate, phi = sqrt(rate * dt).
 
-    system_layer is the already-built H_S Trotter step, which is what lets one protocol serve
-    both the dissipative Ising model and the QCP. run() returns num_cycles outcomes, one per
-    cycle; the fraction of '1's in each is that cycle's activity. Every cycle ends with the
-    reset, the last one included, so the returned state always has its ancillas in |0>.
+    system_layer is the already-built H_S Trotter step
+    run() returns num_cycles outcomes, one per cycle
     """
     coupling_gates = [
         XY([system, ancilla], phi / 2) for system, ancilla in coupling_pairs
@@ -230,3 +230,42 @@ def collisional_dqc(
     )
     rounds.append(DynamicRound(meas_sites=list(ancilla_sites), decoder=reset))
     return DynamicCircuit(rounds=rounds)
+
+
+def noisy_dqc_trajectories(
+    dqc: DynamicCircuit,
+    initial_state: Statevector,
+    noise_model: NoiseModel,
+    num_trajectories: int,
+    rng: np.random.Generator | None = None,
+    observer: Callable[[int, State], None] | None = None,
+) -> tuple[Walkers, list[list[str]]]:
+    """Run a DynamicCircuit under sampled Pauli noise, once per trajectory.
+
+    Returns (ensemble of final states, one measurement record per trajectory).
+
+    The ensemble is over noise realisations and measurement outcomes jointly: each trajectory
+    is a single state following its own record down its own decoder branch, which is why the
+    rounds cannot be run on a Walkers ensemble directly.
+
+    Noise follows gates, so a round whose decoder returns no gates picks up none; idling
+    qubits are a duration-aware noise model's job, not this one's.
+
+    Measurement and noise draw from separately spawned streams, so an error_rate of 0 leaves
+    the measurement record identical to a noiseless run from the same seed -- sharing one
+    stream would desynchronise it, since sample_error draws even when it returns identity.
+    """
+    measurement_rng, noise_rng = np.random.default_rng(rng).spawn(2)
+
+    def apply_noisily(state: State, circuit: Circuit) -> State:
+        return MonteCarloSimulator(circuit, state, noise_model, rng=noise_rng).run_one()
+
+    finals = []
+    records = []
+    for _ in range(num_trajectories):
+        final, outcomes = dqc.run(
+            initial_state, observer=observer, rng=measurement_rng, apply=apply_noisily
+        )
+        finals.append(final)
+        records.append(outcomes)
+    return Walkers(finals), records

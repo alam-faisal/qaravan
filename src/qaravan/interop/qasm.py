@@ -1,11 +1,10 @@
-"""Parse unitary-only OpenQASM 2 text into a Qaravan Circuit -- a text-based sibling to
-interop/magritte.py's protobuf/JSON path, not a general-purpose QASM parser. Built for the
-dialect Magritte's own QASM exporter emits (h, x, y, z, s, sdg, t, tdg, sx, cx, cz, rx, ry, rz,
-rzz, xy, plus its custom rzz/xy gate blocks and global-phase comment), but that dialect isn't
-Magritte-exclusive: any unitary-only QASM2 using a `q`-named register and this gate vocabulary
-parses the same way -- Qaravan has no classical-register/measurement concept in this pipeline,
-so `creg`/`measure` are permanently out of scope, not a gap. See
-proposals/2026-08-21-task24-qasm-consumer.md for the design rationale.
+"""Parse unitary-only OpenQASM 2 text into a Circuit.
+
+Angles follow Qiskit's convention: a rotation named for generator P is exp(-i theta P / 2).
+Qaravan's rotations are full-angle, exp(-i theta P), so every angle is halved on import.
+
+Requires a `q`-named register. `creg`/`measure` are out of scope -- this pipeline has no
+classical-register concept.
 """
 
 from __future__ import annotations
@@ -87,11 +86,9 @@ def _eval_angle_node(node: ast.expr) -> float:
 
 
 def _parse_angle(text: str) -> float:
-    """Evaluate a QASM angle expression: numeric literals, `pi`, +-*/^ and parentheses --
-    not the full OpenQASM expression grammar (no sin/cos/sqrt/etc.), but enough for the
-    symbolic-pi expressions real compilers (Qiskit included) actually emit. Parsed via `ast`,
-    never `eval`, so a malformed or hostile angle string can't execute anything -- it just
-    fails to match the allowed node types above.
+    """Evaluate a QASM angle expression: numeric literals, `pi`, + - * / ** and parentheses.
+
+    Parsed via `ast`, never `eval`, so only those node types can appear; sin/cos/sqrt raise.
     """
     try:
         tree = ast.parse(text, mode="eval").body
@@ -114,11 +111,10 @@ def _parse_qubits(text: str) -> list[int]:
 
 
 def _gate_from_instruction(name: str, angle: str | None, qubits: list[int]):
-    """One parsed (gate_name, angle, qubits) triple -> one Qaravan Gate.
+    """One parsed (gate_name, angle, qubits) triple -> one Gate.
 
-    angle is Magritte's own half-angle theta (raw QASM parameter text, or None for a fixed
-    gate); halved here to match Qaravan's full-angle convention, exactly interop/magritte.py's
-    `gate.angle / 2`.
+    angle is the raw QASM parameter text, or None for a fixed gate; it is halved to convert
+    Qiskit's convention to Qaravan's (see module docstring).
     """
     if angle is None:
         table = _ONE_QUBIT_FIXED if len(qubits) == 1 else _TWO_QUBIT_FIXED
@@ -142,9 +138,8 @@ def _check_qreg(line: str, num_sites: int) -> None:
 
 
 def _skip_gate_block(first_line: str, lines: Iterator[str]) -> None:
-    """Skip a `gate <name>(...) ... { ... }` declaration by brace depth, without ever
-    interpreting its body -- rzz/xy's blocks are recognized and dispatched by invocation
-    name alone (see module docstring)."""
+    """Skip a `gate <name>(...) ... { ... }` declaration by brace depth, without interpreting
+    its body -- declared gates are dispatched by invocation name alone."""
     depth = first_line.count("{") - first_line.count("}")
     while depth > 0:
         next_line = next(lines)
@@ -152,12 +147,11 @@ def _skip_gate_block(first_line: str, lines: Iterator[str]) -> None:
 
 
 def from_unitary_qasm(qasm_text: str, num_sites: int) -> Circuit:
-    """Parse unitary-only QASM text (see module docstring) into a Qaravan Circuit.
+    """Parse unitary-only QASM text into a Circuit.
 
-    Recognizes header/qreg/barrier lines, an unparsed angle-convention comment, an optional
-    `// global_phase = <value>` comment (absent means phase 0), and `gate rzz(...)`/
-    `gate xy(...)` custom blocks. Raises NotImplementedError by name for any other gate,
-    matching interop/magritte.py's convention.
+    Recognizes header/qreg/barrier lines, an optional `// global_phase = <value>` comment
+    (absent means phase 0), and `gate` declaration blocks. Raises NotImplementedError by name
+    for any gate outside the supported vocabulary.
     """
     gates = []
     global_phase = 0.0

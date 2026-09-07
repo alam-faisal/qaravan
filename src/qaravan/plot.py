@@ -1,7 +1,19 @@
-"""Matplotlib style configuration for Qaravan notebooks and scripts."""
+"""Matplotlib styles and Gatefold-backed circuit plotting."""
 
 import matplotlib.pyplot as plt
-import scienceplots  # noqa: F401  — registers 'science' style on import
+from gatefold import Item, Layer, Palette, StyleSpec
+from gatefold import plot_circuit as plot_gatefold_circuit
+from matplotlib.axes import Axes
+from qaravan.core.circuit import Circuit
+from qaravan.core.gates import ParametricGate
+
+QARAVAN_PALETTE = Palette(
+    styles={
+        "default": StyleSpec(fill="#4C6EF5"),
+        "single": StyleSpec(fill="#5F3DC4"),
+        "multi": StyleSpec(fill="#087F5B"),
+    }
+)
 
 
 def set_style(
@@ -21,6 +33,8 @@ def set_style(
     ytick_left: bool = False,
 ) -> None:
     """Apply the Qaravan matplotlib style (scienceplots 'science' + grid, no LaTeX)."""
+    import scienceplots  # noqa: F401  — registers 'science' style on import
+
     plt.style.use(["science", "grid"])
     plt.rcParams["text.usetex"] = False
     plt.rcParams["image.cmap"] = "cividis"
@@ -42,3 +56,42 @@ def set_style(
     plt.rcParams["ytick.right"] = ytick_right
     plt.rcParams["axes.spines.left"] = spines_left
     plt.rcParams["ytick.left"] = ytick_left
+
+
+def _gate_label(gate: ParametricGate) -> str:
+    params = ", ".join(f"{param:.2g}" for param in gate.params)
+    return rf"${gate.name}({params})$"
+
+
+def circuit_to_layers(circuit: Circuit) -> list[Layer]:
+    """Convert a circuit to Gatefold layers without changing its cached layers."""
+    layered_circuit = circuit.copy()
+    layered_circuit.construct_layers()
+
+    layers = []
+    for gate_layer in layered_circuit.layers:
+        items = []
+        for gate in gate_layer:
+            label = _gate_label(gate) if isinstance(gate, ParametricGate) else gate.name
+            style = "single" if gate.num_sites == 1 else "multi"
+            items.append(Item(tuple(str(site) for site in gate.indices), label, style))
+        layers.append(Layer(items))
+    return layers
+
+
+def plot_circuit(
+    circuit: Circuit,
+    *,
+    ax: Axes | None = None,
+    figsize: tuple[float, float] | None = None,
+    palette: Palette = QARAVAN_PALETTE,
+) -> Axes:
+    """Draw a circuit and return its Matplotlib axes."""
+    qubit_labels = [str(site) for site in range(circuit.num_sites)]
+    return plot_gatefold_circuit(
+        circuit_to_layers(circuit),
+        qubit_labels=qubit_labels,
+        palette=palette,
+        ax=ax,
+        figsize=figsize,
+    )

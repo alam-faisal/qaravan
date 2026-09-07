@@ -13,6 +13,7 @@ dependencies = [
     "scipy>=1.10,<2.0",
     "matplotlib>=3.7,<4.0",
     "ncon>=2.0",
+    "gatefold>=1.0,<2.0",
 ]
 
 [project.optional-dependencies]

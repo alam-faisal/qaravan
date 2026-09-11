@@ -327,102 +327,154 @@ class AndersonImpurity(FermionicHamiltonian):
     def __init__(
         self,
         num_bath: int,
-        eps_d: float,
-        U: float,
+        onsite_impurity_energy: float,
+        onsite_impurity_repulsion: float,
         topology: str,
         terms: list,
         groups: list[list],
     ):
         self.num_bath = num_bath
-        self.eps_d = eps_d
-        self.U = U
+        self.onsite_impurity_energy = onsite_impurity_energy
+        self.onsite_impurity_repulsion = onsite_impurity_repulsion
         self.topology = topology
         super().__init__(terms, 2 * (num_bath + 1), groups)
 
     @classmethod
     def star(
-        cls, eps_d: float, U: float, eps_bath: list[float], V: list[float]
+        cls,
+        onsite_impurity_energy: float,
+        onsite_impurity_repulsion: float,
+        onsite_bath_energy: list[float],
+        impurity_bath_hopping: list[float],
     ) -> Self:
-        """H = Himp + Hbath + Hhyb: impurity coupled directly to each of len(eps_bath) bath
-        modes via its own V_k; bath modes never couple to each other."""
-        groups = cls._star_groups(eps_d, U, eps_bath, V)
+        """H = Himp + Hbath + Hhyb: impurity coupled directly to each of the
+        len(onsite_bath_energy) bath modes via its own impurity_bath_hopping[k]; bath modes
+        never couple to each other."""
+        groups = cls._star_groups(
+            onsite_impurity_energy,
+            onsite_impurity_repulsion,
+            onsite_bath_energy,
+            impurity_bath_hopping,
+        )
         terms = [term for group in groups for term in group]
-        return cls(len(eps_bath), eps_d, U, "star", terms, groups)
+        return cls(
+            len(onsite_bath_energy),
+            onsite_impurity_energy,
+            onsite_impurity_repulsion,
+            "star",
+            terms,
+            groups,
+        )
 
     @classmethod
     def chain(
         cls,
-        eps_d: float,
-        U: float,
-        eps_chain: list[float],
-        t_chain: list[float],
-        V: float,
+        onsite_impurity_energy: float,
+        onsite_impurity_repulsion: float,
+        onsite_bath_energy: list[float],
+        bath_bath_hopping: list[float],
+        impurity_bath_hopping: float,
     ) -> Self:
-        """H = Himp + chain-mapped Hbath+Hhyb: impurity coupled only to the first of
-        len(eps_chain) nearest-neighbor-hopping chain sites, via a single V."""
-        groups = cls._chain_groups(eps_d, U, eps_chain, t_chain, V)
+        """H = Himp + chain-mapped Hbath+Hhyb: impurity coupled only to the first of the
+        len(onsite_bath_energy) nearest-neighbor-hopping chain sites, via a single
+        impurity_bath_hopping."""
+        groups = cls._chain_groups(
+            onsite_impurity_energy,
+            onsite_impurity_repulsion,
+            onsite_bath_energy,
+            bath_bath_hopping,
+            impurity_bath_hopping,
+        )
         terms = [term for group in groups for term in group]
-        return cls(len(eps_chain), eps_d, U, "chain", terms, groups)
+        return cls(
+            len(onsite_bath_energy),
+            onsite_impurity_energy,
+            onsite_impurity_repulsion,
+            "chain",
+            terms,
+            groups,
+        )
 
     @staticmethod
     def _onsite_terms(
-        eps_d: float, U: float, eps_levels: list[float], num_bath: int, mode
+        onsite_impurity_energy: float,
+        onsite_impurity_repulsion: float,
+        onsite_bath_energy: list[float],
+        num_bath: int,
+        mode,
     ) -> list:
-        """eps_d/U impurity terms plus per-level (bath or chain) on-site number terms."""
+        """Impurity on-site energy and repulsion terms, plus one on-site number term per
+        bath level (bath or chain sites alike)."""
         onsite = []
-        if eps_d:
-            onsite += [eps_d * number(mode(0, 0)), eps_d * number(mode(0, 1))]
-        if U:
-            onsite += density_density(mode(0, 0), mode(0, 1), U)
+        if onsite_impurity_energy:
+            onsite += [
+                onsite_impurity_energy * number(mode(0, 0)),
+                onsite_impurity_energy * number(mode(0, 1)),
+            ]
+        if onsite_impurity_repulsion:
+            onsite += density_density(mode(0, 0), mode(0, 1), onsite_impurity_repulsion)
         for k in range(1, num_bath + 1):
-            level = eps_levels[k - 1]
+            level = onsite_bath_energy[k - 1]
             if level:
                 onsite += [level * number(mode(k, 0)), level * number(mode(k, 1))]
         return onsite
 
     @staticmethod
     def _star_groups(
-        eps_d: float, U: float, eps_bath: list[float], V: list[float]
+        onsite_impurity_energy: float,
+        onsite_impurity_repulsion: float,
+        onsite_bath_energy: list[float],
+        impurity_bath_hopping: list[float],
     ) -> list[list]:
         """AIM (star) Trotter-layer structure, in fermionic (pre-encoding) form: one layer
         per bath index (every hybridization bond touches the impurity, so none of them
         commute with each other), plus a final onsite layer. mode(site, spin) =
         spin*(num_bath+1) + site, site 0 = impurity, site k = bath k.
         """
-        if len(eps_bath) != len(V):
+        if len(onsite_bath_energy) != len(impurity_bath_hopping):
             raise ValueError(
-                f"eps_bath and V must have the same length; got {len(eps_bath)} and {len(V)}."
+                f"onsite_bath_energy and impurity_bath_hopping must have the same length; got {len(onsite_bath_energy)} and {len(impurity_bath_hopping)}."
             )
-        num_bath = len(eps_bath)
+        num_bath = len(onsite_bath_energy)
 
         def mode(site: int, spin: int) -> int:
             return spin * (num_bath + 1) + site
 
         hyb_layers = []
         for k in range(1, num_bath + 1):
-            layer = hopping(mode(0, 0), mode(k, 0), V[k - 1]) + hopping(
-                mode(0, 1), mode(k, 1), V[k - 1]
-            )
+            layer = hopping(
+                mode(0, 0), mode(k, 0), impurity_bath_hopping[k - 1]
+            ) + hopping(mode(0, 1), mode(k, 1), impurity_bath_hopping[k - 1])
             hyb_layers.append(layer)
 
-        onsite = AndersonImpurity._onsite_terms(eps_d, U, eps_bath, num_bath, mode)
+        onsite = AndersonImpurity._onsite_terms(
+            onsite_impurity_energy,
+            onsite_impurity_repulsion,
+            onsite_bath_energy,
+            num_bath,
+            mode,
+        )
         return hyb_layers + [onsite]
 
     @staticmethod
     def _chain_groups(
-        eps_d: float, U: float, eps_chain: list[float], t_chain: list[float], V: float
+        onsite_impurity_energy: float,
+        onsite_impurity_repulsion: float,
+        onsite_bath_energy: list[float],
+        bath_bath_hopping: list[float],
+        impurity_bath_hopping: float,
     ) -> list[list]:
         """AIM (chain) Trotter-layer structure, in fermionic (pre-encoding) form
         (up-even, up-odd, down-even, down-odd, onsite) -- structurally identical to
         FermiHubbard1D._groups, since the impurity is just site 0 of an ordinary open chain
-        of length num_bath+1, with V taking the place of a uniform hopping for the
-        impurity<->first-site bond.
+        of length num_bath+1, with impurity_bath_hopping taking the place of a uniform
+        hopping for the impurity<->first-site bond.
         """
-        num_bath = len(eps_chain)
+        num_bath = len(onsite_bath_energy)
         expected_t_len = max(num_bath - 1, 0)
-        if len(t_chain) != expected_t_len:
+        if len(bath_bath_hopping) != expected_t_len:
             raise ValueError(
-                f"t_chain must have length num_bath-1={expected_t_len}; got {len(t_chain)}."
+                f"bath_bath_hopping must have length num_bath-1={expected_t_len}; got {len(bath_bath_hopping)}."
             )
 
         def mode(site: int, spin: int) -> int:
@@ -433,7 +485,7 @@ class AndersonImpurity(FermionicHamiltonian):
             if num_bath >= 1
             else []
         )
-        couplings = [V, *t_chain]
+        couplings = [impurity_bath_hopping, *bath_bath_hopping]
         even_bonds, even_couplings = bonds[::2], couplings[::2]
         odd_bonds, odd_couplings = bonds[1::2], couplings[1::2]
 
@@ -449,5 +501,11 @@ class AndersonImpurity(FermionicHamiltonian):
         down_even = hop_layer(even_bonds, even_couplings, 1)
         down_odd = hop_layer(odd_bonds, odd_couplings, 1)
 
-        onsite = AndersonImpurity._onsite_terms(eps_d, U, eps_chain, num_bath, mode)
+        onsite = AndersonImpurity._onsite_terms(
+            onsite_impurity_energy,
+            onsite_impurity_repulsion,
+            onsite_bath_energy,
+            num_bath,
+            mode,
+        )
         return [up_even, up_odd, down_even, down_odd, onsite]

@@ -327,11 +327,20 @@ def test_is_hermitian_matches_the_jw_oracle_on_real_models():
     models = [FermiHubbard1D(L, t=1.0, U=2.0, mu=0.3) for L in [2, 3]]
     models.append(FermiHubbard1D(3, t=1.0, U=2.0, mu=0.3, periodic=True))
     models.append(
-        AndersonImpurity.star(eps_d=-1.0, U=2.0, eps_bath=[0.5, -0.5], V=[0.3, 0.4])
+        AndersonImpurity.star(
+            onsite_impurity_energy=-1.0,
+            onsite_impurity_repulsion=2.0,
+            onsite_bath_energy=[0.5, -0.5],
+            impurity_bath_hopping=[0.3, 0.4],
+        )
     )
     models.append(
         AndersonImpurity.chain(
-            eps_d=-1.0, U=2.0, eps_chain=[0.5, -0.5], t_chain=[0.2], V=0.3
+            onsite_impurity_energy=-1.0,
+            onsite_impurity_repulsion=2.0,
+            onsite_bath_energy=[0.5, -0.5],
+            bath_bath_hopping=[0.2],
+            impurity_bath_hopping=0.3,
         )
     )
     for model in models:
@@ -507,7 +516,12 @@ def _spinful_models():
     models = [FermiHubbard1D(L, t=1.0, U=2.0, mu=0.3) for L in [2, 3]]
     models.append(FermiHubbard1D(3, t=1.0, U=2.0, periodic=True))
     models.append(
-        AndersonImpurity.star(eps_d=-1.0, U=2.0, eps_bath=[0.5, -0.5], V=[0.3, 0.4])
+        AndersonImpurity.star(
+            onsite_impurity_energy=-1.0,
+            onsite_impurity_repulsion=2.0,
+            onsite_bath_energy=[0.5, -0.5],
+            impurity_bath_hopping=[0.3, 0.4],
+        )
     )
     return models
 

@@ -19,7 +19,10 @@ def _identity_encoding(aim: AndersonImpurity) -> FermionicEncoding:
 
 def test_star_num_modes():
     aim = AndersonImpurity.star(
-        eps_d=0.3, U=1.0, eps_bath=[0.1, -0.2, 0.4], V=[0.5, 0.3, 0.2]
+        onsite_impurity_energy=0.3,
+        onsite_impurity_repulsion=1.0,
+        onsite_bath_energy=[0.1, -0.2, 0.4],
+        impurity_bath_hopping=[0.5, 0.3, 0.2],
     )
     assert aim.num_bath == 3
     assert aim.num_fermionic_modes == 8  # 2 * (3 + 1)
@@ -27,27 +30,46 @@ def test_star_num_modes():
 
 def test_chain_num_modes():
     aim = AndersonImpurity.chain(
-        eps_d=0.3, U=1.0, eps_chain=[0.1, -0.2, 0.4], t_chain=[0.5, 0.3], V=0.6
+        onsite_impurity_energy=0.3,
+        onsite_impurity_repulsion=1.0,
+        onsite_bath_energy=[0.1, -0.2, 0.4],
+        bath_bath_hopping=[0.5, 0.3],
+        impurity_bath_hopping=0.6,
     )
     assert aim.num_bath == 3
     assert aim.num_fermionic_modes == 8
 
 
 def test_star_mismatched_lengths_raises():
-    with pytest.raises(ValueError, match="eps_bath"):
-        AndersonImpurity.star(eps_d=0.0, U=1.0, eps_bath=[0.1, 0.2], V=[0.5])
+    with pytest.raises(ValueError, match="onsite_bath_energy"):
+        AndersonImpurity.star(
+            onsite_impurity_energy=0.0,
+            onsite_impurity_repulsion=1.0,
+            onsite_bath_energy=[0.1, 0.2],
+            impurity_bath_hopping=[0.5],
+        )
 
 
-def test_chain_wrong_t_chain_length_raises():
-    with pytest.raises(ValueError, match="t_chain"):
+def test_chain_wrong_bath_hopping_length_raises():
+    with pytest.raises(ValueError, match="bath_bath_hopping"):
         AndersonImpurity.chain(
-            eps_d=0.0, U=1.0, eps_chain=[0.1, 0.2, 0.3], t_chain=[0.5], V=0.6
+            onsite_impurity_energy=0.0,
+            onsite_impurity_repulsion=1.0,
+            onsite_bath_energy=[0.1, 0.2, 0.3],
+            bath_bath_hopping=[0.5],
+            impurity_bath_hopping=0.6,
         )
 
 
 def test_chain_single_bath_needs_no_hopping():
-    # num_bath=1 -> t_chain must be empty (no neighbor to hop to)
-    aim = AndersonImpurity.chain(eps_d=0.0, U=1.0, eps_chain=[0.2], t_chain=[], V=0.6)
+    # num_bath=1 -> bath_bath_hopping must be empty (no neighbor to hop to)
+    aim = AndersonImpurity.chain(
+        onsite_impurity_energy=0.0,
+        onsite_impurity_repulsion=1.0,
+        onsite_bath_energy=[0.2],
+        bath_bath_hopping=[],
+        impurity_bath_hopping=0.6,
+    )
     assert aim.num_bath == 1
 
 
@@ -58,19 +80,28 @@ def test_chain_single_bath_needs_no_hopping():
 
 def test_star_hermitian():
     rng = np.random.default_rng(0)
-    eps_bath = rng.uniform(-1, 1, size=3).tolist()
-    V = rng.uniform(-1, 1, size=3).tolist()
-    aim = AndersonImpurity.star(eps_d=0.4, U=2.0, eps_bath=eps_bath, V=V)
+    bath_energies = rng.uniform(-1, 1, size=3).tolist()
+    hybridizations = rng.uniform(-1, 1, size=3).tolist()
+    aim = AndersonImpurity.star(
+        onsite_impurity_energy=0.4,
+        onsite_impurity_repulsion=2.0,
+        onsite_bath_energy=bath_energies,
+        impurity_bath_hopping=hybridizations,
+    )
     H = aim.encode(_identity_encoding(aim)).to_matrix()
     assert np.allclose(H, H.conj().T, atol=1e-12)
 
 
 def test_chain_hermitian():
     rng = np.random.default_rng(1)
-    eps_chain = rng.uniform(-1, 1, size=3).tolist()
-    t_chain = rng.uniform(-1, 1, size=2).tolist()
+    bath_energies = rng.uniform(-1, 1, size=3).tolist()
+    bath_hoppings = rng.uniform(-1, 1, size=2).tolist()
     aim = AndersonImpurity.chain(
-        eps_d=0.4, U=2.0, eps_chain=eps_chain, t_chain=t_chain, V=0.7
+        onsite_impurity_energy=0.4,
+        onsite_impurity_repulsion=2.0,
+        onsite_bath_energy=bath_energies,
+        bath_bath_hopping=bath_hoppings,
+        impurity_bath_hopping=0.7,
     )
     H = aim.encode(_identity_encoding(aim)).to_matrix()
     assert np.allclose(H, H.conj().T, atol=1e-12)
@@ -82,20 +113,35 @@ def test_chain_hermitian():
 
 
 def test_star_atomic_limit_spectrum():
-    eps_d, U = 0.7, 2.3
-    aim = AndersonImpurity.star(eps_d=eps_d, U=U, eps_bath=[], V=[])
+    impurity_energy, repulsion = 0.7, 2.3
+    aim = AndersonImpurity.star(
+        onsite_impurity_energy=impurity_energy,
+        onsite_impurity_repulsion=repulsion,
+        onsite_bath_energy=[],
+        impurity_bath_hopping=[],
+    )
     H = aim.encode(_identity_encoding(aim)).to_matrix()
     evals = np.sort(np.linalg.eigvalsh(H))
-    expected = np.sort([0.0, eps_d, eps_d, 2 * eps_d + U])
+    expected = np.sort(
+        [0.0, impurity_energy, impurity_energy, 2 * impurity_energy + repulsion]
+    )
     assert np.allclose(evals, expected, atol=1e-10)
 
 
 def test_chain_atomic_limit_spectrum():
-    eps_d, U = -0.5, 1.8
-    aim = AndersonImpurity.chain(eps_d=eps_d, U=U, eps_chain=[], t_chain=[], V=0.0)
+    impurity_energy, repulsion = -0.5, 1.8
+    aim = AndersonImpurity.chain(
+        onsite_impurity_energy=impurity_energy,
+        onsite_impurity_repulsion=repulsion,
+        onsite_bath_energy=[],
+        bath_bath_hopping=[],
+        impurity_bath_hopping=0.0,
+    )
     H = aim.encode(_identity_encoding(aim)).to_matrix()
     evals = np.sort(np.linalg.eigvalsh(H))
-    expected = np.sort([0.0, eps_d, eps_d, 2 * eps_d + U])
+    expected = np.sort(
+        [0.0, impurity_energy, impurity_energy, 2 * impurity_energy + repulsion]
+    )
     assert np.allclose(evals, expected, atol=1e-10)
 
 
@@ -105,9 +151,20 @@ def test_chain_atomic_limit_spectrum():
 
 
 def test_star_equals_chain_for_single_bath():
-    eps_d, U, eps_1, V = 0.2, 1.5, -0.3, 0.6
-    star = AndersonImpurity.star(eps_d=eps_d, U=U, eps_bath=[eps_1], V=[V])
-    chain = AndersonImpurity.chain(eps_d=eps_d, U=U, eps_chain=[eps_1], t_chain=[], V=V)
+    impurity_energy, repulsion, bath_energy, hybridization = 0.2, 1.5, -0.3, 0.6
+    star = AndersonImpurity.star(
+        onsite_impurity_energy=impurity_energy,
+        onsite_impurity_repulsion=repulsion,
+        onsite_bath_energy=[bath_energy],
+        impurity_bath_hopping=[hybridization],
+    )
+    chain = AndersonImpurity.chain(
+        onsite_impurity_energy=impurity_energy,
+        onsite_impurity_repulsion=repulsion,
+        onsite_bath_energy=[bath_energy],
+        bath_bath_hopping=[],
+        impurity_bath_hopping=hybridization,
+    )
     H_star = star.encode(_identity_encoding(star)).to_matrix()
     H_chain = chain.encode(_identity_encoding(chain)).to_matrix()
     assert np.allclose(
@@ -123,7 +180,12 @@ def test_star_equals_chain_for_single_bath():
 
 
 def test_star_fixed_particle_number_ground_state_has_correct_n():
-    aim = AndersonImpurity.star(eps_d=0.3, U=2.0, eps_bath=[0.1, -0.2], V=[0.5, 0.4])
+    aim = AndersonImpurity.star(
+        onsite_impurity_energy=0.3,
+        onsite_impurity_repulsion=2.0,
+        onsite_bath_energy=[0.1, -0.2],
+        impurity_bath_hopping=[0.5, 0.4],
+    )
     ham = aim.encode(_identity_encoding(aim))
     num_qubits = aim.num_fermionic_modes
     n_op = np.diag([float(bin(i).count("1")) for i in range(2**num_qubits)])
@@ -136,7 +198,11 @@ def test_star_fixed_particle_number_ground_state_has_correct_n():
 
 def test_chain_fixed_particle_number_ground_state_has_correct_n():
     aim = AndersonImpurity.chain(
-        eps_d=0.3, U=2.0, eps_chain=[0.1, -0.2], t_chain=[0.3], V=0.5
+        onsite_impurity_energy=0.3,
+        onsite_impurity_repulsion=2.0,
+        onsite_bath_energy=[0.1, -0.2],
+        bath_bath_hopping=[0.3],
+        impurity_bath_hopping=0.5,
     )
     ham = aim.encode(_identity_encoding(aim))
     num_qubits = aim.num_fermionic_modes
@@ -154,7 +220,12 @@ def test_chain_fixed_particle_number_ground_state_has_correct_n():
 
 
 def test_star_trotter_vs_propagator():
-    aim = AndersonImpurity.star(eps_d=0.3, U=1.5, eps_bath=[0.1, -0.2], V=[0.4, 0.3])
+    aim = AndersonImpurity.star(
+        onsite_impurity_energy=0.3,
+        onsite_impurity_repulsion=1.5,
+        onsite_bath_energy=[0.1, -0.2],
+        impurity_bath_hopping=[0.4, 0.3],
+    )
     ham = aim.encode(_identity_encoding(aim))
     dt = 0.01
     circ = trotter_circuit(ham, dt, order=2)
@@ -165,7 +236,11 @@ def test_star_trotter_vs_propagator():
 
 def test_chain_trotter_vs_propagator():
     aim = AndersonImpurity.chain(
-        eps_d=0.3, U=1.5, eps_chain=[0.1, -0.2], t_chain=[0.25], V=0.4
+        onsite_impurity_energy=0.3,
+        onsite_impurity_repulsion=1.5,
+        onsite_bath_energy=[0.1, -0.2],
+        bath_bath_hopping=[0.25],
+        impurity_bath_hopping=0.4,
     )
     ham = aim.encode(_identity_encoding(aim))
     dt = 0.01
@@ -210,7 +285,12 @@ def test_bath_interleaved_mode_order_annotate_returns_order_and_string():
 
 def test_bath_interleaved_mode_order_matches_stacked_spectrum():
     # Applying a different mode_order must not change the physics.
-    aim = AndersonImpurity.star(eps_d=0.3, U=2.0, eps_bath=[0.1, -0.2], V=[0.5, 0.4])
+    aim = AndersonImpurity.star(
+        onsite_impurity_energy=0.3,
+        onsite_impurity_repulsion=2.0,
+        onsite_bath_energy=[0.1, -0.2],
+        impurity_bath_hopping=[0.5, 0.4],
+    )
     stacked = FermionicEncoding("jordan_wigner", num_modes=aim.num_fermionic_modes)
     reordered = FermionicEncoding(
         "jordan_wigner",

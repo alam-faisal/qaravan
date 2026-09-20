@@ -320,6 +320,10 @@ def bath_interleaved_mode_order(
 class AndersonImpurity(FermionicHamiltonian):
     """Single-orbital Anderson impurity model (star or chain geometry).
 
+    H = -ε Σ_σ n_{0σ} + U n_{0↑} n_{0↓} - Σ_{k,σ} ε_k n_{kσ}
+    - Σ_{<ij>,σ} t_{ij} (c†_{iσ} c_{jσ} + h.c.). Arguments are the physicist's
+    ``t``, ``U``, ``ε``, so a positive ``onsite_impurity_energy`` lowers the impurity level.
+
     Build via .star(...) or .chain(...); the plain constructor is for their internal use --
     the two geometries take different-shaped parameters and there is no conversion between
     them (the star<->chain Lanczos mapping is not implemented here).
@@ -412,15 +416,15 @@ class AndersonImpurity(FermionicHamiltonian):
         onsite = []
         if onsite_impurity_energy:
             onsite += [
-                onsite_impurity_energy * number(mode(0, 0)),
-                onsite_impurity_energy * number(mode(0, 1)),
+                -onsite_impurity_energy * number(mode(0, 0)),
+                -onsite_impurity_energy * number(mode(0, 1)),
             ]
         if onsite_impurity_repulsion:
             onsite += density_density(mode(0, 0), mode(0, 1), onsite_impurity_repulsion)
         for k in range(1, num_bath + 1):
             level = onsite_bath_energy[k - 1]
             if level:
-                onsite += [level * number(mode(k, 0)), level * number(mode(k, 1))]
+                onsite += [-level * number(mode(k, 0)), -level * number(mode(k, 1))]
         return onsite
 
     @staticmethod
@@ -447,8 +451,8 @@ class AndersonImpurity(FermionicHamiltonian):
         hyb_layers = []
         for k in range(1, num_bath + 1):
             layer = hopping(
-                mode(0, 0), mode(k, 0), impurity_bath_hopping[k - 1]
-            ) + hopping(mode(0, 1), mode(k, 1), impurity_bath_hopping[k - 1])
+                mode(0, 0), mode(k, 0), -impurity_bath_hopping[k - 1]
+            ) + hopping(mode(0, 1), mode(k, 1), -impurity_bath_hopping[k - 1])
             hyb_layers.append(layer)
 
         onsite = AndersonImpurity._onsite_terms(
@@ -489,7 +493,7 @@ class AndersonImpurity(FermionicHamiltonian):
             if num_bath >= 1
             else []
         )
-        couplings = [impurity_bath_hopping, *bath_bath_hopping]
+        couplings = [-impurity_bath_hopping, *(-t for t in bath_bath_hopping)]
         even_bonds, even_couplings = bonds[::2], couplings[::2]
         odd_bonds, odd_couplings = bonds[1::2], couplings[1::2]
 

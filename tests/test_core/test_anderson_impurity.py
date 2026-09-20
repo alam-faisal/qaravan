@@ -123,7 +123,7 @@ def test_star_atomic_limit_spectrum():
     H = aim.encode(_identity_encoding(aim)).to_matrix()
     evals = np.sort(np.linalg.eigvalsh(H))
     expected = np.sort(
-        [0.0, impurity_energy, impurity_energy, 2 * impurity_energy + repulsion]
+        [0.0, -impurity_energy, -impurity_energy, -2 * impurity_energy + repulsion]
     )
     assert np.allclose(evals, expected, atol=1e-10)
 
@@ -140,9 +140,29 @@ def test_chain_atomic_limit_spectrum():
     H = aim.encode(_identity_encoding(aim)).to_matrix()
     evals = np.sort(np.linalg.eigvalsh(H))
     expected = np.sort(
-        [0.0, impurity_energy, impurity_energy, 2 * impurity_energy + repulsion]
+        [0.0, -impurity_energy, -impurity_energy, -2 * impurity_energy + repulsion]
     )
     assert np.allclose(evals, expected, atol=1e-10)
+
+
+def test_chain_single_particle_block_signs():
+    # H = -ε n - τ (c†c + h.c.): the one-particle block fixes all three signs at once.
+    impurity_energy, bath_energy, hybridization = 0.7, -0.3, 0.45
+    aim = AndersonImpurity.chain(
+        onsite_impurity_energy=impurity_energy,
+        onsite_impurity_repulsion=0.0,
+        onsite_bath_energy=[bath_energy],
+        bath_bath_hopping=[],
+        impurity_bath_hopping=hybridization,
+    )
+    H = aim.encode(_identity_encoding(aim)).to_matrix()
+    # modes (impurity↑, bath↑) = (0, 1); single occupancy is basis state 2**(n-1-mode)
+    up_modes = [2 ** (aim.num_fermionic_modes - 1 - mode) for mode in (0, 1)]
+    block = H[np.ix_(up_modes, up_modes)].real
+    expected = np.array(
+        [[-impurity_energy, -hybridization], [-hybridization, -bath_energy]]
+    )
+    assert np.allclose(block, expected, atol=1e-12)
 
 
 # ---------------------------------------------------------------------------

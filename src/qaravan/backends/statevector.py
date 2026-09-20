@@ -148,6 +148,43 @@ def _expectation_local_op(
 
 
 # ---------------------------------------------------------------------------
+# Matrix-free action of a PauliSum
+# ---------------------------------------------------------------------------
+
+
+def apply_pauli_sum(
+    pauli_sum: PauliSum,
+    vector: np.ndarray,
+    sector: np.ndarray | None = None,
+) -> np.ndarray:
+    """H|v⟩ via each term's bitmasks, never forming the 2^n × 2^n matrix.
+
+    Flat array in, flat array out -- not a Statevector, because with a sector the vector is
+    indexed by position within sector and is not a state on n qubits.
+
+    sector (ascending basis indices) restricts the whole operation to that subspace, so both
+    cost and memory scale with len(sector) rather than 2^n. As in
+    PauliSum.to_sector_matrix, images leaving the sector are dropped, which is exact only for
+    an operator that preserves it.
+    """
+    basis = (
+        np.arange(2**pauli_sum.num_sites, dtype=np.int64) if sector is None else sector
+    )
+    out = np.zeros(len(basis), dtype=complex)
+    for term in pauli_sum.terms:
+        x_mask, z_mask, n_y = term.bitmasks()
+        phase = term.coeff * (1j**n_y) * (-1.0) ** np.bitwise_count(basis & z_mask)
+        if sector is None:
+            out[basis ^ x_mask] += phase * vector
+            continue
+        images = basis ^ x_mask
+        rows = np.searchsorted(basis, images).clip(0, len(basis) - 1)
+        inside = basis[rows] == images
+        out[rows[inside]] += phase[inside] * vector[inside]
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Statevector
 # ---------------------------------------------------------------------------
 

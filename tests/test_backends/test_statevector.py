@@ -2,11 +2,15 @@
 
 import numpy as np
 import pytest
-from qaravan.backends.statevector import Statevector, StatevectorSimulator
+from qaravan.backends.statevector import (
+    Statevector,
+    StatevectorSimulator,
+    apply_pauli_sum,
+)
 from qaravan.core.base import IncompatibleNoiseError, IncompatibleStateError, NoiseModel
 from qaravan.core.circuit import Circuit
 from qaravan.core.gates import CNOT, H
-from qaravan.core.observables import LocalOp, Magnetization, PauliString
+from qaravan.core.observables import LocalOp, Magnetization, PauliString, PauliSum
 
 
 class _MinimalNoise(NoiseModel):
@@ -477,3 +481,57 @@ def test_statevector_reset_preserves_num_sites():
 def test_statevector_default_simulator():
     sv = Statevector(2)
     assert sv.default_simulator is StatevectorSimulator
+
+
+# ---------------------------------------------------------------------------
+# apply_pauli_sum
+# ---------------------------------------------------------------------------
+
+
+def _mixed_pauli_sum(num_sites: int) -> PauliSum:
+    """Complex coefficients and every Pauli character, so a transposed accumulation shows up."""
+    return PauliSum(
+        [
+            PauliString("XYIZII"[:num_sites].ljust(num_sites, "I"), 0.7 - 0.2j),
+            PauliString("ZZIIXY"[:num_sites].ljust(num_sites, "I"), -0.4),
+            PauliString("YIXIZI"[:num_sites].ljust(num_sites, "I"), 1.1j),
+            PauliString("I" * num_sites, 0.25),
+        ]
+    )
+
+
+def test_apply_pauli_sum_matches_the_dense_matvec():
+    """Catches a transposed accumulation, which is invisible for a Hermitian real-coefficient
+    operator on a real vector -- so both the sum and the vector here are complex."""
+    num_sites = 6
+    pauli_sum = _mixed_pauli_sum(num_sites)
+    rng = np.random.default_rng(0)
+    dim = 2**num_sites
+    vector = rng.normal(size=dim) + 1j * rng.normal(size=dim)
+    np.testing.assert_allclose(
+        apply_pauli_sum(pauli_sum, vector), pauli_sum.to_matrix() @ vector, atol=1e-12
+    )
+
+
+@pytest.mark.parametrize("num_particles", [1, 3, 5])
+def test_apply_pauli_sum_in_a_sector_matches_the_sector_matrix(num_particles):
+    """The sector path must agree with to_sector_matrix, whose own reference is dense-slice."""
+    num_sites = 6
+    terms = []
+    for site in range(num_sites - 1):
+        for pauli in ("X", "Y"):
+            string = ["I"] * num_sites
+            string[site] = string[site + 1] = pauli
+            terms.append(PauliString("".join(string), 0.5))
+    pauli_sum = PauliSum(terms)
+
+    indices = np.arange(2**num_sites, dtype=np.int64)
+    sector = np.flatnonzero(np.bitwise_count(indices) == num_particles)
+
+    rng = np.random.default_rng(1)
+    vector = rng.normal(size=len(sector)) + 1j * rng.normal(size=len(sector))
+    np.testing.assert_allclose(
+        apply_pauli_sum(pauli_sum, vector, sector),
+        pauli_sum.to_sector_matrix(sector) @ vector,
+        atol=1e-12,
+    )

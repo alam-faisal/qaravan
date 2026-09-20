@@ -3,8 +3,8 @@
 from __future__ import annotations
 import numpy as np
 from scipy.linalg import expm
-from scipy.sparse.linalg import eigsh
-from qaravan.backends.statevector import Statevector
+from scipy.sparse.linalg import LinearOperator, eigsh
+from qaravan.backends.statevector import Statevector, apply_pauli_sum
 from qaravan.core.circuit import Circuit
 from qaravan.core.fermions import FermionicEncoding
 from qaravan.core.gates import MatrixGate
@@ -49,12 +49,7 @@ def ground_state(
     )
     _, evecs = _lowest_eigenpairs(matrix, method, 1, True)
 
-    ground_vec = evecs[:, 0]
-    if sector is None:
-        return Statevector(array=ground_vec)
-    full_vec = np.zeros(2**hamiltonian.num_sites, dtype=complex)
-    full_vec[sector] = ground_vec
-    return Statevector(array=full_vec)
+    return _embed(evecs[:, 0], sector, hamiltonian.num_sites)
 
 
 def spectrum(
@@ -186,19 +181,33 @@ def _lowest_eigenpairs(
     if method != "naive_lanczos":
         raise ValueError(f"Unknown method {method!r}; expected one of {METHODS}.")
 
+    return _lanczos(matrix, num_eigenvalues, return_eigenvectors, "naive_lanczos")
+
+
+def _lanczos(
+    operator,
+    num_eigenvalues: int | None,
+    return_eigenvectors: bool,
+    method: str,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """eigsh on a dense matrix or a LinearOperator, shared by both Lanczos methods.
+
+    Keeps which="SA", the ncv heuristic and the ascending re-sort in one place, so the
+    matrix-free path cannot drift from the dense one.
+    """
     if num_eigenvalues is None:
         raise ValueError(
-            "method='naive_lanczos' needs num_eigenvalues; use 'naive' for the full spectrum."
+            f"method={method!r} needs num_eigenvalues; use 'naive' for the full spectrum."
         )
-    dim = matrix.shape[0]
+    dim = operator.shape[0]
     if dim <= num_eigenvalues + 1:
         raise ValueError(
-            f"method='naive_lanczos' needs a matrix bigger than {num_eigenvalues + 1}; "
+            f"method={method!r} needs a space bigger than {num_eigenvalues + 1}; "
             f"got {dim}x{dim}. Use method='naive'."
         )
     ncv = min(dim - 1, max(2 * num_eigenvalues + 1, 20))
     out = eigsh(
-        matrix,
+        operator,
         k=num_eigenvalues,
         which="SA",
         ncv=ncv,
@@ -211,23 +220,42 @@ def _lowest_eigenpairs(
     return evals[order], evecs[:, order]
 
 
+def _embed(
+    vector: np.ndarray, sector: np.ndarray | None, num_sites: int
+) -> Statevector:
+    """Scatter a sector-restricted vector back into the full 2^n space."""
+    if sector is None:
+        return Statevector(array=vector)
+    full_vec = np.zeros(2**num_sites, dtype=complex)
+    full_vec[sector] = vector
+    return Statevector(array=full_vec)
+
+
 def _matrix_free_lanczos(
     hamiltonian: Hamiltonian,
     num_eigenvalues: int | None,
     sector: np.ndarray | None,
     return_eigenvectors: bool,
 ):
-    """Lanczos over an implicit H: apply hamiltonian.as_observable() term by term to each
-    Krylov vector via op_action, never forming the 2^n x 2^n matrix. O(num_terms * 2^n)
-    time and O(2^n) memory per matvec, against O(4^n) for both under naive_lanczos.
+    """Lanczos over an implicit H: every matvec is apply_pauli_sum, so no 2^n x 2^n matrix
+    and no per-term kron is ever formed. O(num_terms * D) time and O(D) memory per matvec,
+    against O(4^n) for both under naive_lanczos, where D is the sector dimension.
 
-    Missing pieces: apply_pauli_sum(pauli_sum, statevector) built on statevector.op_action
-    (_expectation_pauli_string is the read-only half of that pattern), and a sector-indexed
-    Krylov basis so the restriction costs nothing.
+    The Krylov vectors live in the sector, not the full space projected back each matvec --
+    so a restriction makes the solve cheaper rather than merely as cheap. dtype is complex
+    because i^n_Y makes the phases complex even for real coefficients.
     """
-    raise NotImplementedError(
-        "method='lanczos' (matrix-free) is not implemented yet; use 'naive_lanczos'."
+    pauli_sum = hamiltonian.as_observable()
+    dim = 2**hamiltonian.num_sites if sector is None else len(sector)
+    operator = LinearOperator(
+        (dim, dim),
+        matvec=lambda vector: apply_pauli_sum(pauli_sum, vector, sector),
+        dtype=complex,
     )
+    evals, evecs = _lanczos(operator, num_eigenvalues, return_eigenvectors, "lanczos")
+    if not return_eigenvectors:
+        return evals
+    return _embed(evecs[:, 0], sector, hamiltonian.num_sites)
 
 
 # ---------------------------------------------------------------------------

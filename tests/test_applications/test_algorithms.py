@@ -18,6 +18,7 @@ from qaravan.core.hamiltonians import (
     FermiHubbard1D,
     FermionicHamiltonian,
     Hamiltonian,
+    Heisenberg1D,
     bath_interleaved_mode_order,
     interleaved_mode_order,
 )
@@ -251,22 +252,68 @@ def test_sector_restricted_spectrum_has_binomial_length():
 # ---------------------------------------------------------------------------
 
 
-def test_matrix_free_lanczos_is_not_implemented_yet():
-    with pytest.raises(NotImplementedError, match="naive_lanczos"):
-        ground_state(TFI(4), method="lanczos")
-
-
 def test_unknown_method_raises():
     with pytest.raises(ValueError, match="Unknown method"):
         ground_state(TFI(3), method="bogus")
 
 
-def test_naive_lanczos_needs_num_eigenvalues():
+@pytest.mark.parametrize("method", ["naive_lanczos", "lanczos"])
+def test_lanczos_methods_need_num_eigenvalues(method):
     with pytest.raises(ValueError, match="needs num_eigenvalues"):
-        spectrum(TFI(4), method="naive_lanczos")
+        spectrum(TFI(4), method=method)
 
 
 def test_naive_lanczos_raises_for_a_tiny_matrix():
     tiny = Hamiltonian([HamiltonianTerm([0], PauliString("Z"))], 1)
     with pytest.raises(ValueError, match="naive"):
         ground_state(tiny, method="naive_lanczos")
+
+
+# ---------------------------------------------------------------------------
+# Matrix-free Lanczos
+# ---------------------------------------------------------------------------
+
+
+def test_matrix_free_lanczos_agrees_on_the_low_lying_spectrum():
+    tfi = TFI(6, J=1.0, h=0.7)
+    np.testing.assert_allclose(
+        spectrum(tfi, method="lanczos", num_eigenvalues=4),
+        spectrum(tfi, method="naive", num_eigenvalues=4),
+        atol=1e-10,
+    )
+
+
+def test_matrix_free_lanczos_ground_state_matches_the_dense_one():
+    """Overlap rather than elementwise: eigenvectors are defined only up to a phase."""
+    tfi = TFI(6, J=1.0, h=0.7)
+    dense = ground_state(tfi, method="naive").to_array()
+    free = ground_state(tfi, method="lanczos").to_array()
+    assert abs(np.vdot(dense, free)) == pytest.approx(1.0, abs=1e-10)
+
+
+def test_matrix_free_lanczos_in_a_popcount_sector():
+    """The Krylov vectors live in the sector, so this also pins that _embed scatters the
+    result back to the right 2^n positions."""
+    heisenberg = Heisenberg1D(6, J=1.0, h=0.3)
+    np.testing.assert_allclose(
+        spectrum(heisenberg, "lanczos", 3, fixed_particle_number=3),
+        spectrum(heisenberg, "naive", 3, fixed_particle_number=3),
+        atol=1e-10,
+    )
+    dense = ground_state(heisenberg, "naive", fixed_particle_number=3).to_array()
+    free = ground_state(heisenberg, "lanczos", fixed_particle_number=3).to_array()
+    assert abs(np.vdot(dense, free)) == pytest.approx(1.0, abs=1e-10)
+
+
+@pytest.mark.parametrize("mode_order_name", ["stacked", "interleaved"])
+def test_matrix_free_lanczos_in_a_spin_sector(mode_order_name):
+    """Catches a bit-convention mismatch between _fermionic_sector and PauliString.bitmasks --
+    the two places that independently encode 'qubit q is bit n-1-q'."""
+    fh = FermiHubbard1D(num_fermionic_sites=3, t=1.0, U=2.0)
+    encoding = _fh_encoding(3, mode_order_name)
+    kwargs = dict(fixed_spin_numbers=(2, 1), num_eigenvalues=2)
+    np.testing.assert_allclose(
+        fermionic_spectrum(fh, encoding, method="lanczos", **kwargs),
+        fermionic_spectrum(fh, encoding, method="naive", **kwargs),
+        atol=1e-10,
+    )

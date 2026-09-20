@@ -74,9 +74,7 @@ class PauliString(Observable):
     def bitmasks(self) -> tuple[int, int, int]:
         """(x_mask, z_mask, n_Y): P|j⟩ = coeff · i^n_Y · (-1)^popcount(j & z_mask) |j ^ x_mask⟩.
 
-        A Pauli string is a generalized permutation matrix, so these three integers carry the
-        whole of it. Qubit q is bit num_sites-1-q of the basis index, matching to_matrix's
-        kron order.
+        Qubit q is bit num_sites-1-q of the basis index, matching to_matrix's kron order.
         """
         n = self.num_sites
         x_mask = sum(1 << (n - 1 - q) for q, c in enumerate(self.string) if c in "XY")
@@ -146,10 +144,9 @@ class PauliSum(Observable):
     def to_sector_matrix(self, sector: np.ndarray) -> np.ndarray:
         """This operator restricted to the basis indices in sector, which must be ascending.
 
-        Exact only for an operator preserving the sector: contributions landing outside it are
-        dropped, which is what makes the XX/YY cancellation below work, and which quietly gives
-        a wrong matrix for an operator that does not commute with the symmetry. Check with
-        np.allclose(out, out.conj().T) if unsure.
+        Contributions landing outside the sector are dropped, so the result is exact only for
+        an operator that commutes with the symmetry defining it and quietly wrong otherwise;
+        np.allclose(out, out.conj().T) catches most such cases.
         """
         dim = len(sector)
         out = np.zeros((dim, dim), dtype=complex)

@@ -190,10 +190,9 @@ def _lanczos(
     return_eigenvectors: bool,
     method: str,
 ) -> tuple[np.ndarray, np.ndarray | None]:
-    """eigsh on a dense matrix or a LinearOperator, shared by both Lanczos methods.
+    """Lowest num_eigenvalues pairs of a dense matrix or a LinearOperator, ascending.
 
-    Keeps which="SA", the ncv heuristic and the ascending re-sort in one place, so the
-    matrix-free path cannot drift from the dense one.
+    method names the caller in the error messages, which tell the user to fall back to "naive".
     """
     if num_eigenvalues is None:
         raise ValueError(
@@ -237,19 +236,17 @@ def _matrix_free_lanczos(
     sector: np.ndarray | None,
     return_eigenvectors: bool,
 ):
-    """Lanczos over an implicit H: every matvec is apply_pauli_sum, so no 2^n x 2^n matrix
-    and no per-term kron is ever formed. O(num_terms * D) time and O(D) memory per matvec,
-    against O(4^n) for both under naive_lanczos, where D is the sector dimension.
+    """Lanczos over an implicit H: every matvec is apply_pauli_sum, so nothing ever allocates
+    2^n x 2^n. O(num_terms * D) time and O(D) memory per matvec, for D the sector dimension.
 
-    The Krylov vectors live in the sector, not the full space projected back each matvec --
-    so a restriction makes the solve cheaper rather than merely as cheap. dtype is complex
-    because i^n_Y makes the phases complex even for real coefficients.
+    Krylov vectors live in the sector itself, so restricting shrinks the whole solve.
     """
     pauli_sum = hamiltonian.as_observable()
     dim = 2**hamiltonian.num_sites if sector is None else len(sector)
     operator = LinearOperator(
         (dim, dim),
         matvec=lambda vector: apply_pauli_sum(pauli_sum, vector, sector),
+        # complex even for a real-coefficient H: i^n_Y makes every Y-bearing term's phase so
         dtype=complex,
     )
     evals, evecs = _lanczos(operator, num_eigenvalues, return_eigenvectors, "lanczos")

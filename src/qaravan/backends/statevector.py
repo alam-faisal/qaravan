@@ -159,13 +159,11 @@ def apply_pauli_sum(
 ) -> np.ndarray:
     """H|v⟩ via each term's bitmasks, never forming the 2^n × 2^n matrix.
 
-    Flat array in, flat array out -- not a Statevector, because with a sector the vector is
-    indexed by position within sector and is not a state on n qubits.
-
-    sector (ascending basis indices) restricts the whole operation to that subspace, so both
-    cost and memory scale with len(sector) rather than 2^n. As in
-    PauliSum.to_sector_matrix, images leaving the sector are dropped, which is exact only for
-    an operator that preserves it.
+    vector and the result are flat arrays over the same index set: computational-basis
+    indices, or positions within sector (ascending basis indices) when one is given. A sector
+    confines the whole operation to that subspace, so cost and memory scale with len(sector).
+    Images leaving it are dropped, exact only for an operator that preserves it -- see
+    PauliSum.to_sector_matrix.
     """
     basis = (
         np.arange(2**pauli_sum.num_sites, dtype=np.int64) if sector is None else sector

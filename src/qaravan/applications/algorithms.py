@@ -42,9 +42,11 @@ def ground_state(
 
     if method == "lanczos":
         return _matrix_free_lanczos(hamiltonian, 1, sector, True)
-    matrix = hamiltonian.to_matrix()
-    if sector is not None:
-        matrix = matrix[np.ix_(sector, sector)]
+    matrix = (
+        hamiltonian.to_matrix()
+        if sector is None
+        else hamiltonian.to_sector_matrix(sector)
+    )
     _, evecs = _lowest_eigenpairs(matrix, method, 1, True)
 
     ground_vec = evecs[:, 0]
@@ -71,9 +73,11 @@ def spectrum(
 
     if method == "lanczos":
         return _matrix_free_lanczos(hamiltonian, num_eigenvalues, sector, False)
-    matrix = hamiltonian.to_matrix()
-    if sector is not None:
-        matrix = matrix[np.ix_(sector, sector)]
+    matrix = (
+        hamiltonian.to_matrix()
+        if sector is None
+        else hamiltonian.to_sector_matrix(sector)
+    )
     evals, _ = _lowest_eigenpairs(matrix, method, num_eigenvalues, False)
     return evals
 
@@ -259,13 +263,23 @@ def trotter_circuit(hamiltonian: Hamiltonian, dt: float, order: int = 2) -> Circ
     return Circuit(gates, num_sites=hamiltonian.num_sites)
 
 
+def _trotter_gate(term: HamiltonianTerm, dt: float) -> MatrixGate:
+    """exp(-i dt O) for the term's local observable O, named after O itself.
+
+    The name is what shows up in reprs and circuit diagrams, so it carries the generator
+    (e.g. '-1 ZZ', 'XX + YY + ZZ') rather than a generic label. Following RZ/RZZ/XY, the gate
+    is named for the operator it exponentiates, not the exponential.
+    """
+    mat = expm(-1j * dt * term.local_obs.to_matrix())
+    return MatrixGate(repr(term.local_obs), term.sites, mat)
+
+
 def _trotter_order1(groups: list[list[HamiltonianTerm]], dt: float) -> list[MatrixGate]:
     """Apply each group once at step size dt."""
     gates: list[MatrixGate] = []
     for group in groups:
         for term in group:
-            mat = expm(-1j * dt * term.local_obs.to_matrix())
-            gates.append(MatrixGate("Trotter", term.sites, mat))
+            gates.append(_trotter_gate(term, dt))
     return gates
 
 
@@ -279,15 +293,12 @@ def _trotter_order2(groups: list[list[HamiltonianTerm]], dt: float) -> list[Matr
     # forward half-steps: all but last group
     for group in groups[:-1]:
         for term in group:
-            mat = expm(-1j * half_dt * term.local_obs.to_matrix())
-            gates.append(MatrixGate("Trotter", term.sites, mat))
+            gates.append(_trotter_gate(term, half_dt))
     # last group: full step
     for term in groups[-1]:
-        mat = expm(-1j * dt * term.local_obs.to_matrix())
-        gates.append(MatrixGate("Trotter", term.sites, mat))
+        gates.append(_trotter_gate(term, dt))
     # backward half-steps: reverse of all but last group
     for group in reversed(groups[:-1]):
         for term in group:
-            mat = expm(-1j * half_dt * term.local_obs.to_matrix())
-            gates.append(MatrixGate("Trotter", term.sites, mat))
+            gates.append(_trotter_gate(term, half_dt))
     return gates

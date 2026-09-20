@@ -44,6 +44,10 @@ class Hamiltonian:
         """Full 2^n × 2^n Hamiltonian matrix."""
         return self.as_observable().to_matrix()
 
+    def to_sector_matrix(self, sector: np.ndarray) -> np.ndarray:
+        """This Hamiltonian restricted to the ascending basis indices in sector."""
+        return self.as_observable().to_sector_matrix(sector)
+
     def __repr__(self) -> str:
         """Header naming the model, then the algebra it embeds to."""
         return f"{type(self).__name__}(num_sites={self.num_sites})\n{self.as_observable()!r}"

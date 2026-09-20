@@ -143,6 +143,30 @@ class PauliSum(Observable):
     def to_matrix(self) -> np.ndarray:
         return sum(t.to_matrix() for t in self.terms)  # type: ignore[return-value]
 
+    def to_sector_matrix(self, sector: np.ndarray) -> np.ndarray:
+        """This operator restricted to the basis indices in sector, which must be ascending.
+
+        Exact only for an operator preserving the sector: contributions landing outside it are
+        dropped, which is what makes the XX/YY cancellation below work, and which quietly gives
+        a wrong matrix for an operator that does not commute with the symmetry. Check with
+        np.allclose(out, out.conj().T) if unsure.
+        """
+        dim = len(sector)
+        out = np.zeros((dim, dim), dtype=complex)
+        cols = np.arange(dim)
+        for term in self.terms:
+            x_mask, z_mask, n_y = term.bitmasks()
+            images = sector ^ x_mask
+            rows = np.searchsorted(sector, images).clip(0, dim - 1)
+            # A single term generally does leave the sector -- XX alone is hopping *plus*
+            # pairing. Closure belongs to the sum: XX and YY share an x_mask, so their phases
+            # cancel on the out-of-sector images and add on the in-sector ones. Dropping is
+            # exact because <i|H|j> = 0 for i outside the sector and j inside.
+            inside = sector[rows] == images
+            phase = term.coeff * (1j**n_y) * (-1.0) ** np.bitwise_count(sector & z_mask)
+            out[rows[inside], cols[inside]] += phase[inside]
+        return out
+
     def as_pauli_sum(self) -> PauliSum:
         return self
 

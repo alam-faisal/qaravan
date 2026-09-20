@@ -402,3 +402,80 @@ def test_bitmasks_reproduce_to_matrix(num_sites):
         string = "".join("IXYZ"[int(d)] for d in digits)
         ps = PauliString(string, coeff=0.5 - 0.25j)
         np.testing.assert_allclose(_dense_from_bitmasks(ps), ps.to_matrix(), atol=1e-14)
+
+
+def _popcount_sector(num_sites: int, num_particles: int) -> np.ndarray:
+    indices = np.arange(2**num_sites, dtype=np.int64)
+    return np.flatnonzero(np.bitwise_count(indices) == num_particles)
+
+
+def _hopping_sum(num_sites: int) -> PauliSum:
+    """XX + YY hopping on every bond plus staggered Z fields: conserves total popcount."""
+    terms = []
+    for site in range(num_sites - 1):
+        for pauli in ("X", "Y"):
+            string = ["I"] * num_sites
+            string[site] = string[site + 1] = pauli
+            terms.append(PauliString("".join(string), coeff=0.5))
+    for site in range(num_sites):
+        string = ["I"] * num_sites
+        string[site] = "Z"
+        terms.append(PauliString("".join(string), coeff=0.3 * (-1) ** site))
+    return PauliSum(terms)
+
+
+@pytest.mark.parametrize("num_particles", range(7))
+def test_to_sector_matrix_matches_dense_then_slice(num_particles):
+    """Catches the drop-vs-reject decision inverting, a searchsorted off-by-one, and
+    row/column transposition. The reference path shares no code with the index form."""
+    num_sites = 6
+    pauli_sum = _hopping_sum(num_sites)
+    sector = _popcount_sector(num_sites, num_particles)
+    reference = pauli_sum.to_matrix()[np.ix_(sector, sector)]
+    np.testing.assert_allclose(
+        pauli_sum.to_sector_matrix(sector), reference, atol=1e-12
+    )
+
+
+def test_a_term_may_leave_the_sector_without_raising():
+    """A lone XX is hopping *plus* pairing: it maps some in-sector states out, so the drop
+    branch is exercised and must not raise. Catches a future 'reject terms that leave the
+    sector' guard, which is the natural-looking change that breaks the XX/YY cancellation."""
+    sector = _popcount_sector(6, 3)
+    lone = PauliSum([PauliString("XXIIII")])
+
+    escaping = [j for j in sector if np.bitwise_count(j ^ 0b110000) != 3]
+    assert escaping, "test is vacuous unless XX genuinely leaves the sector"
+
+    np.testing.assert_allclose(
+        lone.to_sector_matrix(sector),
+        lone.to_matrix()[np.ix_(sector, sector)],
+        atol=1e-12,
+    )
+
+
+def test_xx_and_yy_cancel_outside_the_sector():
+    """The reason dropping is exact for a conserving sum: XX and YY share an x_mask, so their
+    phases cancel on the pairing (out-of-sector) images and add on the hopping ones."""
+    pairing = PauliSum([PauliString("XX", 1.0), PauliString("YY", 1.0)]).to_matrix()
+    np.testing.assert_allclose(pairing[0b11, 0b00], 0.0, atol=1e-14)
+    np.testing.assert_allclose(pairing[0b10, 0b01], 2.0, atol=1e-14)
+
+
+def test_to_sector_matrix_is_hermitian_and_complex():
+    """Catches a real-dtype accumulation silently discarding the i^n_Y phases."""
+    sector = _popcount_sector(6, 3)
+    matrix = _hopping_sum(6).to_sector_matrix(sector)
+    assert matrix.dtype == np.complex128
+    np.testing.assert_allclose(matrix, matrix.conj().T, atol=1e-14)
+
+
+def test_magnetization_inherits_to_sector_matrix():
+    """Pins the method on PauliSum rather than a specific constructor."""
+    sector = _popcount_sector(4, 2)
+    magnetization = Magnetization(4, "Z")
+    np.testing.assert_allclose(
+        magnetization.to_sector_matrix(sector),
+        magnetization.to_matrix()[np.ix_(sector, sector)],
+        atol=1e-12,
+    )

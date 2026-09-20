@@ -71,6 +71,18 @@ class PauliString(Observable):
         mats = [PAULI_MATRICES[c] for c in self.string]
         return self.coeff * reduce(np.kron, mats)
 
+    def bitmasks(self) -> tuple[int, int, int]:
+        """(x_mask, z_mask, n_Y): P|j⟩ = coeff · i^n_Y · (-1)^popcount(j & z_mask) |j ^ x_mask⟩.
+
+        A Pauli string is a generalized permutation matrix, so these three integers carry the
+        whole of it. Qubit q is bit num_sites-1-q of the basis index, matching to_matrix's
+        kron order.
+        """
+        n = self.num_sites
+        x_mask = sum(1 << (n - 1 - q) for q, c in enumerate(self.string) if c in "XY")
+        z_mask = sum(1 << (n - 1 - q) for q, c in enumerate(self.string) if c in "YZ")
+        return x_mask, z_mask, self.string.count("Y")
+
     def as_pauli_sum(self) -> PauliSum:
         return PauliSum([self])
 

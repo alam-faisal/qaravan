@@ -375,3 +375,30 @@ def test_number_operator_rejects_bad_qubits():
         NumberOperator(3, [0, 0])
     with pytest.raises(ValueError, match=r"must lie in"):
         NumberOperator(3, [3])
+
+
+# ---------------------------------------------------------------------------
+# The Pauli index form
+# ---------------------------------------------------------------------------
+
+
+def _dense_from_bitmasks(ps: PauliString) -> np.ndarray:
+    """Rebuild the dense matrix from (x_mask, z_mask, n_Y) alone -- the reference for bitmasks."""
+    x_mask, z_mask, n_y = ps.bitmasks()
+    dim = 2**ps.num_sites
+    out = np.zeros((dim, dim), dtype=complex)
+    for col in range(dim):
+        phase = ps.coeff * (1j**n_y) * (-1.0) ** bin(col & z_mask).count("1")
+        out[col ^ x_mask, col] = phase
+    return out
+
+
+@pytest.mark.parametrize("num_sites", [1, 2, 3, 4])
+def test_bitmasks_reproduce_to_matrix(num_sites):
+    """Catches a wrong Y phase, swapped x/z masks, and a reversed bit convention -- to_matrix's
+    reduce(np.kron, ...) is the definition of that convention."""
+    for index in range(4**num_sites):
+        digits = np.base_repr(index, base=4).zfill(num_sites)
+        string = "".join("IXYZ"[int(d)] for d in digits)
+        ps = PauliString(string, coeff=0.5 - 0.25j)
+        np.testing.assert_allclose(_dense_from_bitmasks(ps), ps.to_matrix(), atol=1e-14)

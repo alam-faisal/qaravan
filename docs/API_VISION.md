@@ -41,8 +41,8 @@ initial_ps = PauliSum(obs)
 final_ps = PauliPropagationSimulator(circ, initial_ps).run()
 exp = final_ps.expectation(PauliSum(bitstring="01"))
 
-initial_walkers = Walkers(bitstring="01", pure_state_type=Statevector, num_walkers=1000).run()
-final_walkers = MonteCarloSimulator(circ, initial_walkers, pauli_nm).run()
+initial_walkers = Walkers(initial_sv, num_walkers=1000)
+final_walkers = initial_walkers.apply(circ, noise_model=pauli_nm, rng=0)
 exp = final_walkers.expectation(obs)
 ```
 
@@ -56,27 +56,32 @@ no need to name the simulator class up front:
 final_sv = initial_sv.apply(circ)
 exp = final_sv.expectation(obs)
 
+noisy_path = initial_sv.apply(circ, noise_model=pauli_nm, rng=0)
+
 final_dm = initial_dm.apply(circ, noise_model=thermal_nm)
 exp = final_dm.expectation(obs)
 ```
 
-`Walkers.apply()` raises `NotImplementedError`: Monte Carlo needs a pure `State` (e.g.
-`Statevector`) as its initial state, not a `Walkers` collection, so build it explicitly with
-`MonteCarloSimulator(circ, initial_walkers, pauli_nm).run()` instead.
+The noisy `Statevector` call is one sampled pure-state path. `Walkers.apply()` prepares the
+member backend once, then samples and evolves one path per walker.
 
 ### Simulate dynamic quantum circuits
 
-```python 
-sv = Statevector(bitstring="01")
-meas_sites = [1]
+```python
+final, record = dynamic_circuit.execute(
+    initial_sv,
+    noise_model=pauli_nm,
+    measurement_rng=0,
+    noise_rng=1,
+)
 
-def decoder(outcome, sv, round) -> Circuit: 
-  return Circuit() 
-
-for round in range(n_rounds): 
-  sv, outcome = sv.measure_and_collapse(meas_sites)
-  circ = decoder(outcome, sv, round)
-  sv = StatevectorSimulator(circ, sv).run()
+final_walkers, records = execute_dynamic_circuit_ensemble(
+    dynamic_circuit,
+    initial_sv,
+    num_trajectories=1000,
+    noise_model=pauli_nm,
+    rng=0,
+)
 ```
 
 ### Noisy AKLT prep + string-order measurement

@@ -1,3 +1,4 @@
+from qaravan.backends.monte_carlo import MonteCarloSimulator, Walkers
 from qaravan.backends.statevector import (
     Statevector,
     StatevectorSimulator,
@@ -5,6 +6,8 @@ from qaravan.backends.statevector import (
 )
 
 __all__ = [
+    "MonteCarloSimulator",
+    "Walkers",
     "Statevector",
     "StatevectorSimulator",
     "apply_pauli_sum",

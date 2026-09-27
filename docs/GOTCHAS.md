@@ -80,6 +80,32 @@ collapsed, outcomes = walkers.measure_each(sites, rng)
 ```
 
 Use `measure_and_collapse` when `Walkers` represents one mixed state conditioned on one
-observed outcome. Use `measure_each` when walkers represent separate experimental runs, as in
-batched dynamic-circuit trajectories. Averaging the latter while discarding `outcomes`
-estimates the non-selective measurement channel.
+observed outcome. Use `measure_each` when walkers represent separate experimental runs.
+Averaging the latter while discarding `outcomes` estimates the non-selective measurement
+channel. `execute_dynamic_circuit_ensemble(...)` implements independent DQC records by
+repeating scalar `DynamicCircuit.execute(...)`; it does not call `measure_each` because each
+outcome can select a different decoder circuit.
+
+## A noisy statevector run is one trajectory, not a mixed state
+
+```python
+final = initial.apply(circuit, noise_model=pauli_noise, rng=rng)
+```
+
+This samples one Pauli-error realization and returns one pure state. The channel average
+
+$$
+\mathcal E(\rho)=\sum_e p_e U_e\rho U_e^\dagger
+$$
+
+is generally mixed and is represented statistically by independently evolved walkers:
+
+```python
+final_walkers = Walkers(initial, num_walkers=1000).apply(
+    circuit, noise_model=pauli_noise, rng=rng
+)
+```
+
+For dynamic circuits, `DynamicCircuit.execute(Walkers(...))` produces one shared measurement
+record and a posterior mixed state. `execute_dynamic_circuit_ensemble(...)` runs the complete
+dynamic circuit independently for each trajectory and returns one record per final walker.

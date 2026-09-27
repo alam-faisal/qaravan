@@ -1,12 +1,10 @@
 """Concrete NoiseModel subclasses: PauliNoise, DepolarizingNoise."""
 
 from __future__ import annotations
-
 from typing import Literal
 import numpy as np
 from qaravan.core.base import NoiseModel
 from qaravan.core.observables import PauliString
-
 
 NoisePlacement = Literal["layer", "circuit"]
 

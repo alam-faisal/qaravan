@@ -3,18 +3,19 @@
 import numpy as np
 import pytest
 from scipy.linalg import expm
+from qaravan.applications.dynamic_circuit_execution import (
+    execute_dynamic_circuit_ensemble,
+)
 from qaravan.applications.dynamic_circuit_library import (
     _kept_sites,
     build_ghz_decoder,
     collisional_dqc,
     dissipative_ising_layer,
-    dqc_ensemble,
     ghz_fusion_dqc,
     interleaved_collisional_layout,
     qcp_layer,
     reset_decoder,
 )
-from qaravan.backends.monte_carlo import MonteCarloSimulator
 from qaravan.backends.statevector import Statevector
 from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
@@ -368,10 +369,9 @@ def test_seeded_noisy_scalar_path_regression():
     """Freeze noise/measurement draw ordering across the Monte Carlo refactor."""
     final, outcomes = _seeded_regression_dqc().execute(
         Statevector(bitstring="0"),
-        simulator=MonteCarloSimulator,
         measurement_rng=np.random.default_rng(4),
         noise_model=DepolarizingNoise(1, 0.35, placement="circuit"),
-        rng=np.random.default_rng(9),
+        noise_rng=np.random.default_rng(9),
     )
 
     assert outcomes == ["1", "1", "1", "0", "1"]
@@ -384,11 +384,10 @@ def test_seeded_noisy_scalar_path_regression():
 
 def test_seeded_noisy_ensemble_regression():
     """Freeze complete records and final paths across the DQC API migration."""
-    walkers, records = dqc_ensemble(
+    walkers, records = execute_dynamic_circuit_ensemble(
         _seeded_regression_dqc(),
         Statevector(bitstring="0"),
         4,
-        simulator=MonteCarloSimulator,
         noise_model=DepolarizingNoise(1, 0.35, placement="circuit"),
         rng=np.random.default_rng(3),
     )
@@ -427,11 +426,10 @@ def test_zero_noise_reproduces_the_noiseless_run_exactly():
     measurement_rng, _ = np.random.default_rng(0).spawn(2)
     clean_state, clean_outcomes = dqc.execute(initial, measurement_rng=measurement_rng)
 
-    walkers, records = dqc_ensemble(
+    walkers, records = execute_dynamic_circuit_ensemble(
         dqc,
         initial,
         1,
-        simulator=MonteCarloSimulator,
         noise_model=DepolarizingNoise(num_sites, 0.0),
         rng=np.random.default_rng(0),
     )
@@ -453,11 +451,10 @@ def test_ghz_fidelity_degrades_with_error_rate():
 
     fidelities = []
     for error_rate in [0.0, 0.05, 0.2]:
-        walkers, _ = dqc_ensemble(
+        walkers, _ = execute_dynamic_circuit_ensemble(
             dqc,
             initial,
             40,
-            simulator=MonteCarloSimulator,
             noise_model=DepolarizingNoise(6, error_rate),
             rng=np.random.default_rng(5),
         )
@@ -471,11 +468,10 @@ def test_ghz_fidelity_degrades_with_error_rate():
 def test_noisy_trajectories_explore_different_branches():
     """The ensemble is over noise and outcomes jointly, not noise alone."""
     dqc = ghz_fusion_dqc(4, cluster_size=3)
-    _, records = dqc_ensemble(
+    _, records = execute_dynamic_circuit_ensemble(
         dqc,
         Statevector(bitstring="000000"),
         40,
-        simulator=MonteCarloSimulator,
         noise_model=DepolarizingNoise(6, 0.05),
         rng=np.random.default_rng(2),
     )
@@ -484,11 +480,10 @@ def test_noisy_trajectories_explore_different_branches():
 
 def test_noisy_dqc_returns_one_record_per_trajectory():
     dqc = ghz_fusion_dqc(4, cluster_size=3)
-    walkers, records = dqc_ensemble(
+    walkers, records = execute_dynamic_circuit_ensemble(
         dqc,
         Statevector(bitstring="000000"),
         7,
-        simulator=MonteCarloSimulator,
         noise_model=DepolarizingNoise(6, 0.1),
         rng=np.random.default_rng(0),
     )
@@ -501,9 +496,12 @@ def test_noisy_dqc_is_reproducible():
     initial = Statevector(bitstring="000000")
     kwargs = dict(
         num_trajectories=5,
-        simulator=MonteCarloSimulator,
         noise_model=DepolarizingNoise(6, 0.1),
     )
-    first = dqc_ensemble(dqc, initial, rng=np.random.default_rng(3), **kwargs)[1]
-    second = dqc_ensemble(dqc, initial, rng=np.random.default_rng(3), **kwargs)[1]
+    first = execute_dynamic_circuit_ensemble(
+        dqc, initial, rng=np.random.default_rng(3), **kwargs
+    )[1]
+    second = execute_dynamic_circuit_ensemble(
+        dqc, initial, rng=np.random.default_rng(3), **kwargs
+    )[1]
     assert first == second

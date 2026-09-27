@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 import numpy as np
-from qaravan.core.base import Simulator, State
+from qaravan.core.base import NoiseModel, State
 from qaravan.core.circuit import Circuit
 
 
@@ -31,42 +31,38 @@ class DynamicCircuit:
     def execute(
         self,
         initial_state: State,
-        simulator: type[Simulator] | None = None,
+        *,
+        noise_model: NoiseModel | None = None,
+        measurement_rng: np.random.Generator | int | None = None,
+        noise_rng: np.random.Generator | int | None = None,
         observer: Callable[[int, State], None] | None = None,
-        measurement_rng: np.random.Generator | None = None,
         **simulator_kwargs,
     ) -> tuple[State, list[str]]:
-        """Run every round on initial_state, returning (final_state, one outcome per measured
-        round in round order).
+        """Execute every round, returning the final state and measurement record."""
+        measurement_generator = np.random.default_rng(measurement_rng)
+        noise_generator = np.random.default_rng(noise_rng)
 
-        simulator evolves each round's circuit; it defaults to initial_state's own. Passing
-        MonteCarloSimulator with a noise_model gives one noisy trajectory:
-
-            dqc.execute(state, simulator=MonteCarloSimulator, noise_model=noise)
-
-        measurement_rng is resolved once, so one seed fixes every round's outcome. A
-        simulator's own randomness goes through simulator_kwargs as rng=, keeping the two
-        streams independent -- a shared one would desynchronise the outcomes as soon as the
-        simulator drew from it.
-
-        observer(round_index, state) is called after each round, for per-round diagnostics the
-        final state alone cannot give.
-        """
-        rng = np.random.default_rng(measurement_rng)
-        if simulator is None:
-            simulator = initial_state.default_simulator
-
-        sv = initial_state
+        state = initial_state
         outcomes: list[str] = []
         for round_index, rnd in enumerate(self.rounds):
             if rnd.meas_sites:
-                sv, outcome = sv.measure_and_collapse(rnd.meas_sites, rng)
+                state, outcome = state.measure_and_collapse(
+                    rnd.meas_sites, measurement_generator
+                )
                 outcomes.append(outcome)
             else:
                 outcome = ""
             circuit = rnd.decoder(outcome)
             if circuit.gates:
-                sv = simulator(circuit, sv, **simulator_kwargs).run()
+                if noise_model is None:
+                    state = state.apply(circuit, **simulator_kwargs)
+                else:
+                    state = state.apply(
+                        circuit,
+                        noise_model=noise_model,
+                        rng=noise_generator,
+                        **simulator_kwargs,
+                    )
             if observer is not None:
-                observer(round_index, sv)
-        return sv, outcomes
+                observer(round_index, state)
+        return state, outcomes

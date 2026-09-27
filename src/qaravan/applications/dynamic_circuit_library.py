@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 from typing import Callable
-import numpy as np
 from qaravan.applications.circuit_library import (
     bell_basis_circuit,
     ghz_cluster_prep_circuit,
 )
-from qaravan.backends.monte_carlo import Walkers
-from qaravan.core.base import Gate, Simulator, State
+from qaravan.core.base import Gate
 from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
 from qaravan.core.gates import CRX, RX, RZZ, XY, X, Z
@@ -234,43 +232,3 @@ def collisional_dqc(
     rounds.append(DynamicRound(meas_sites=list(ancilla_sites), decoder=reset))
     return DynamicCircuit(rounds=rounds)
 
-
-# ---------------------------------------------------------------------------
-# Running a protocol many times
-# ---------------------------------------------------------------------------
-
-
-def dqc_ensemble(
-    dqc: DynamicCircuit,
-    initial_state: State,
-    num_trajectories: int,
-    simulator: type[Simulator] | None = None,
-    rng: np.random.Generator | None = None,
-    observer: Callable[[int, State], None] | None = None,
-    **simulator_kwargs,
-) -> tuple[Walkers, list[list[str]]]:
-    """Execute a DynamicCircuit num_trajectories times, returning (ensemble, one record each).
-
-    For a noisy ensemble pass simulator=MonteCarloSimulator and a noise_model; with the default
-    simulator the spread comes from the measurement outcomes alone.
-
-    Measurement and simulator randomness are spawned from rng as independent streams, so a
-    zero-rate noise model leaves the records identical to the noiseless ones -- sample_error
-    draws even when it returns identity, and one shared stream would desynchronise them.
-    """
-    measurement_rng, simulator_rng = np.random.default_rng(rng).spawn(2)
-    if simulator is not None:
-        simulator_kwargs.setdefault("rng", simulator_rng)
-
-    finals, records = [], []
-    for _ in range(num_trajectories):
-        final, outcomes = dqc.execute(
-            initial_state,
-            simulator=simulator,
-            observer=observer,
-            measurement_rng=measurement_rng,
-            **simulator_kwargs,
-        )
-        finals.append(final)
-        records.append(outcomes)
-    return Walkers(finals), records

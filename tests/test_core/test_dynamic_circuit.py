@@ -1,7 +1,6 @@
 """Tests for DynamicRound and DynamicCircuit in core/dynamic_circuit.py."""
 
 import numpy as np
-import pytest
 from qaravan.backends.statevector import Statevector
 from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
@@ -239,31 +238,21 @@ def test_sample_accepts_a_seed():
     assert np.array_equal(first, second)
 
 
-def test_execute_rejects_an_ensemble_initial_state():
-    """One decoder branches on one outcome, so an ensemble has to be run a trajectory at a
-    time -- see dqc_ensemble."""
+def test_execute_walkers_uses_one_shared_measurement_record():
     from qaravan.backends.monte_carlo import Walkers
 
     plus = Statevector(bitstring="0").apply(Circuit([H(0)], num_sites=1))
     dqc = DynamicCircuit(
         [DynamicRound(meas_sites=[0], decoder=lambda _: Circuit([], num_sites=1))]
     )
-    with pytest.raises(NotImplementedError, match="Statevector"):
-        dqc.execute(Walkers([plus] * 4))
+    final, outcomes = dqc.execute(
+        Walkers([plus] * 4), measurement_rng=np.random.default_rng(2)
+    )
 
-
-def test_execute_defaults_to_the_state_own_simulator():
-    from qaravan.backends.statevector import StatevectorSimulator
-
-    dqc = _resampling_dqc(8)
-    initial = Statevector(bitstring="0")
-    default = dqc.execute(initial, measurement_rng=np.random.default_rng(2))[1]
-    explicit = dqc.execute(
-        initial,
-        simulator=StatevectorSimulator,
-        measurement_rng=np.random.default_rng(2),
-    )[1]
-    assert default == explicit
+    assert len(outcomes) == 1
+    assert final.num_walkers == 4
+    expected = np.diag([1.0, 0.0]) if outcomes == ["0"] else np.diag([0.0, 1.0])
+    np.testing.assert_allclose(final.rdm([0]), expected, atol=1e-12)
 
 
 def test_execute_on_a_noisy_backend_is_noiseless_at_zero_error_rate():
@@ -273,7 +262,6 @@ def test_execute_on_a_noisy_backend_is_noiseless_at_zero_error_rate():
     DepolarizingNoise.sample_error draws even when it returns identity, so a shared stream
     would desynchronise the outcomes.
     """
-    from qaravan.backends.monte_carlo import MonteCarloSimulator
     from qaravan.core.noise import DepolarizingNoise
 
     dqc = _resampling_dqc(10)
@@ -283,9 +271,8 @@ def test_execute_on_a_noisy_backend_is_noiseless_at_zero_error_rate():
     )
     noisy_state, noisy_outcomes = dqc.execute(
         initial,
-        simulator=MonteCarloSimulator,
         noise_model=DepolarizingNoise(1, 0.0),
-        rng=np.random.default_rng(99),
+        noise_rng=np.random.default_rng(99),
         measurement_rng=np.random.default_rng(4),
     )
     assert noisy_outcomes == clean_outcomes
@@ -295,7 +282,6 @@ def test_execute_on_a_noisy_backend_is_noiseless_at_zero_error_rate():
 def test_execute_on_a_noisy_backend_perturbs_the_state():
     """Noise must reach the state, checked across seeds: on one qubit |+> is an X eigenstate,
     so an individual realisation can leave the final state untouched."""
-    from qaravan.backends.monte_carlo import MonteCarloSimulator
     from qaravan.core.noise import DepolarizingNoise
 
     dqc = _resampling_dqc(10)
@@ -308,9 +294,8 @@ def test_execute_on_a_noisy_backend_perturbs_the_state():
     for seed in range(6):
         noisy, outcomes = dqc.execute(
             initial,
-            simulator=MonteCarloSimulator,
             noise_model=DepolarizingNoise(1, 0.5),
-            rng=np.random.default_rng(seed),
+            noise_rng=np.random.default_rng(seed),
             measurement_rng=np.random.default_rng(4),
         )
         assert outcomes == clean_outcomes  # same measurement stream, same branch

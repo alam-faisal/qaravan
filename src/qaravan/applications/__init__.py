@@ -20,11 +20,13 @@ from qaravan.applications.circuit_library import (
     two_local_circuit,
 )
 from qaravan.applications.compilation import environment_state_prep
+from qaravan.applications.dynamic_circuit_execution import (
+    execute_dynamic_circuit_ensemble,
+)
 from qaravan.applications.dynamic_circuit_library import (
     build_ghz_decoder,
     collisional_dqc,
     dissipative_ising_layer,
-    dqc_ensemble,
     ghz_fusion_dqc,
     interleaved_collisional_layout,
     qcp_layer,
@@ -65,7 +67,7 @@ __all__ = [
     "collisional_dqc",
     "dissipative_ising_layer",
     "interleaved_collisional_layout",
-    "dqc_ensemble",
+    "execute_dynamic_circuit_ensemble",
     "qcp_layer",
     "reset_decoder",
 ]

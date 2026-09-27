@@ -18,6 +18,7 @@ from qaravan.backends.monte_carlo import MonteCarloSimulator
 from qaravan.backends.statevector import Statevector
 from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
+from qaravan.core.gates import H, X
 from qaravan.core.noise import DepolarizingNoise
 from qaravan.core.observables import NumberOperator
 
@@ -351,6 +352,66 @@ def test_reset_decoder_leaves_zeros_alone():
 # ---------------------------------------------------------------------------
 # noisy_dqc_trajectories
 # ---------------------------------------------------------------------------
+
+
+def _seeded_regression_dqc() -> DynamicCircuit:
+    reset_to_plus = Circuit([X(0), H(0)], num_sites=1)
+    rounds = [DynamicRound(decoder=lambda _: Circuit([H(0)], num_sites=1))]
+    rounds.extend(
+        DynamicRound(meas_sites=[0], decoder=lambda _: reset_to_plus)
+        for _ in range(5)
+    )
+    return DynamicCircuit(rounds)
+
+
+def test_seeded_noisy_scalar_path_regression():
+    """Freeze noise/measurement draw ordering across the Monte Carlo refactor."""
+    final, outcomes = _seeded_regression_dqc().execute(
+        Statevector(bitstring="0"),
+        simulator=MonteCarloSimulator,
+        measurement_rng=np.random.default_rng(4),
+        noise_model=DepolarizingNoise(1, 0.35),
+        rng=np.random.default_rng(9),
+        noise_placement="circuit",
+    )
+
+    assert outcomes == ["1", "1", "1", "0", "1"]
+    np.testing.assert_allclose(
+        final.to_array(),
+        np.array([-1j, -1j]) / np.sqrt(2),
+        atol=1e-12,
+    )
+
+
+def test_seeded_noisy_ensemble_regression():
+    """Freeze complete records and final paths across the DQC API migration."""
+    walkers, records = dqc_ensemble(
+        _seeded_regression_dqc(),
+        Statevector(bitstring="0"),
+        4,
+        simulator=MonteCarloSimulator,
+        noise_model=DepolarizingNoise(1, 0.35),
+        rng=np.random.default_rng(3),
+        noise_placement="circuit",
+    )
+
+    assert records == [
+        ["1", "0", "1", "1", "0"],
+        ["0", "0", "1", "1", "1"],
+        ["1", "0", "1", "0", "0"],
+        ["1", "0", "0", "0", "0"],
+    ]
+    expected = np.array(
+        [
+            [1, 1],
+            [-1, -1],
+            [-1, 1],
+            [-1j, 1j],
+        ],
+        dtype=complex,
+    ) / np.sqrt(2)
+    actual = np.array([walker.to_array() for walker in walkers._walkers])
+    np.testing.assert_allclose(actual, expected, atol=1e-12)
 
 
 def test_zero_noise_reproduces_the_noiseless_run_exactly():

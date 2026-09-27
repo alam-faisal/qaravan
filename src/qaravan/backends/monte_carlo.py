@@ -119,15 +119,11 @@ class MonteCarloSimulator(Simulator):
     """Trajectory-based noisy simulator.
 
     Runs num_trajectories independent copies of the circuit, inserting sampled
-    Pauli noise as noise_placement directs. Returns a Walkers ensemble of final statevectors.
+    Pauli noise. Returns a Walkers ensemble of final statevectors.
 
     noise_model must implement sample_error(rng) -> str (Pauli string). Only PauliNoise
     and DepolarizingNoise are supported; ThermalNoise will raise at runtime.
     rng: seed for reproducibility; pass None for random.
-    noise_placement: "layer" samples once after every layer, "circuit" once after the whole
-    circuit. Driving a DynamicCircuit, whose every round is one run(), "circuit" is one channel
-    per cycle -- the form error-mitigation derivations assume, and independent of how many
-    layers the round happens to compile to.
     """
 
     def __init__(
@@ -136,17 +132,11 @@ class MonteCarloSimulator(Simulator):
         initial_state: Statevector,
         noise_model: NoiseModel | None = None,
         num_trajectories: int = 500,
-        rng: np.random.Generator | None = None,
+        rng: np.random.Generator | int | None = None,
         decompose: bool = False,
-        noise_placement: str = "layer",
     ):
         super().__init__(circuit, initial_state, noise_model, decompose)
-        if noise_placement not in ("layer", "circuit"):
-            raise ValueError(
-                f"noise_placement must be 'layer' or 'circuit'; got {noise_placement!r}"
-            )
         self.num_trajectories = num_trajectories
-        self.noise_placement = noise_placement
         self._rng = np.random.default_rng(rng)
 
     def _validate_state(self, state: State) -> None:
@@ -159,19 +149,22 @@ class MonteCarloSimulator(Simulator):
         """Append a freshly sampled noise layer after each layer, or after the whole circuit."""
         if nm is None:
             return circuit
-        if self.noise_placement == "circuit":
+        realized = circuit.copy()
+        assert circuit.layers is not None
+        if nm.placement == "circuit":
+            realized.layers = list(circuit.layers)
             noise_gates = pauli_string_to_gates(nm.sample_error(self._rng))
             if noise_gates:
-                circuit.layers = [*circuit.layers, noise_gates]
-            return circuit
+                realized.layers.append(noise_gates)
+            return realized
         noisy_layers = []
         for layer in circuit.layers:
             noisy_layers.append(layer)
             noise_gates = pauli_string_to_gates(nm.sample_error(self._rng))
             if noise_gates:
                 noisy_layers.append(noise_gates)
-        circuit.layers = noisy_layers
-        return circuit
+        realized.layers = noisy_layers
+        return realized
 
     def run(self) -> Statevector:
         """One noisy trajectory. Noise is resampled per layer and the initial state is

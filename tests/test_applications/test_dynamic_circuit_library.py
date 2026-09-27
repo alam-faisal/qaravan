@@ -370,9 +370,8 @@ def test_seeded_noisy_scalar_path_regression():
         Statevector(bitstring="0"),
         simulator=MonteCarloSimulator,
         measurement_rng=np.random.default_rng(4),
-        noise_model=DepolarizingNoise(1, 0.35),
+        noise_model=DepolarizingNoise(1, 0.35, placement="circuit"),
         rng=np.random.default_rng(9),
-        noise_placement="circuit",
     )
 
     assert outcomes == ["1", "1", "1", "0", "1"]
@@ -390,9 +389,8 @@ def test_seeded_noisy_ensemble_regression():
         Statevector(bitstring="0"),
         4,
         simulator=MonteCarloSimulator,
-        noise_model=DepolarizingNoise(1, 0.35),
+        noise_model=DepolarizingNoise(1, 0.35, placement="circuit"),
         rng=np.random.default_rng(3),
-        noise_placement="circuit",
     )
 
     assert records == [

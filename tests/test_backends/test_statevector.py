@@ -7,14 +7,15 @@ from qaravan.backends.statevector import (
     StatevectorSimulator,
     apply_pauli_sum,
 )
-from qaravan.core.base import IncompatibleNoiseError, IncompatibleStateError, NoiseModel
+from qaravan.core.base import IncompatibleStateError, NoiseModel
 from qaravan.core.circuit import Circuit
 from qaravan.core.gates import CNOT, H
+from qaravan.core.noise import PauliNoise
 from qaravan.core.observables import LocalOp, Magnetization, PauliString, PauliSum
 
 
 class _MinimalNoise(NoiseModel):
-    """Minimal concrete NoiseModel for testing IncompatibleNoiseError."""
+    """Minimal concrete NoiseModel without sampled-error support."""
 
     @property
     def gate_dependent(self) -> bool:
@@ -142,14 +143,48 @@ def test_statevector_sim_ghz_3qubit():
     assert np.allclose(sv.to_array(), expected)
 
 
-def test_statevector_sim_raises_on_noise():
-    """StatevectorSimulator must raise IncompatibleNoiseError for any noise model."""
+def test_statevector_sim_rejects_noise_without_a_sampler():
     circ = Circuit([H(0)], num_sites=1)
     sv0 = Statevector(1)
     nm = _MinimalNoise()
     sim = StatevectorSimulator(circ, sv0, noise_model=nm)
-    with pytest.raises(IncompatibleNoiseError):
+    with pytest.raises(NotImplementedError, match="sample_error"):
         sim.run()
+
+
+def test_statevector_apply_supports_one_seeded_noisy_path():
+    circuit = Circuit([H(0)], num_sites=1)
+    noise = PauliNoise(["Z"], [1.0], placement="circuit")
+
+    final = Statevector(bitstring="0").apply(
+        circuit,
+        noise_model=noise,
+        rng=np.random.default_rng(3),
+    )
+
+    np.testing.assert_allclose(final.to_array(), np.array([1, -1]) / np.sqrt(2))
+
+
+def test_statevector_noise_insertion_does_not_mutate_prepared_circuit():
+    circuit = Circuit([H(0), H(1), CNOT([0, 1])], num_sites=2)
+    noise = PauliNoise(["XI"], [1.0], placement="layer")
+    simulator = StatevectorSimulator(
+        circuit,
+        Statevector(bitstring="00"),
+        noise_model=noise,
+        rng=np.random.default_rng(0),
+    )
+    prepared = simulator.prepare_circuit()
+    original_layers = [list(layer) for layer in prepared.layers]
+
+    first = simulator._insert_noise(prepared, noise)
+    second = simulator._insert_noise(prepared, noise)
+
+    assert prepared.layers == original_layers
+    assert first is not prepared
+    assert second is not prepared
+    assert len(first.layers) == 2 * len(original_layers)
+    assert len(second.layers) == 2 * len(original_layers)
 
 
 def test_statevector_sim_rejects_wrong_state():

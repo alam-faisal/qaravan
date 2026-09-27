@@ -171,7 +171,9 @@ class NoiseModel(ABC):
         kraus = self.get_kraus(*args, **kwargs)
         return sum(np.kron(k.conj(), k) for k in kraus)
 
-    def sample_error(self) -> np.ndarray:
+    def sample_error(
+        self, rng: np.random.Generator | int | None = None
+    ) -> str:
         """Sample a Pauli error. Not all noise models support this."""
         raise NotImplementedError("subclass must implement `sample_error`")
 

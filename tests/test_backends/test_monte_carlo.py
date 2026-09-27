@@ -269,6 +269,26 @@ def test_mc_reproducible_with_seed():
     assert abs(w1.expectation(obs) - w2.expectation(obs)) < 1e-14
 
 
+def test_seeded_statevector_path_matches_monte_carlo_run():
+    circuit = Circuit([H(0), CNOT([0, 1]), RX(1, 0.37)], num_sites=2)
+    initial = Statevector(bitstring="00")
+    noise = DepolarizingNoise(2, 0.4, placement="circuit")
+
+    direct = initial.apply(
+        circuit,
+        noise_model=noise,
+        rng=np.random.default_rng(17),
+    )
+    monte_carlo = MonteCarloSimulator(
+        circuit,
+        initial,
+        noise_model=noise,
+        rng=np.random.default_rng(17),
+    ).run()
+
+    np.testing.assert_allclose(monte_carlo.to_array(), direct.to_array(), atol=1e-12)
+
+
 def test_run_returns_one_trajectory_and_run_ensemble_returns_walkers():
     """Every Simulator means the same thing by run(): evolve once, return the state."""
     circuit = Circuit([H(0), CNOT([0, 1])], num_sites=2)
@@ -286,16 +306,8 @@ def test_run_returns_one_trajectory_and_run_ensemble_returns_walkers():
 
 
 # ---------------------------------------------------------------------------
-# noise_placement
+# noise placement
 # ---------------------------------------------------------------------------
-
-
-def test_noise_placement_rejects_unknown_value():
-    circ = Circuit([H(0)], num_sites=1)
-    with pytest.raises(ValueError, match="noise_placement"):
-        MonteCarloSimulator(
-            circ, Statevector(bitstring="0"), noise_placement="every_gate"
-        )
 
 
 def test_noise_placement_circuit_appends_exactly_one_noise_layer():
@@ -305,30 +317,33 @@ def test_noise_placement_circuit_appends_exactly_one_noise_layer():
     effective rate depend on how many layers the circuit compiles to.
     """
     gates = [H(0), H(1), CNOT([0, 1]), H(0)]
-    noise = DepolarizingNoise(2, error_rate=1.0)  # never samples identity
+    circuit_noise = DepolarizingNoise(
+        2, error_rate=1.0, placement="circuit"
+    )  # never samples identity
 
     per_circuit = MonteCarloSimulator(
         Circuit(gates, num_sites=2),
         Statevector(bitstring="00"),
-        noise_model=noise,
+        noise_model=circuit_noise,
         rng=np.random.default_rng(0),
-        noise_placement="circuit",
     )
     circuit = per_circuit.circuit.copy()
     circuit.construct_layers()
     num_layers = len(circuit.layers)
-    assert len(per_circuit._insert_noise(circuit, noise).layers) == num_layers + 1
+    assert len(per_circuit._insert_noise(circuit, circuit_noise).layers) == num_layers + 1
+    assert len(circuit.layers) == num_layers
 
+    layer_noise = DepolarizingNoise(2, error_rate=1.0, placement="layer")
     per_layer = MonteCarloSimulator(
         Circuit(gates, num_sites=2),
         Statevector(bitstring="00"),
-        noise_model=noise,
+        noise_model=layer_noise,
         rng=np.random.default_rng(0),
-        noise_placement="layer",
     )
     circuit = per_layer.circuit.copy()
     circuit.construct_layers()
-    assert len(per_layer._insert_noise(circuit, noise).layers) == 2 * num_layers
+    assert len(per_layer._insert_noise(circuit, layer_noise).layers) == 2 * num_layers
+    assert len(circuit.layers) == num_layers
 
 
 def test_noise_placement_circuit_rate_is_layer_count_independent():
@@ -338,7 +353,7 @@ def test_noise_placement_circuit_rate_is_layer_count_independent():
     'circuit', where under 'layer' the deeper one would decohere far more. This is the property
     the per-cycle mitigation derivations rely on.
     """
-    noise = DepolarizingNoise(1, error_rate=0.3)
+    noise = DepolarizingNoise(1, error_rate=0.3, placement="circuit")
     observable = PauliString("Z")
 
     finals = []
@@ -351,7 +366,6 @@ def test_noise_placement_circuit_rate_is_layer_count_independent():
             Statevector(bitstring="0"),
             noise_model=noise,
             rng=np.random.default_rng(5),
-            noise_placement="circuit",
         )
         walkers = sim.run_ensemble(3000)
         finals.append(walkers.expectation(observable).real)

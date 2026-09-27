@@ -102,8 +102,6 @@ class State(ABC):
         Returns (post-measurement State with same num_sites, outcome bitstring).
         Pass the same Generator across successive measurements; an int seed would
         restart the stream each call.
-        Unphysical State subclasses (Walkers, PauliSum) do not implement this —
-        they raise NotImplementedError with a message pointing to their simulator.
         """
         ...
 

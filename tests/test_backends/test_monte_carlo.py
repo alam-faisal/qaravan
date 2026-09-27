@@ -5,7 +5,7 @@ import pytest
 from qaravan.backends.monte_carlo import MonteCarloSimulator, Walkers
 from qaravan.backends.statevector import Statevector, StatevectorSimulator
 from qaravan.core.circuit import Circuit
-from qaravan.core.gates import CNOT, RX, H
+from qaravan.core.gates import CNOT, RX, H, X
 from qaravan.core.gates import Z as ZGate
 from qaravan.core.noise import DepolarizingNoise
 from qaravan.core.observables import PauliString
@@ -48,15 +48,21 @@ def _projected_channel(walkers: list[Statevector], site: int) -> np.ndarray:
     return channel
 
 
-def test_walkers_measure_and_collapse_returns_one_outcome_per_walker():
+def _posterior_test_walkers(copies_per_state: int = 1) -> Walkers:
+    certain_zero = Statevector(bitstring="00")
+    biased = Statevector(array=np.array([0.0, 0.5, 0.0, np.sqrt(0.75)], dtype=complex))
+    return Walkers([certain_zero] * copies_per_state + [biased] * copies_per_state)
+
+
+def test_walkers_measure_each_returns_one_outcome_per_walker():
     walkers = Walkers([Statevector(bitstring=b) for b in ("00", "01", "10")])
-    collapsed, outcomes = walkers.measure_and_collapse([0], np.random.default_rng(0))
+    collapsed, outcomes = walkers.measure_each([0], np.random.default_rng(0))
     assert isinstance(collapsed, Walkers)
     assert collapsed.num_walkers == 3
     assert outcomes == ["0", "0", "1"]
 
 
-def test_walkers_measure_and_collapse_reproduces_the_channel():
+def test_walkers_measure_each_reproduces_the_channel():
     """Independent per-walker collapse averages to sum_b P_b rho P_b, with no walker weights.
 
     The 1/sqrt(p) renormalisation is cancelled by sampling that outcome with probability p.
@@ -77,7 +83,7 @@ def test_walkers_measure_and_collapse_reproduces_the_channel():
     averaged = np.zeros((dim, dim), dtype=complex)
     repeats = 3000
     for _ in range(repeats):
-        collapsed, _ = Walkers(members).measure_and_collapse([0], rng)
+        collapsed, _ = Walkers(members).measure_each([0], rng)
         for state in collapsed._walkers:
             amplitudes = state.to_array()
             averaged += np.outer(amplitudes, amplitudes.conj())
@@ -86,20 +92,49 @@ def test_walkers_measure_and_collapse_reproduces_the_channel():
     assert np.allclose(averaged, expected, atol=0.02)
 
 
-def test_walkers_measure_and_collapse_is_seeded():
+def test_walkers_measure_each_is_seeded():
     members = [Statevector(bitstring="00").apply(Circuit([H(0)], num_sites=2))] * 6
-    first = Walkers(members).measure_and_collapse([0], np.random.default_rng(5))[1]
-    second = Walkers(members).measure_and_collapse([0], np.random.default_rng(5))[1]
+    first = Walkers(members).measure_each([0], np.random.default_rng(5))[1]
+    second = Walkers(members).measure_each([0], np.random.default_rng(5))[1]
     assert first == second
 
 
-def test_walkers_measure_and_collapse_gives_walkers_independent_outcomes():
+def test_walkers_measure_each_gives_walkers_independent_outcomes():
     """Identical walkers must still draw independently, or the ensemble post-selects."""
     plus = Statevector(bitstring="0").apply(Circuit([H(0)], num_sites=1))
-    _, outcomes = Walkers([plus] * 40).measure_and_collapse(
-        [0], np.random.default_rng(1)
-    )
+    _, outcomes = Walkers([plus] * 40).measure_each([0], np.random.default_rng(1))
     assert set(outcomes) == {"0", "1"}
+
+
+def test_walkers_measure_and_collapse_samples_mixed_state_outcome():
+    walkers = _posterior_test_walkers()
+    rng = np.random.default_rng(0)
+
+    outcomes = [walkers.measure_and_collapse([0], rng)[1] for _ in range(2000)]
+
+    zero_frequency = outcomes.count("0") / len(outcomes)
+    assert zero_frequency == pytest.approx(5 / 8, abs=0.03)
+
+
+def test_walkers_measure_and_collapse_resamples_posterior():
+    walkers = _posterior_test_walkers(copies_per_state=500)
+
+    collapsed, outcome = walkers.measure_and_collapse([0], np.random.default_rng(1))
+
+    assert outcome == "0"
+    assert collapsed.num_walkers == walkers.num_walkers
+    assert np.allclose(collapsed.rdm([0]), np.diag([1.0, 0.0]), atol=1e-12)
+    assert np.allclose(collapsed.rdm([1]), np.diag([0.8, 0.2]), atol=0.04)
+
+
+def test_walkers_measure_and_collapse_is_seeded():
+    walkers = _posterior_test_walkers(copies_per_state=20)
+
+    first, first_outcome = walkers.measure_and_collapse([0], np.random.default_rng(5))
+    second, second_outcome = walkers.measure_and_collapse([0], np.random.default_rng(5))
+
+    assert first_outcome == second_outcome
+    assert np.array_equal(first.rdm([1]), second.rdm([1]))
 
 
 def test_walkers_apply_raises():
@@ -114,6 +149,16 @@ def test_walkers_num_walkers():
     walkers = Walkers(svs)
     assert walkers.num_walkers == 7
     assert walkers.num_sites == 1
+
+
+def test_walkers_sample_is_seeded():
+    plus = Statevector(bitstring="0").apply(Circuit([H(0)], num_sites=1))
+    walkers = Walkers([plus])
+
+    first = walkers.sample(100, np.random.default_rng(5))
+    second = walkers.sample(100, np.random.default_rng(5))
+
+    assert np.array_equal(first, second)
 
 
 def test_walkers_rdm_trace_one():
@@ -238,3 +283,79 @@ def test_run_returns_one_trajectory_and_run_ensemble_returns_walkers():
     assert isinstance(mc.run(), Statevector)
     assert mc.run_ensemble().num_walkers == 9
     assert mc.run_ensemble(4).num_walkers == 4
+
+
+# ---------------------------------------------------------------------------
+# noise_placement
+# ---------------------------------------------------------------------------
+
+
+def test_noise_placement_rejects_unknown_value():
+    circ = Circuit([H(0)], num_sites=1)
+    with pytest.raises(ValueError, match="noise_placement"):
+        MonteCarloSimulator(
+            circ, Statevector(bitstring="0"), noise_placement="every_gate"
+        )
+
+
+def test_noise_placement_circuit_appends_exactly_one_noise_layer():
+    """'circuit' samples once for the whole circuit, 'layer' once per layer.
+
+    Catches: the per-cycle mode silently still sampling per layer, which would make the
+    effective rate depend on how many layers the circuit compiles to.
+    """
+    gates = [H(0), H(1), CNOT([0, 1]), H(0)]
+    noise = DepolarizingNoise(2, error_rate=1.0)  # never samples identity
+
+    per_circuit = MonteCarloSimulator(
+        Circuit(gates, num_sites=2),
+        Statevector(bitstring="00"),
+        noise_model=noise,
+        rng=np.random.default_rng(0),
+        noise_placement="circuit",
+    )
+    circuit = per_circuit.circuit.copy()
+    circuit.construct_layers()
+    num_layers = len(circuit.layers)
+    assert len(per_circuit._insert_noise(circuit, noise).layers) == num_layers + 1
+
+    per_layer = MonteCarloSimulator(
+        Circuit(gates, num_sites=2),
+        Statevector(bitstring="00"),
+        noise_model=noise,
+        rng=np.random.default_rng(0),
+        noise_placement="layer",
+    )
+    circuit = per_layer.circuit.copy()
+    circuit.construct_layers()
+    assert len(per_layer._insert_noise(circuit, noise).layers) == 2 * num_layers
+
+
+def test_noise_placement_circuit_rate_is_layer_count_independent():
+    """One depolarizing channel per run, whatever the depth.
+
+    A depth-1 and a depth-4 identity-composed circuit must decohere by the same amount under
+    'circuit', where under 'layer' the deeper one would decohere far more. This is the property
+    the per-cycle mitigation derivations rely on.
+    """
+    noise = DepolarizingNoise(1, error_rate=0.3)
+    observable = PauliString("Z")
+
+    finals = []
+    for depth in (1, 4):
+        # X applied an even number of times is the identity, so the ideal state is unchanged
+        # and any deviation from <Z> = 1 comes purely from the noise.
+        circ = Circuit([X(0)] * (2 * depth), num_sites=1)
+        sim = MonteCarloSimulator(
+            circ,
+            Statevector(bitstring="0"),
+            noise_model=noise,
+            rng=np.random.default_rng(5),
+            noise_placement="circuit",
+        )
+        walkers = sim.run_ensemble(3000)
+        finals.append(walkers.expectation(observable).real)
+
+    assert abs(finals[0] - finals[1]) < 0.05, (
+        f"per-circuit noise should not depend on depth; got {finals}"
+    )

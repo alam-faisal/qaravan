@@ -16,11 +16,7 @@ from qaravan.core.gates import pauli_string_to_gates
 
 
 class Walkers(State):
-    """Statistical ensemble of Statevectors representing a mixed state via trajectories.
-
-    Expectation values and reduced density matrices are computed as averages over walkers.
-    measure_and_collapse is not defined — it is handled at the MonteCarloSimulator level.
-    """
+    """Statistical ensemble of Statevectors representing a mixed state."""
 
     def __init__(self, statevectors: list[Statevector]):
         if not statevectors:
@@ -64,20 +60,17 @@ class Walkers(State):
         walker_indices = rng.integers(0, self.num_walkers, size=num_shots)
         rows = []
         for idx in walker_indices:
-            rows.append(self._walkers[idx].sample(1))
+            rows.append(self._walkers[idx].sample(1, rng))
         return np.vstack(rows)
 
     def rdm(self, sites: list[int]) -> np.ndarray:
         """Average reduced density matrix (1/N) Σ_i ρ_i[sites]."""
         return np.mean([sv.rdm(sites) for sv in self._walkers], axis=0)
 
-    def measure_and_collapse(
+    def measure_each(
         self, sites: list[int], rng: np.random.Generator | None = None
     ) -> tuple[Walkers, list[str]]:
-        """Measure sites on each walker independently: (collapsed ensemble, one outcome each).
-
-        Deliberately breaks State's `-> tuple[State, str]`: N walkers give N outcomes.
-        """
+        """Measure every walker independently; outcomes align with walkers by index."""
         rng = np.random.default_rng(rng)
         collapsed, outcomes = [], []
         for walker in self._walkers:
@@ -85,6 +78,38 @@ class Walkers(State):
             collapsed.append(state)
             outcomes.append(outcome)
         return Walkers(collapsed), outcomes
+
+    def measure_and_collapse(
+        self, sites: list[int], rng: np.random.Generator | None = None
+    ) -> tuple[Walkers, str]:
+        """Measure the mixed state and posterior-resample an equal-weight ensemble."""
+        rng = np.random.default_rng(rng)
+        sorted_sites = sorted(sites)
+
+        walker_probabilities = []
+        for walker in self._walkers:
+            walker_probabilities.append(np.real(np.diag(walker.rdm(sorted_sites))))
+        walker_probabilities = np.stack(walker_probabilities)
+
+        mixture_probabilities = walker_probabilities.mean(axis=0)
+        mixture_probabilities /= mixture_probabilities.sum()
+        outcome_index = rng.choice(len(mixture_probabilities), p=mixture_probabilities)
+        outcome = format(outcome_index, f"0{len(sorted_sites)}b")
+
+        posterior_probabilities = walker_probabilities[:, outcome_index]
+        posterior_probabilities /= posterior_probabilities.sum()
+        ancestor_indices = rng.choice(
+            self.num_walkers,
+            size=self.num_walkers,
+            replace=True,
+            p=posterior_probabilities,
+        )
+        collapsed = []
+        for ancestor_index in ancestor_indices:
+            collapsed.append(
+                self._walkers[ancestor_index].project_and_renorm(sorted_sites, outcome)
+            )
+        return Walkers(collapsed), outcome
 
     def __repr__(self) -> str:
         return f"Walkers(num_walkers={self.num_walkers}, num_sites={self.num_sites})"
@@ -94,11 +119,15 @@ class MonteCarloSimulator(Simulator):
     """Trajectory-based noisy simulator.
 
     Runs num_trajectories independent copies of the circuit, inserting sampled
-    Pauli noise after each layer. Returns a Walkers ensemble of final statevectors.
+    Pauli noise as noise_placement directs. Returns a Walkers ensemble of final statevectors.
 
     noise_model must implement sample_error(rng) -> str (Pauli string). Only PauliNoise
     and DepolarizingNoise are supported; ThermalNoise will raise at runtime.
     rng: seed for reproducibility; pass None for random.
+    noise_placement: "layer" samples once after every layer, "circuit" once after the whole
+    circuit. Driving a DynamicCircuit, whose every round is one run(), "circuit" is one channel
+    per cycle -- the form error-mitigation derivations assume, and independent of how many
+    layers the round happens to compile to.
     """
 
     def __init__(
@@ -109,9 +138,15 @@ class MonteCarloSimulator(Simulator):
         num_trajectories: int = 500,
         rng: np.random.Generator | None = None,
         decompose: bool = False,
+        noise_placement: str = "layer",
     ):
         super().__init__(circuit, initial_state, noise_model, decompose)
+        if noise_placement not in ("layer", "circuit"):
+            raise ValueError(
+                f"noise_placement must be 'layer' or 'circuit'; got {noise_placement!r}"
+            )
         self.num_trajectories = num_trajectories
+        self.noise_placement = noise_placement
         self._rng = np.random.default_rng(rng)
 
     def _validate_state(self, state: State) -> None:
@@ -121,8 +156,13 @@ class MonteCarloSimulator(Simulator):
             )
 
     def _insert_noise(self, circuit: Circuit, nm: NoiseModel | None) -> Circuit:
-        """Interleave a freshly sampled noise layer after each circuit layer."""
+        """Append a freshly sampled noise layer after each layer, or after the whole circuit."""
         if nm is None:
+            return circuit
+        if self.noise_placement == "circuit":
+            noise_gates = pauli_string_to_gates(nm.sample_error(self._rng))
+            if noise_gates:
+                circuit.layers = [*circuit.layers, noise_gates]
             return circuit
         noisy_layers = []
         for layer in circuit.layers:

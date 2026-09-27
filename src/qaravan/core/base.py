@@ -198,14 +198,24 @@ class Simulator(ABC):
         self.decompose = decompose
 
     def run(self) -> State:
-        """Compile: (decompose →) construct_layers → _insert_noise → evolve."""
-        state = copy.deepcopy(self.initial_state)
+        """Prepare the circuit, realize its noise, and evolve the initial state."""
+        prepared_circuit = self.prepare_circuit()
+        realized_circuit = self._insert_noise(prepared_circuit, self.noise_model)
+        return self.evolve(self.initial_state, realized_circuit)
+
+    def prepare_circuit(self) -> Circuit:
+        """Copy, optionally decompose, and layer the circuit."""
         circuit = self.circuit.copy()
         if self.decompose:
             circuit.decompose()
         circuit.construct_layers()
-        circuit = self._insert_noise(circuit, self.noise_model)
-        for layer in circuit.layers:
+        return circuit
+
+    def evolve(self, initial_state: State, prepared_circuit: Circuit) -> State:
+        """Apply a prepared circuit to a copy of initial_state."""
+        state = copy.deepcopy(initial_state)
+        assert prepared_circuit.layers is not None
+        for layer in prepared_circuit.layers:
             for gate in layer:
                 translated = self.translate_gate(gate)
                 self._apply_translated_gate(state, translated)

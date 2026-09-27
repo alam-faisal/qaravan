@@ -363,6 +363,40 @@ def test_simulator_run_noiseless():
     assert isinstance(result, State)
 
 
+def test_simulator_prepare_circuit_copies_and_constructs_layers():
+    circuit = _two_qubit_circuit()
+
+    prepared = MinimalSimulator(circuit, MinimalState()).prepare_circuit()
+
+    assert prepared is not circuit
+    assert prepared.gates == circuit.gates
+    assert prepared.layers is not None
+    assert circuit.layers is None
+
+
+def test_simulator_evolve_copies_state_and_applies_prepared_layers():
+    class RecordingState(MinimalState):
+        def __init__(self):
+            self.applied = []
+
+    class RecordingSimulator(MinimalSimulator):
+        def translate_gate(self, gate):
+            return gate.name
+
+        def _apply_translated_gate(self, state, translated_gate):
+            state.applied.append(translated_gate)
+
+    circuit = _two_qubit_circuit()
+    simulator = RecordingSimulator(circuit, RecordingState())
+    prepared = simulator.prepare_circuit()
+
+    result = simulator.evolve(simulator.initial_state, prepared)
+
+    assert result is not simulator.initial_state
+    assert result.applied == ["H", "CX"]
+    assert simulator.initial_state.applied == []
+
+
 def test_simulator_run_raises_on_noise():
     """Default _insert_noise must raise IncompatibleNoiseError when nm is not None."""
     circ = _two_qubit_circuit()

@@ -1,8 +1,8 @@
 """Monte Carlo backend — Walkers(State) and MonteCarloSimulator(Simulator)."""
 
 from __future__ import annotations
+from collections.abc import Iterator
 import numpy as np
-from qaravan.backends.statevector import Statevector, op_action
 from qaravan.core.base import (
     Gate,
     IncompatibleStateError,
@@ -12,16 +12,29 @@ from qaravan.core.base import (
     State,
 )
 from qaravan.core.circuit import Circuit
-from qaravan.core.gates import pauli_string_to_gates
 
 
 class Walkers(State):
-    """Statistical ensemble of Statevectors representing a mixed state."""
+    """Equal-weight statistical ensemble of states."""
 
-    def __init__(self, statevectors: list[Statevector]):
-        if not statevectors:
-            raise ValueError("Walkers requires at least one Statevector.")
-        self._walkers = list(statevectors)
+    def __init__(
+        self,
+        walkers: State | list[State],
+        *,
+        num_walkers: int | None = None,
+    ):
+        if isinstance(walkers, list):
+            if not walkers:
+                raise ValueError("Walkers requires at least one state.")
+            if num_walkers is not None:
+                raise ValueError("num_walkers cannot be provided with a list.")
+            self._walkers = list(walkers)
+            return
+
+        count = 1 if num_walkers is None else num_walkers
+        if count <= 0:
+            raise ValueError("num_walkers must be positive.")
+        self._walkers = [walkers] * count
 
     @property
     def num_sites(self) -> int:
@@ -32,21 +45,20 @@ class Walkers(State):
         return len(self._walkers)
 
     @property
-    def default_simulator(self):
-        raise NotImplementedError(
-            "Walkers cannot be used as an initial state for apply(). "
-            "Pass a Statevector to MonteCarloSimulator instead."
-        )
+    def default_simulator(self) -> type[Simulator]:
+        return MonteCarloSimulator
 
-    def apply(self, circuit: Circuit, **kwargs):
-        raise NotImplementedError(
-            "Walkers.apply() is not supported. "
-            "Pass a Statevector to MonteCarloSimulator instead."
-        )
+    def __iter__(self) -> Iterator[State]:
+        return iter(self._walkers)
+
+    def __getitem__(self, index: int) -> State:
+        return self._walkers[index]
 
     def expectation(self, observable: Observable) -> complex:
         """Average ⟨ψ_i|O|ψ_i⟩ over all walkers."""
-        return complex(np.mean([sv.expectation(observable) for sv in self._walkers]))
+        return complex(
+            np.mean([walker.expectation(observable) for walker in self._walkers])
+        )
 
     def sample(
         self, num_shots: int, rng: np.random.Generator | None = None
@@ -116,71 +128,54 @@ class Walkers(State):
 
 
 class MonteCarloSimulator(Simulator):
-    """Trajectory-based noisy simulator.
-
-    Runs num_trajectories independent copies of the circuit, inserting sampled
-    Pauli noise. Returns a Walkers ensemble of final statevectors.
-
-    noise_model must implement sample_error(rng) -> str (Pauli string). Only PauliNoise
-    and DepolarizingNoise are supported; ThermalNoise will raise at runtime.
-    rng: seed for reproducibility; pass None for random.
-    """
+    """Evolve each walker through independent noise using its member backend."""
 
     def __init__(
         self,
         circuit: Circuit,
-        initial_state: Statevector,
+        initial_state: Walkers,
         noise_model: NoiseModel | None = None,
-        num_trajectories: int = 500,
         rng: np.random.Generator | int | None = None,
         decompose: bool = False,
+        **member_simulator_kwargs,
     ):
         super().__init__(circuit, initial_state, noise_model, decompose)
-        self.num_trajectories = num_trajectories
-        self._rng = np.random.default_rng(rng)
+        representative = initial_state[0]
+        member_simulator_type = representative.default_simulator
+        self.member_simulator = member_simulator_type(
+            circuit,
+            representative,
+            noise_model=noise_model,
+            rng=rng,
+            decompose=decompose,
+            **member_simulator_kwargs,
+        )
 
     def _validate_state(self, state: State) -> None:
-        if not isinstance(state, Statevector):
+        if not isinstance(state, Walkers):
             raise IncompatibleStateError(
-                f"MonteCarloSimulator requires a Statevector; got {type(state).__name__}"
+                f"MonteCarloSimulator requires Walkers; got {type(state).__name__}"
             )
 
-    def _insert_noise(self, circuit: Circuit, nm: NoiseModel | None) -> Circuit:
-        """Append a freshly sampled noise layer after each layer, or after the whole circuit."""
-        if nm is None:
-            return circuit
-        realized = circuit.copy()
-        assert circuit.layers is not None
-        if nm.placement == "circuit":
-            realized.layers = list(circuit.layers)
-            noise_gates = pauli_string_to_gates(nm.sample_error(self._rng))
-            if noise_gates:
-                realized.layers.append(noise_gates)
-            return realized
-        noisy_layers = []
-        for layer in circuit.layers:
-            noisy_layers.append(layer)
-            noise_gates = pauli_string_to_gates(nm.sample_error(self._rng))
-            if noise_gates:
-                noisy_layers.append(noise_gates)
-        realized.layers = noisy_layers
-        return realized
+    def run(self) -> Walkers:
+        prepared_circuit = self.member_simulator.prepare_circuit()
+        final_walkers = []
+        for walker in self.initial_state:
+            realized_circuit = self._insert_noise(
+                prepared_circuit, self.noise_model
+            )
+            final_walkers.append(self.evolve(walker, realized_circuit))
+        return Walkers(final_walkers)
 
-    def run(self) -> Statevector:
-        """One noisy trajectory. Noise is resampled per layer and the initial state is
-        deep-copied, so repeated calls are independent."""
-        return super().run()
+    def _insert_noise(
+        self,
+        circuit: Circuit,
+        noise_model: NoiseModel | None,
+    ) -> Circuit:
+        return self.member_simulator._insert_noise(circuit, noise_model)
 
-    def run_ensemble(self, num_trajectories: int | None = None) -> Walkers:
-        """Independent trajectories, bundled. Defaults to the constructor's num_trajectories."""
-        count = self.num_trajectories if num_trajectories is None else num_trajectories
-        return Walkers([self.run() for _ in range(count)])
+    def translate_gate(self, gate: Gate):
+        return self.member_simulator.translate_gate(gate)
 
-    def translate_gate(self, gate: Gate) -> tuple[np.ndarray, list[int]]:
-        return gate.matrix, gate.indices
-
-    def _apply_translated_gate(
-        self, state: Statevector, translated_gate: tuple[np.ndarray, list[int]]
-    ) -> None:
-        mat, indices = translated_gate
-        state._tensor = op_action(mat, indices, state._tensor, state.local_dim)
+    def _apply_translated_gate(self, state: State, translated_gate) -> None:
+        self.member_simulator._apply_translated_gate(state, translated_gate)

@@ -4,7 +4,20 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from qaravan.core.circuit import Circuit
 from qaravan.core.gates import CNOT, RX, H, X, Z
-from qaravan.plot import QARAVAN_PALETTE, circuit_to_layers, plot_circuit
+from qaravan.plot import QARAVAN_PALETTE, circuit_to_layers, plot_circuit, set_style
+
+
+def test_set_style_applies_publication_defaults():
+    with plt.rc_context():
+        set_style()
+
+        assert plt.rcParams["font.family"] == ["serif"]
+        assert plt.rcParams["image.cmap"] == "plasma"
+        assert plt.rcParams["axes.grid.axis"] == "y"
+        assert plt.rcParams["axes.spines.right"] is False
+        assert plt.rcParams["ytick.left"] is True
+        assert plt.rcParams["legend.frameon"] is False
+        assert plt.rcParams["lines.linewidth"] == 1.8
 
 
 def test_circuit_to_layers_maps_wires_labels_and_styles():

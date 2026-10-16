@@ -9,6 +9,15 @@ in CLAUDE.md.
 
 ---
 
+### Review — `plot.py` publication style
+
+Review the new shared `set_style()` defaults and the notebook figures that exercise them.
+
+**Done when:** the serif typography, plasma colour map, horizontal grid, spine treatment,
+tick geometry, and legend defaults look right in `notebooks/tds_circuits.ipynb`.
+
+---
+
 ## v0.2.2 — Track B: Hamiltonians and Fermions + Track A: Dynamic Quantum Circuits
 
 ---

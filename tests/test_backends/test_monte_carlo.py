@@ -4,7 +4,13 @@ import numpy as np
 import pytest
 from qaravan.backends.monte_carlo import MonteCarloSimulator, Walkers
 from qaravan.backends.statevector import Statevector, StatevectorSimulator
-from qaravan.core.base import IncompatibleStateError, Simulator, State
+from qaravan.core.base import (
+    IncompatibleNoiseError,
+    IncompatibleStateError,
+    NoiseModel,
+    Simulator,
+    State,
+)
 from qaravan.core.circuit import Circuit
 from qaravan.core.gates import CNOT, RX, H, X
 from qaravan.core.gates import Z as ZGate
@@ -50,23 +56,19 @@ class RecordingState(State):
 class RecordingSimulator(Simulator):
     prepare_calls = 0
 
-    def __init__(
-        self,
-        circuit,
-        initial_state,
-        noise_model=None,
-        rng=None,
-        decompose=False,
-    ):
-        super().__init__(circuit, initial_state, noise_model, decompose)
-
     def _validate_state(self, state):
         if not isinstance(state, RecordingState):
             raise IncompatibleStateError
 
-    def prepare_circuit(self):
+    def _validate_noise(self, noise_model):
+        raise IncompatibleNoiseError
+
+    def _insert_noise(self, circuit, noise_model):
+        return circuit
+
+    def _prepare_circuit(self):
         type(self).prepare_calls += 1
-        return super().prepare_circuit()
+        return super()._prepare_circuit()
 
     def translate_gate(self, gate):
         return 1
@@ -263,7 +265,7 @@ def test_walkers_sample_is_seeded():
 def test_walkers_rdm_trace_one():
     circ = bell_circuit()
     walkers = Walkers(Statevector(bitstring="00"), num_walkers=10).apply(
-        circ, rng=np.random.default_rng(0)
+        circ, noise_rng=np.random.default_rng(0)
     )
     rdm = walkers.rdm([0])
     assert abs(np.trace(rdm) - 1.0) < 1e-12
@@ -278,7 +280,7 @@ def test_mc_noiseless_matches_sv():
     """Noiseless MC on Bell state: ⟨ZZ⟩ = 1 (Z⊗Z on (|00⟩+|11⟩)/√2)."""
     circ = bell_circuit()
     walkers = Walkers(Statevector(bitstring="00"), num_walkers=200).apply(
-        circ, rng=np.random.default_rng(0)
+        circ, noise_rng=np.random.default_rng(0)
     )
     obs = PauliString("ZZ")
     assert abs(walkers.expectation(obs).real - 1.0) < 1e-10
@@ -289,7 +291,7 @@ def test_walkers_expectation_matches_sv_noiseless():
     circ = Circuit([RX(0, 0.7), RX(1, 1.3)], num_sites=2)
     init = Statevector(bitstring="00")
     sv = StatevectorSimulator(circ, init).run()
-    walkers = Walkers(init).apply(circ, rng=np.random.default_rng(0))
+    walkers = Walkers(init).apply(circ, noise_rng=np.random.default_rng(0))
     obs = PauliString("ZI")
     assert abs(walkers.expectation(obs) - sv.expectation(obs)) < 1e-10
 
@@ -314,7 +316,7 @@ def test_mc_depolarizing_z_expectation():
     walkers = Walkers(Statevector(bitstring="0"), num_walkers=5000).apply(
         circ,
         noise_model=noise,
-        rng=np.random.default_rng(42),
+        noise_rng=np.random.default_rng(42),
     )
     z_exp = walkers.expectation(PauliString("Z")).real
     # variance per trajectory ≤ 1, std of mean ≤ 1/sqrt(5000) ≈ 0.014; use 4σ margin
@@ -331,7 +333,7 @@ def test_mc_depolarizing_decays_zz_bell():
     walkers = Walkers(Statevector(bitstring="00"), num_walkers=2000).apply(
         circ,
         noise_model=noise,
-        rng=np.random.default_rng(0),
+        noise_rng=np.random.default_rng(0),
     )
     zz_noisy = walkers.expectation(PauliString("ZZ")).real
     assert zz_noisy < 1.0, f"⟨ZZ⟩ = {zz_noisy:.4f} should be < 1.0 under depolarizing"
@@ -343,8 +345,8 @@ def test_mc_reproducible_with_seed():
     noise = DepolarizingNoise(num_sites=2, error_rate=0.2)
     initial = Walkers(Statevector(bitstring="00"), num_walkers=50)
     kwargs = dict(noise_model=noise)
-    w1 = initial.apply(circ, rng=np.random.default_rng(7), **kwargs)
-    w2 = initial.apply(circ, rng=np.random.default_rng(7), **kwargs)
+    w1 = initial.apply(circ, noise_rng=np.random.default_rng(7), **kwargs)
+    w2 = initial.apply(circ, noise_rng=np.random.default_rng(7), **kwargs)
     obs = PauliString("ZZ")
     assert abs(w1.expectation(obs) - w2.expectation(obs)) < 1e-14
 
@@ -357,13 +359,13 @@ def test_seeded_statevector_path_matches_monte_carlo_run():
     direct = initial.apply(
         circuit,
         noise_model=noise,
-        rng=np.random.default_rng(17),
+        noise_rng=np.random.default_rng(17),
     )
     monte_carlo = MonteCarloSimulator(
         circuit,
         Walkers(initial),
         noise_model=noise,
-        rng=np.random.default_rng(17),
+        noise_rng=np.random.default_rng(17),
     ).run()
 
     np.testing.assert_allclose(monte_carlo[0].to_array(), direct.to_array(), atol=1e-12)
@@ -376,7 +378,7 @@ def test_run_evolves_the_supplied_walkers_once():
         circuit,
         initial,
         DepolarizingNoise(2, 0.1),
-        rng=np.random.default_rng(0),
+        noise_rng=np.random.default_rng(0),
     )
     assert mc.run().num_walkers == 9
 
@@ -387,6 +389,30 @@ def test_monte_carlo_rejects_a_scalar_state():
             Circuit([H(0)], num_sites=1),
             Statevector(bitstring="0"),
         )
+
+
+def test_monte_carlo_shares_noise_stream_with_member_simulator():
+    """Walkers draw from the caller's noise stream, not a freshly seeded copy."""
+    simulator = MonteCarloSimulator(
+        Circuit([H(0)], num_sites=1),
+        Walkers(Statevector(bitstring="0"), num_walkers=2),
+        noise_rng=0,
+    )
+    assert simulator.member_simulator.noise_rng is simulator.noise_rng
+
+
+def test_monte_carlo_rejects_noise_its_members_cannot_sample():
+    """Noise validation is delegated to the member simulator at construction."""
+
+    class KrausOnlyNoise(NoiseModel):
+        gate_dependent = False
+
+        def get_kraus(self, *args, **kwargs):
+            return [np.eye(2, dtype=complex)]
+
+    walkers = Walkers(Statevector(bitstring="0"), num_walkers=2)
+    with pytest.raises(IncompatibleNoiseError, match="StatevectorSimulator"):
+        walkers.apply(Circuit([H(0)], num_sites=1), noise_model=KrausOnlyNoise())
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +435,7 @@ def test_noise_placement_circuit_appends_exactly_one_noise_layer():
         Circuit(gates, num_sites=2),
         Walkers(Statevector(bitstring="00")),
         noise_model=circuit_noise,
-        rng=np.random.default_rng(0),
+        noise_rng=np.random.default_rng(0),
     )
     circuit = per_circuit.circuit.copy()
     circuit.construct_layers()
@@ -422,7 +448,7 @@ def test_noise_placement_circuit_appends_exactly_one_noise_layer():
         Circuit(gates, num_sites=2),
         Walkers(Statevector(bitstring="00")),
         noise_model=layer_noise,
-        rng=np.random.default_rng(0),
+        noise_rng=np.random.default_rng(0),
     )
     circuit = per_layer.circuit.copy()
     circuit.construct_layers()
@@ -450,7 +476,7 @@ def test_noise_placement_circuit_rate_is_layer_count_independent():
         ).apply(
             circ,
             noise_model=noise,
-            rng=np.random.default_rng(5),
+            noise_rng=np.random.default_rng(5),
         )
         finals.append(walkers.expectation(observable).real)
 

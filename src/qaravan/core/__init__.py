@@ -7,7 +7,7 @@ from qaravan.core.base import (
     State,
 )
 from qaravan.core.circuit import Circuit
-from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
+from qaravan.core.dynamic_circuit import Decoder, DynamicCircuit, DynamicRound
 from qaravan.core.fermions import (
     FermionicEncoding,
     FermionicSum,
@@ -61,6 +61,7 @@ __all__ = [
     "MatrixGate",
     "ParametricGate",
     "Circuit",
+    "Decoder",
     "DynamicRound",
     "DynamicCircuit",
     "PauliString",

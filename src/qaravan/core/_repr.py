@@ -1,14 +1,4 @@
-"""Shared __repr__ helpers, plus conventions
-
-Imports nothing from qaravan. Pass in plain values, get strings back.
-
-Conventions:
-  - Define __repr__, never __str__ -- Python falls back str() -> repr() on its own.
-  - Algebraic types render as mathematics (PauliSum, FermionicSum, Statevector); structural
-    types render as construction (Gate, Circuit, FermionicEncoding). A container of algebra
-    prints a header, then the algebra.
-  - Any repr over a sequence elides.
-"""
+"""Formatting helpers for construction-style and mathematical reprs."""
 
 from __future__ import annotations
 from contextlib import contextmanager
@@ -17,11 +7,7 @@ from contextlib import contextmanager
 def format_coefficient(
     coeff: complex, spec: str = ".4g", threshold: float = 1e-9
 ) -> str:
-    """Real-only, imaginary-only, or (r+ij).
-
-    spec=".4g" suits operator coefficients, whose magnitude is unbounded -- ".4f" would render
-    1e-7 as 0.0000. Amplitudes are bounded by 1 and read better fixed-width, so they pass ".4f".
-    """
+    """Format as real, imaginary, or parenthesized Cartesian form without erasing small values."""
     real, imag = coeff.real, coeff.imag
     if abs(imag) < threshold:
         return f"{real:{spec}}"
@@ -51,7 +37,7 @@ def plain_more(count: int) -> str:
 
 
 def math_more(count: int) -> str:
-    """\\text{} wrapped -- raw '... (4 more)' in math mode typesets as italic variables."""
+    """Wrap an elision marker in LaTeX text mode."""
     return rf"\text{{... ({count} more)}}"
 
 
@@ -80,14 +66,9 @@ def named(name: str, indices: list[int]) -> str:
     return f"{name}({indices})"
 
 
-# ---------------------------------------------------------------------------
-# LaTeX
-#
-# _repr_latex_ is what Jupyter calls to render an object as mathematics, so devbook cells
-# typeset operators instead of printing ASCII. Two details that are easy to get wrong:
-# write c^{\dagger}, since a literal "†" has no superscript structure to render; and brace
-# every label (_{10}, not _10) or only its first character ends up subscripted.
-# ---------------------------------------------------------------------------
+# === LaTeX ===
+
+# In _repr_latex_ output, write c^{\dagger} (not "†") and brace labels (_{10}, not _10).
 
 
 def as_math(body: str) -> str:
@@ -96,8 +77,7 @@ def as_math(body: str) -> str:
 
 
 def latex_coefficient(coeff: complex, spec: str = ".4g") -> str:
-    """format_coefficient with i for the imaginary unit, and a unit magnitude left implicit
-    (i, not 1i), as mathematics is written."""
+    """Format a coefficient with i as the imaginary unit and implicit unit magnitude."""
     text = format_coefficient(coeff, spec).replace("j", "i")
     if text.startswith("1i"):
         return "i" + text[2:]
@@ -140,8 +120,7 @@ def latex_term(coeff: complex, operator: str, spec: str = ".4g") -> str:
 
 
 def math_body(part) -> str:
-    """LaTeX body of one part, undelimited. A str becomes \\text{...}; anything with
-    _repr_latex_ contributes its own body; anything else falls back to \\text{repr}."""
+    """Return an undelimited LaTeX body, using _repr_latex_ when available."""
     if isinstance(part, str):
         return rf"\text{{{part}}}"
     latex = getattr(part, "_repr_latex_", None)
@@ -151,14 +130,7 @@ def math_body(part) -> str:
 
 
 def display_math(*parts, sep: str = r"\quad ", limit=_DEFAULT) -> None:
-    """Render strings and algebraic objects as ONE typeset line in Jupyter.
-
-    The substitute for print() in a notebook: print writes to a stdout stream, which carries no
-    MIME bundle and so can never typeset. display(a, b) does typeset, but emits one output block
-    per argument and shows strings quoted.
-
-        display_math("as written:", forward, "vs", backward)
-    """
+    """Render strings and algebraic objects in one Jupyter math block."""
     from IPython.display import Math, display
 
     with term_limit(TERM_LIMIT if limit is _DEFAULT else limit):
@@ -167,7 +139,7 @@ def display_math(*parts, sep: str = r"\quad ", limit=_DEFAULT) -> None:
 
 
 def display_terms(operator, limit=_DEFAULT) -> None:
-    """One typeset line per term, rather than one long sum -- readable for a 20-term model."""
+    """Display each retained operator term on its own typeset line."""
     from IPython.display import Math, display
 
     shown = elide([math_body(term) for term in operator.terms], limit, math_more)

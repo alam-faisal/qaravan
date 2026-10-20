@@ -5,13 +5,11 @@ from abc import ABC, abstractmethod
 import numpy as np
 from qaravan.core.base import Gate
 
-# ---------------------------------------------------------------------------
-# MatrixGate and ParametricGate — base concrete classes
-# ---------------------------------------------------------------------------
+# === MatrixGate and ParametricGate ===
 
 
 class MatrixGate(Gate):
-    """Concrete Gate with a fixed matrix stored at construction"""
+    """Gate with a fixed matrix supplied at construction."""
 
     def __init__(
         self,
@@ -34,11 +32,7 @@ class MatrixGate(Gate):
 
 
 class ParametricGate(Gate, ABC):
-    """Abstract gate whose matrix is computed from parameters.
-
-    Subclasses implement _build_matrix(). params is a tuple of floats.
-    dagger() negates all params — correct for all exp(-i θ P) rotation gates.
-    """
+    """Gate built from parameters whose dagger negates every parameter."""
 
     def __init__(
         self,
@@ -66,9 +60,9 @@ class ParametricGate(Gate, ABC):
         return f"{self.name}({self.indices}, {params_str})"
 
 
-# ---------------------------------------------------------------------------
-# Single-qubit MatrixGate subclasses
-# ---------------------------------------------------------------------------
+# === Qubit gates ===
+
+# Single-qubit fixed gates.
 
 
 class I(MatrixGate):
@@ -141,10 +135,7 @@ class SX(MatrixGate):
         )
 
 
-# ---------------------------------------------------------------------------
-# Single-qubit ParametricGate subclasses
-# Convention: exp(-i θ P), full angle — no hidden 1/2 factor.
-# ---------------------------------------------------------------------------
+# Single-qubit rotations: exp(-i θ P), full angle — no hidden 1/2 factor.
 
 
 class RX(ParametricGate):
@@ -186,10 +177,7 @@ class RZ(ParametricGate):
         return np.diag([np.exp(-1j * t), np.exp(1j * t)])
 
 
-# ---------------------------------------------------------------------------
-# Two-qubit MatrixGate subclasses
-# All use (control, target) index ordering.
-# ---------------------------------------------------------------------------
+# Two-qubit fixed gates, all with (control, target) index ordering.
 
 
 class CNOT(MatrixGate):
@@ -224,10 +212,7 @@ class iSWAP(MatrixGate):
 
 
 class CRX(ParametricGate):
-    """Controlled-RX in (control, target) ordering: exp(-i θ n_control X_target).
-
-    Full angle, matching RX -- a source writing CR_x(Ω) for exp(-i(Ω/2)X) needs CRX(..., Ω/2).
-    """
+    """exp(-iθ n_control X_target) in (control, target) order with full angle θ."""
 
     def __init__(self, indices: list[int], theta: float, time: float | None = None):
         super().__init__("CRX", indices, (theta,), time)
@@ -244,10 +229,7 @@ class CRX(ParametricGate):
         )
 
 
-# ---------------------------------------------------------------------------
-# Two-qubit ParametricGate subclasses
-# Convention: exp(-i θ P⊗P), full angle.
-# ---------------------------------------------------------------------------
+# Two-qubit rotations: exp(-i θ P⊗P), full angle.
 
 
 class RXX(ParametricGate):
@@ -301,12 +283,7 @@ class RZZ(ParametricGate):
 
 
 class XY(ParametricGate):
-    """exp(-i θ (X⊗X + Y⊗Y)).
-
-    X⊗X + Y⊗Y acts only on the |01>,|10> subspace, with eigenvalues {2,-2} there (and 0 on
-    |00>,|11>) -- so the period is halved relative to RXX/RYY alone (each of which has
-    eigenvalues {1,-1}), hence cos(2θ)/sin(2θ) below, not cos(θ)/sin(θ).
-    """
+    """exp(-iθ(XX+YY)); the |01⟩,|10⟩ block rotates by 2θ."""
 
     def __init__(self, indices: list[int], theta: float, time: float | None = None):
         super().__init__("XY", indices, (theta,), time)
@@ -323,9 +300,9 @@ class XY(ParametricGate):
         )
 
 
-# ---------------------------------------------------------------------------
-# Qutrit MatrixGate subclasses (local_dim=3, inferred from matrix shape)
-# ---------------------------------------------------------------------------
+# === Qutrit gates ===
+
+# local_dim=3 is inferred from the 3x3 / 9x9 matrix shape.
 
 
 class X01(MatrixGate):
@@ -431,13 +408,11 @@ class CNOT3(MatrixGate):
         super().__init__("CNOT3", indices, _CNOT3_M, time)
 
 
-# ---------------------------------------------------------------------------
-# Utilities
-# ---------------------------------------------------------------------------
+# === Utilities ===
 
 
 def random_unitary(n: int, local_dim: int = 2, seed: int | None = None) -> np.ndarray:
-    """Haar-random d^n × d^n unitary. Uses np.random.default_rng(seed)."""
+    """Haar-random local_dim^n × local_dim^n unitary."""
     rng = np.random.default_rng(seed)
     dim = local_dim**n
     a = rng.standard_normal((dim, dim)) + 1j * rng.standard_normal((dim, dim))

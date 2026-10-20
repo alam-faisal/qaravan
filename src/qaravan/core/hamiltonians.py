@@ -1,4 +1,4 @@
-"""Hamiltonian base class and concrete models"""
+"""Hamiltonian base class and concrete models."""
 
 from typing import Self
 import numpy as np
@@ -17,13 +17,11 @@ from qaravan.core.observables import (
     embed_hamiltonian_terms,
 )
 
+# === Hamiltonian ===
+
 
 class Hamiltonian:
-    """Generic Hamiltonian: a list of local HamiltonianTerms with a declared Trotter grouping.
-
-    trotter_groups is a partition of terms into sublists. Within each sublist all terms
-    act on disjoint sites (so they commute and form a single Trotter layer).
-    """
+    """Local terms with optional commuting, disjoint-site Trotter groups."""
 
     def __init__(
         self,
@@ -36,8 +34,7 @@ class Hamiltonian:
         self.trotter_groups = trotter_groups
 
     def as_observable(self) -> PauliSum:
-        """Embed all local terms into the full n-qubit space and simplify (merge duplicate
-        strings) -- doesn't change to_matrix(), just avoids redundant terms."""
+        """Embed local terms and merge duplicate full-register Pauli strings."""
         return embed_hamiltonian_terms(self.terms, self.num_sites)
 
     def to_matrix(self) -> np.ndarray:
@@ -58,9 +55,7 @@ class Hamiltonian:
         return f"$\\text{{{type(self).__name__}}}_{{{self.num_sites}}} = {body}$"
 
 
-# ---------------------------------------------------------------------------
-# TFI
-# ---------------------------------------------------------------------------
+# === Spin models ===
 
 
 class TFI(Hamiltonian):
@@ -98,17 +93,8 @@ class TFI(Hamiltonian):
         super().__init__(bond_terms + field_terms, n, trotter_groups)
 
 
-# ---------------------------------------------------------------------------
-# Heisenberg1D
-# ---------------------------------------------------------------------------
-
-
 class Heisenberg1D(Hamiltonian):
-    """1D Heisenberg chain: H = J Σ_{<ij>} (X_iX_j + Y_iY_j + Z_iZ_j) - h Σ_i Z_i.
-
-    Bond gate is e^{-i dt J (XX+YY+ZZ)}: a single exact 4×4 gate, not decomposed into
-    separate RXX/RYY/RZZ rotations (which would introduce O(dt²) intra-bond Trotter error).
-    """
+    """H = JΣ_<ij>(X_iX_j+Y_iY_j+Z_iZ_j)-hΣ_iZ_i with each bond kept as one term."""
 
     def __init__(
         self,
@@ -151,17 +137,11 @@ class Heisenberg1D(Hamiltonian):
         super().__init__(bond_terms + field_terms, n, trotter_groups)
 
 
-# ---------------------------------------------------------------------------
-# Fermionic things
-# ---------------------------------------------------------------------------
+# === Fermionic models ===
 
 
 class FermionicHamiltonian(FermionicSum):
-    """Hermitian-asserted FermionicSum
-
-    trotter_groups is the fermionic-side analog of Hamiltonian.trotter_groups: a
-    partition of terms into commuting layers, decided at definition by definer
-    """
+    """Hermitian FermionicSum partitioned into optional commuting Trotter groups."""
 
     def __init__(
         self,
@@ -177,13 +157,7 @@ class FermionicHamiltonian(FermionicSum):
             )
 
     def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
-        """Encodes each trotter_groups entry independently via jordan_wigner_hamiltonian, preserving the
-        grouping into the returned Hamiltonian.trotter_groups.
-
-        Each group must contain both halves of any Hermitian-conjugate pair it holds (e.g.
-        hopping()'s two terms) -- jordan_wigner_hamiltonian needs the partner in the same call to pair
-        them into one HamiltonianTerm.
-        """
+        """Encode each Trotter group independently; each must contain complete adjoint pairs."""
         if encoding.num_modes != self.num_fermionic_modes:
             raise ValueError(
                 f"Encoding is for {encoding.num_modes} modes; operator has "
@@ -199,19 +173,10 @@ class FermionicHamiltonian(FermionicSum):
         return Hamiltonian(terms, encoding.num_qubits, encoded_groups)
 
 
-# ---------------------------------------------------------------------------
-# FermiHubbard1D
-# ---------------------------------------------------------------------------
-
-
 def interleaved_mode_order(
     num_fermionic_sites: int, annotate: bool = False
 ) -> tuple[int, ...] | tuple[tuple[int, ...], str]:
-    """mode_order for FermiHubbard1D's interleaved layout: qubit 2j <- up_j, qubit 2j+1 <- down_j.
-
-    annotate=True also returns a human-readable qubit-layout string, e.g.
-    'q0=↑0 q1=↓0 q2=↑1 q3=↓1', as (mode_order, annotation).
-    """
+    """Map spin-blocked modes to q_2j=up_j, q_2j+1=down_j, optionally with a layout label."""
     order = [0] * (2 * num_fermionic_sites)
     for j in range(num_fermionic_sites):
         order[2 * j], order[2 * j + 1] = j, num_fermionic_sites + j
@@ -256,9 +221,7 @@ class FermiHubbard1D(FermionicHamiltonian):
     def _groups(
         num_fermionic_sites: int, t: float, U: float, mu: float, periodic: bool
     ) -> list[list]:
-        """FH's Trotter-layer structure, in fermionic (pre-encoding) form: which
-        FermionicTerms mutually commute, grouped as up-even/up-odd/down-even/down-odd/onsite
-        """
+        """Group fermionic terms as up-even, up-odd, down-even, down-odd, and onsite layers."""
         bonds = LinearLattice(num_fermionic_sites, periodic=periodic).nn_pairs()
         even_bonds, odd_bonds = bonds[::2], bonds[1::2]
 
@@ -283,21 +246,10 @@ class FermiHubbard1D(FermionicHamiltonian):
         return [up_even, up_odd, down_even, down_odd, onsite]
 
 
-# ---------------------------------------------------------------------------
-# AndersonImpurity
-# ---------------------------------------------------------------------------
-
-
 def bath_interleaved_mode_order(
     num_bath: int, annotate: bool = False
 ) -> tuple[int, ...] | tuple[tuple[int, ...], str]:
-    """mode_order for AndersonImpurity, placing bath modes first
-    (interleaved by spin: bath1_up, bath1_down, bath2_up, bath2_down, ...), impurity last:
-    qubits [b1up,b1down,...,bNup,bNdown,i_up,i_down].
-
-    annotate=True also returns a human-readable qubit-layout string, e.g.
-    'q0=b1↑ q1=b1↓ q2=b2↑ q3=b2↓ q4=i↑ q5=i↓', as (mode_order, annotation).
-    """
+    """Place spin-interleaved bath modes first and impurity modes last, optionally with labels."""
     order = []
     for k in range(1, num_bath + 1):
         order.append(k)
@@ -318,19 +270,7 @@ def bath_interleaved_mode_order(
 
 
 class AndersonImpurity(FermionicHamiltonian):
-    """Single-orbital Anderson impurity model (star or chain geometry).
-
-    H = -ε Σ_σ n_{0σ} + U n_{0↑} n_{0↓} - Σ_{k,σ} ε_k n_{kσ}
-    - Σ_{<ij>,σ} t_{ij} (c†_{iσ} c_{jσ} + h.c.). Arguments are the physicist's
-    ``t``, ``U``, ``ε``, so a positive ``onsite_impurity_energy`` lowers the impurity level.
-
-    Build via .star(...) or .chain(...); the plain constructor is for their internal use --
-    the two geometries take different-shaped parameters and there is no conversion between
-    them (the star<->chain Lanczos mapping is not implemented here).
-
-    Canonical mode index: spin*(num_bath+1) + site, site 0 = impurity, sites 1..num_bath =
-    bath/chain sites 1..num_bath (spin 0=up, 1=down). Total modes/qubits: 2*(num_bath+1).
-    """
+    """Star or chain AIM with positive ε lowering levels and mode=spin·(num_bath+1)+site."""
 
     def __init__(
         self,
@@ -355,9 +295,7 @@ class AndersonImpurity(FermionicHamiltonian):
         onsite_bath_energy: list[float],
         impurity_bath_hopping: list[float],
     ) -> Self:
-        """H = Himp + Hbath + Hhyb: impurity coupled directly to each of the
-        len(onsite_bath_energy) bath modes via its own impurity_bath_hopping[k]; bath modes
-        never couple to each other."""
+        """Construct a star AIM with every bath mode coupled directly to the impurity."""
         groups = cls._star_groups(
             onsite_impurity_energy,
             onsite_impurity_repulsion,
@@ -383,9 +321,7 @@ class AndersonImpurity(FermionicHamiltonian):
         bath_bath_hopping: list[float],
         impurity_bath_hopping: float,
     ) -> Self:
-        """H = Himp + chain-mapped Hbath+Hhyb: impurity coupled only to the first of the
-        len(onsite_bath_energy) nearest-neighbor-hopping chain sites, via a single
-        impurity_bath_hopping."""
+        """Construct a chain AIM with the impurity coupled only to the first bath site."""
         groups = cls._chain_groups(
             onsite_impurity_energy,
             onsite_impurity_repulsion,
@@ -411,8 +347,7 @@ class AndersonImpurity(FermionicHamiltonian):
         num_bath: int,
         mode,
     ) -> list:
-        """Impurity on-site energy and repulsion terms, plus one on-site number term per
-        bath level (bath or chain sites alike)."""
+        """Build impurity energy, repulsion, and bath-level onsite terms."""
         onsite = []
         if onsite_impurity_energy:
             onsite += [
@@ -434,11 +369,7 @@ class AndersonImpurity(FermionicHamiltonian):
         onsite_bath_energy: list[float],
         impurity_bath_hopping: list[float],
     ) -> list[list]:
-        """AIM (star) Trotter-layer structure, in fermionic (pre-encoding) form: one layer
-        per bath index (every hybridization bond touches the impurity, so none of them
-        commute with each other), plus a final onsite layer. mode(site, spin) =
-        spin*(num_bath+1) + site, site 0 = impurity, site k = bath k.
-        """
+        """Group each impurity–bath bond separately, followed by one onsite layer."""
         if len(onsite_bath_energy) != len(impurity_bath_hopping):
             raise ValueError(
                 f"onsite_bath_energy and impurity_bath_hopping must have the same length; got {len(onsite_bath_energy)} and {len(impurity_bath_hopping)}."
@@ -472,12 +403,7 @@ class AndersonImpurity(FermionicHamiltonian):
         bath_bath_hopping: list[float],
         impurity_bath_hopping: float,
     ) -> list[list]:
-        """AIM (chain) Trotter-layer structure, in fermionic (pre-encoding) form
-        (up-even, up-odd, down-even, down-odd, onsite) -- structurally identical to
-        FermiHubbard1D._groups, since the impurity is just site 0 of an ordinary open chain
-        of length num_bath+1, with impurity_bath_hopping taking the place of a uniform
-        hopping for the impurity<->first-site bond.
-        """
+        """Group chain hopping into spin-resolved even/odd layers plus one onsite layer."""
         num_bath = len(onsite_bath_energy)
         expected_t_len = max(num_bath - 1, 0)
         if len(bath_bath_hopping) != expected_t_len:

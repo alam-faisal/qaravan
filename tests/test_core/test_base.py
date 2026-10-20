@@ -60,6 +60,12 @@ class MinimalSimulator(Simulator):
         if not isinstance(state, MinimalState):
             raise IncompatibleStateError
 
+    def _validate_noise(self, noise_model):
+        raise IncompatibleNoiseError("MinimalSimulator is noiseless")
+
+    def _insert_noise(self, circuit, noise_model):
+        return circuit
+
     def translate_gate(self, gate):
         return gate.matrix
 
@@ -363,10 +369,10 @@ def test_simulator_run_noiseless():
     assert isinstance(result, State)
 
 
-def test_simulator_prepare_circuit_copies_and_constructs_layers():
+def test_simulator_private_prepare_circuit_copies_and_constructs_layers():
     circuit = _two_qubit_circuit()
 
-    prepared = MinimalSimulator(circuit, MinimalState()).prepare_circuit()
+    prepared = MinimalSimulator(circuit, MinimalState())._prepare_circuit()
 
     assert prepared is not circuit
     assert prepared.gates == circuit.gates
@@ -374,7 +380,7 @@ def test_simulator_prepare_circuit_copies_and_constructs_layers():
     assert circuit.layers is None
 
 
-def test_simulator_evolve_copies_state_and_applies_prepared_layers():
+def test_simulator_private_evolve_copies_state_and_applies_prepared_layers():
     class RecordingState(MinimalState):
         def __init__(self):
             self.applied = []
@@ -388,23 +394,71 @@ def test_simulator_evolve_copies_state_and_applies_prepared_layers():
 
     circuit = _two_qubit_circuit()
     simulator = RecordingSimulator(circuit, RecordingState())
-    prepared = simulator.prepare_circuit()
+    prepared = simulator._prepare_circuit()
 
-    result = simulator.evolve(simulator.initial_state, prepared)
+    result = simulator._evolve(simulator.initial_state, prepared)
 
     assert result is not simulator.initial_state
     assert result.applied == ["H", "CX"]
     assert simulator.initial_state.applied == []
 
 
-def test_simulator_run_raises_on_noise():
-    """Default _insert_noise must raise IncompatibleNoiseError when nm is not None."""
+def test_simulator_validates_noise_at_construction():
+    """_validate_noise runs in __init__, so rejection happens before any evolution."""
     circ = _two_qubit_circuit()
-    state = MinimalState()
+    with pytest.raises(IncompatibleNoiseError, match="MinimalSimulator"):
+        MinimalSimulator(circ, MinimalState(), noise_model=MinimalNoiseModel())
+
+
+def test_simulator_skips_noise_validation_without_noise():
+    """noise_model=None never reaches _validate_noise, so noiseless runs always work."""
+    MinimalSimulator(_two_qubit_circuit(), MinimalState()).run()
+
+
+@pytest.mark.parametrize("missing", ["_validate_noise", "_insert_noise"])
+def test_simulator_requires_both_noise_hooks(missing):
+    """Both hooks are abstract, so accepting noise can never silently drop it."""
+    methods = {
+        "_validate_state": lambda self, state: None,
+        "_validate_noise": lambda self, noise_model: None,
+        "_insert_noise": lambda self, circuit, noise_model: circuit,
+        "translate_gate": lambda self, gate: gate.matrix,
+        "_apply_translated_gate": lambda self, state, translated_gate: None,
+    }
+    del methods[missing]
+    incomplete = type("IncompleteSimulator", (Simulator,), methods)
+    with pytest.raises(TypeError, match=missing):
+        incomplete(_two_qubit_circuit(), MinimalState())
+
+
+def test_simulator_accepts_noise_rng_without_noise():
+    """noise_rng is a uniform constructor argument, harmless when no noise is sampled."""
+    sim = MinimalSimulator(_two_qubit_circuit(), MinimalState(), noise_rng=3)
+    assert isinstance(sim.noise_rng, np.random.Generator)
+    sim.run()
+
+
+def test_simulator_keeps_noise_generator_by_identity():
+    """A passed Generator is reused, not re-seeded, so repeated apply() calls advance one stream."""
+    noise_generator = np.random.default_rng(0)
+    sim = MinimalSimulator(
+        _two_qubit_circuit(), MinimalState(), noise_rng=noise_generator
+    )
+    assert sim.noise_rng is noise_generator
+
+
+def test_simulator_noise_rng_is_keyword_only():
+    """A positional noise_rng would silently land in the wrong slot, so it is rejected."""
+    with pytest.raises(TypeError):
+        MinimalSimulator(_two_qubit_circuit(), MinimalState(), None, False, 3)
+
+
+def test_noise_model_implements_detects_overrides():
+    """implements() distinguishes overridden methods from inherited NotImplementedError stubs."""
     nm = MinimalNoiseModel()
-    sim = MinimalSimulator(circ, state, noise_model=nm)
-    with pytest.raises(IncompatibleNoiseError):
-        sim.run()
+    assert nm.implements("get_kraus")
+    assert not nm.implements("sample_error")
+    assert not nm.implements("get_superop")  # inherited concrete default, not overridden
 
 
 def test_simulator_run_does_not_mutate_circuit():

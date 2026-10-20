@@ -3,7 +3,7 @@
 from __future__ import annotations
 import numpy as np
 from scipy.linalg import expm
-from scipy.sparse.linalg import LinearOperator, eigsh
+from scipy.sparse.linalg import LinearOperator, eigsh, expm_multiply
 from qaravan.backends.statevector import Statevector, apply_pauli_sum
 from qaravan.core.circuit import Circuit
 from qaravan.core.fermions import FermionicEncoding
@@ -13,10 +13,9 @@ from qaravan.core.hamiltonians import (
     Hamiltonian,
     HamiltonianTerm,
 )
+from qaravan.core.observables import PauliSum
 
-# ---------------------------------------------------------------------------
-# Eigensolvers
-# ---------------------------------------------------------------------------
+# === Eigensolvers ===
 
 
 METHODS = ("naive", "naive_lanczos", "lanczos")
@@ -114,9 +113,7 @@ def fermionic_spectrum(
     return spectrum(encoded, method, num_eigenvalues, sector=sector)
 
 
-# ---------------------------------------------------------------------------
-# Sectors
-# ---------------------------------------------------------------------------
+# === Sectors ===
 
 
 def _number_sector(num_sites: int, num_particles: int) -> np.ndarray:
@@ -155,9 +152,7 @@ def _fermionic_sector(
     return np.flatnonzero(in_sector)
 
 
-# ---------------------------------------------------------------------------
-# Diagonalization
-# ---------------------------------------------------------------------------
+# === Diagonalization ===
 
 
 def _lowest_eigenpairs(
@@ -255,9 +250,41 @@ def _matrix_free_lanczos(
     return _embed(evecs[:, 0], sector, hamiltonian.num_sites)
 
 
-# ---------------------------------------------------------------------------
-# Trotter
-# ---------------------------------------------------------------------------
+# === Krylov evolution ===
+
+
+def krylov_evolve(
+    generator: PauliSum,
+    initial_state: Statevector,
+    time: float,
+) -> Statevector:
+    """Return exp(-i time generator)|initial_state⟩; generator must be Hermitian."""
+    scale = -1j * time
+    dim = 2**generator.num_sites
+
+    def action(vector: np.ndarray) -> np.ndarray:
+        return apply_pauli_sum(generator, np.asarray(vector).reshape(-1))
+
+    operator = LinearOperator(
+        (dim, dim),
+        matvec=lambda vector: scale * action(vector),
+        rmatvec=lambda vector: scale.conjugate() * action(vector),
+        dtype=np.complex128,
+    )
+    identity = "I" * generator.num_sites
+    identity_coefficient = sum(
+        term.coeff for term in generator.terms if term.string == identity
+    )
+    trace = scale * dim * identity_coefficient
+    evolved = expm_multiply(
+        operator,
+        initial_state.to_array(),
+        traceA=trace,
+    )
+    return Statevector(array=evolved)
+
+
+# === Trotter ===
 
 
 def trotter_circuit(hamiltonian: Hamiltonian, dt: float, order: int = 2) -> Circuit:

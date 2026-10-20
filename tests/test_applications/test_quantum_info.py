@@ -7,8 +7,11 @@ from qaravan.applications.quantum_info import (
     entanglement_depth,
     entanglement_entropy,
     entanglement_profile,
+    phase_free_distance,
 )
 from qaravan.backends.statevector import Statevector
+from qaravan.core.circuit import Circuit
+from qaravan.core.gates import MatrixGate
 
 # ---------------------------------------------------------------------------
 # entanglement_entropy
@@ -99,3 +102,54 @@ def test_entanglement_depth_formula():
     """
     sv = Statevector(bitstring="00").apply(ghz_circuit(2))
     assert entanglement_depth(sv) == 1
+
+
+# ---------------------------------------------------------------------------
+# phase_free_distance
+# ---------------------------------------------------------------------------
+
+
+def test_phase_free_distance_ignores_global_phase():
+    """A global phase on either argument leaves the distance at zero."""
+    sv = Statevector(3, random_seed=1)
+    rotated = Statevector(array=np.exp(0.7j) * sv.to_array())
+    assert phase_free_distance(sv, rotated) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_phase_free_distance_matches_overlap_formula():
+    """For unit vectors the distance is sqrt(2 - 2|<b|a>|)."""
+    a, b = Statevector(3, random_seed=1), Statevector(3, random_seed=2)
+    overlap = abs(np.vdot(b.to_array(), a.to_array()))
+    assert phase_free_distance(a, b) == pytest.approx(np.sqrt(2 - 2 * overlap), abs=1e-12)
+
+
+def test_phase_free_distance_orthogonal_states():
+    """Orthogonal unit vectors sit at sqrt(2) whatever the phase."""
+    assert phase_free_distance(Statevector(bitstring="01"), Statevector(bitstring="10")) == pytest.approx(np.sqrt(2))
+
+
+def test_phase_free_distance_accepts_raw_arrays():
+    a, b = Statevector(2, random_seed=3), Statevector(2, random_seed=4)
+    assert phase_free_distance(a.to_array(), b.to_array()) == pytest.approx(phase_free_distance(a, b))
+
+
+def test_phase_free_distance_rejects_mixed_types():
+    a, b = Statevector(2, random_seed=3), Statevector(2, random_seed=4)
+    with pytest.raises(TypeError, match="same type"):
+        phase_free_distance(a, b.to_array())
+
+
+def test_phase_free_distance_unitaries_and_circuits():
+    """Matrices (and circuits, via to_matrix) differing by a phase are at distance zero; X vs Z is not."""
+    x = np.array([[0, 1], [1, 0]], dtype=complex)
+    z = np.diag([1.0, -1.0]).astype(complex)
+    assert phase_free_distance(np.exp(0.3j) * x, x) == pytest.approx(0.0, abs=1e-12)
+    assert phase_free_distance(x, z) > 1.0
+    circuit = Circuit([MatrixGate("x", [0], x)], num_sites=1)
+    other = Circuit([MatrixGate("x", [0], np.exp(1.1j) * x)], num_sites=1)
+    assert phase_free_distance(circuit, other) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_phase_free_distance_rejects_mismatched_shapes():
+    with pytest.raises(ValueError, match="shapes differ"):
+        phase_free_distance(Statevector(2, random_seed=0), Statevector(3, random_seed=0))

@@ -1,8 +1,11 @@
-"""Entanglement measures and circuit complexity bounds for statevectors."""
+"""Entanglement measures, circuit complexity bounds and distances for statevectors and unitaries."""
 
 from __future__ import annotations
 import numpy as np
 from qaravan.backends.statevector import Statevector
+from qaravan.core.circuit import Circuit
+
+Arraylike = Statevector | Circuit | np.ndarray
 
 
 def entanglement_entropy(sv: Statevector, sites: list[int]) -> float:
@@ -35,3 +38,28 @@ def entanglement_depth(sv: Statevector) -> int:
     """
     profile = entanglement_profile(sv)
     return int(np.ceil(profile.max()))
+
+
+def phase_free_distance(a: Arraylike, b: Arraylike) -> float:
+    """||a - e^{i phi} b|| with phi aligning the overlap <b|a>, i.e. the distance up to a global phase.
+
+    Statevectors and 1D arrays use the 2-norm, where this phi is the exact minimiser and the result
+    is sqrt(2 - 2|<b|a>|) for unit vectors. Circuits (via to_matrix) and 2D arrays use the spectral
+    norm, with phi aligned on the Hilbert-Schmidt overlap Tr(b^† a): an upper bound on the minimum
+    over phi. Raises TypeError if a and b are not the same type, ValueError if their shapes differ.
+    """
+    if type(a) is not type(b):
+        raise TypeError(f"a and b must be the same type, got {type(a).__name__} and {type(b).__name__}")
+    u, v = _as_array(a), _as_array(b)
+    if u.shape != v.shape:
+        raise ValueError(f"shapes differ: {u.shape} vs {v.shape}")
+    phase = np.exp(1j * np.angle(np.vdot(v, u)))
+    return float(np.linalg.norm(u - phase * v, ord=2))
+
+
+def _as_array(x: Arraylike) -> np.ndarray:
+    if isinstance(x, Statevector):
+        return x.to_array()
+    if isinstance(x, Circuit):
+        return x.to_matrix()
+    return np.asarray(x)

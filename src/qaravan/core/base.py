@@ -11,9 +11,7 @@ if TYPE_CHECKING:
     from qaravan.core.circuit import Circuit
 
 
-# ---------------------------------------------------------------------------
-# Exceptions
-# ---------------------------------------------------------------------------
+# === Exceptions ===
 
 
 class IncompatibleNoiseError(Exception):
@@ -24,15 +22,11 @@ class IncompatibleStateError(TypeError):
     pass
 
 
-# ---------------------------------------------------------------------------
-# Gate (ABC)
-# ---------------------------------------------------------------------------
+# === Gate ===
 
 
 class Gate(ABC):
-    """Backends build their preferred representation of each Gate
-    time: gate duration; only meaningful for noise-aware backends.
-    """
+    """Backend-independent gate; time matters only to noise-aware backends."""
 
     def __init__(
         self,
@@ -48,7 +42,7 @@ class Gate(ABC):
     @property
     @abstractmethod
     def matrix(self) -> np.ndarray:
-        """d^k × d^k unitary matrix."""
+        """Local d^k × d^k matrix representation."""
         ...
 
     @property
@@ -62,9 +56,7 @@ class Gate(ABC):
         return named(self.name, self.indices)
 
 
-# ---------------------------------------------------------------------------
-# State (ABC)
-# ---------------------------------------------------------------------------
+# === State ===
 
 
 class State(ABC):
@@ -73,11 +65,11 @@ class State(ABC):
     @property
     @abstractmethod
     def default_simulator(self) -> type[Simulator]:
-        """Simulator class used by apply(). Each concrete State subclass sets this."""
+        """Simulator used by apply()."""
         ...
 
     def apply(self, circuit: Circuit, **kwargs) -> State:
-        """Evolve self under circuit using the default simulator."""
+        """Evolve through a circuit using the default simulator."""
         return self.default_simulator(circuit, self, **kwargs).run()
 
     @abstractmethod
@@ -87,35 +79,24 @@ class State(ABC):
     def sample(
         self, num_shots: int, rng: np.random.Generator | None = None
     ) -> np.ndarray:
-        """Sample measurement outcomes; returns (num_shots, num_sites) array.
-
-        rng: a Generator, an int seed, or None for fresh entropy.
-        """
+        """Sample outcomes as a (num_shots, num_sites) array."""
         ...
 
     @abstractmethod
     def measure_and_collapse(
         self, sites: list[int], rng: np.random.Generator | None = None
     ) -> tuple[State, str]:
-        """Measure sites under Born rule, collapse to post-measurement state.
-
-        Returns (post-measurement State with same num_sites, outcome bitstring).
-        Pass the same Generator across successive measurements; an int seed would
-        restart the stream each call.
-        """
+        """Return the post-measurement state and outcome bitstring."""
         ...
 
     def partial_overlap(self, other: State, skip: list[int]) -> np.ndarray:
-        """Partial ⟨self|other⟩ keeping sites in skip uncontracted.
-        Returns (local_dim^|skip| × local_dim^|skip|) matrix.
-        skip=[] returns (1,1) full overlap;
-        """
+        """Partial ⟨self|other⟩ with sites in skip left uncontracted."""
         raise NotImplementedError(
             f"{type(self).__name__} does not implement partial_overlap"
         )
 
     def overlap(self, other: State) -> complex:
-        """⟨self|other⟩. Concrete default via partial_overlap; backends need not override."""
+        """Return ⟨self|other⟩ via partial_overlap."""
         # partial_overlap[0,0] = ⟨other|self⟩; conjugate to get ⟨self|other⟩
         return self.partial_overlap(other, skip=[])[0, 0].conj()
 
@@ -123,64 +104,57 @@ class State(ABC):
     def __repr__(self) -> str: ...
 
 
-# ---------------------------------------------------------------------------
-# Observable (ABC)
-# ---------------------------------------------------------------------------
+# === Observable ===
 
 
 class Observable(ABC):
-    """Backends build their preferred representation of each Observable"""
+    """Backend-independent observable."""
 
     def __init__(self, name: str, indices: int | list[int]):
         self.name = name
         self.indices = [indices] if isinstance(indices, int) else list(indices)
+        self.span = len(self.indices)
 
     @abstractmethod
     def to_matrix(self) -> np.ndarray:
-        """Hermitian 2^n x 2^n matrix. A method, not a property like Gate.matrix: concrete
-        observables are full-register, so this allocates exponentially in num_sites."""
+        """Dense matrix acting on the observable's indexed sites."""
         ...
 
     def __repr__(self) -> str:
         return named(self.name, self.indices)
 
 
-# ---------------------------------------------------------------------------
-# NoiseModel (ABC)
-# ---------------------------------------------------------------------------
+# === NoiseModel ===
 
 
 class NoiseModel(ABC):
-    """Backends will either use get_superop or sample_error"""
+    """Noise channel exposed through exact or sampled representations."""
 
     @property
     @abstractmethod
     def gate_dependent(self) -> bool: ...
 
     def get_kraus(self, *args, **kwargs) -> list[np.ndarray]:
-        """Kraus operators for the noise channel following gate.
-        kwargs can include gate-dependence say for thermal noise,"""
+        """Kraus operators for the channel following a gate."""
         raise NotImplementedError("subclass must implement `get_kraus`")
 
     def get_superop(self, *args, **kwargs) -> np.ndarray:
-        """Superoperator sum_k (K_k* ⊗ K_k). Works once get_kraus is implemented.
-
-        Convention: K^* ⊗ K is correct for column-major (Fortran-order) vectorization
-        of rho, i.e. rho.flatten(order='F'). The DM backend must vectorize consistently.
-        """
+        """Return Σ_k K_k* ⊗ K_k for column-major vectorization."""
         kraus = self.get_kraus(*args, **kwargs)
         return sum(np.kron(k.conj(), k) for k in kraus)
 
     def sample_error(
         self, rng: np.random.Generator | int | None = None
     ) -> str:
-        """Sample a Pauli error. Not all noise models support this."""
+        """Sample a Pauli error."""
         raise NotImplementedError("subclass must implement `sample_error`")
 
+    def implements(self, method_name: str) -> bool:
+        """Whether this subclass overrides the NoiseModel method `method_name`."""
+        return getattr(type(self), method_name) is not getattr(NoiseModel, method_name)
 
-# ---------------------------------------------------------------------------
-# Simulator (ABC)
-# ---------------------------------------------------------------------------
+
+# === Simulator ===
 
 
 class Simulator(ABC):
@@ -192,20 +166,25 @@ class Simulator(ABC):
         initial_state: State,
         noise_model: NoiseModel | None = None,
         decompose: bool = False,
+        *,
+        noise_rng: np.random.Generator | int | None = None,
     ):
         self._validate_state(initial_state)
+        if noise_model is not None:
+            self._validate_noise(noise_model)
         self.circuit = circuit
         self.initial_state = initial_state
         self.noise_model = noise_model
         self.decompose = decompose
+        self.noise_rng = np.random.default_rng(noise_rng)
 
     def run(self) -> State:
-        """Prepare the circuit, realize its noise, and evolve the initial state."""
-        prepared_circuit = self.prepare_circuit()
+        """Prepare the circuit, insert its noise, and evolve the initial state."""
+        prepared_circuit = self._prepare_circuit()
         realized_circuit = self._insert_noise(prepared_circuit, self.noise_model)
-        return self.evolve(self.initial_state, realized_circuit)
+        return self._evolve(self.initial_state, realized_circuit)
 
-    def prepare_circuit(self) -> Circuit:
+    def _prepare_circuit(self) -> Circuit:
         """Copy, optionally decompose, and layer the circuit."""
         circuit = self.circuit.copy()
         if self.decompose:
@@ -213,7 +192,7 @@ class Simulator(ABC):
         circuit.construct_layers()
         return circuit
 
-    def evolve(self, initial_state: State, prepared_circuit: Circuit) -> State:
+    def _evolve(self, initial_state: State, prepared_circuit: Circuit) -> State:
         """Apply a prepared circuit to a copy of initial_state."""
         state = copy.deepcopy(initial_state)
         assert prepared_circuit.layers is not None
@@ -224,8 +203,10 @@ class Simulator(ABC):
         return state
 
     @abstractmethod
-    def _validate_state(self, state: State) -> None:
-        """Raise IncompatibleStateError if state type is wrong for this backend."""
+    def _insert_noise(
+        self, circuit: Circuit, noise_model: NoiseModel | None
+    ) -> Circuit:
+        """Return the circuit with noise realized; noise_model has passed _validate_noise."""
         ...
 
     @abstractmethod
@@ -238,11 +219,12 @@ class Simulator(ABC):
         """Apply a translated gate to state in-place."""
         ...
 
-    def _insert_noise(self, circuit: Circuit, nm: NoiseModel | None) -> Circuit:
-        """Default: raise if noise model provided. Noise-compatible backends override."""
-        if nm is not None:
-            raise IncompatibleNoiseError(
-                f"{type(self).__name__} does not support noise models; "
-                "use DensityMatrixSimulator or MonteCarloSimulator"
-            )
-        return circuit
+    @abstractmethod
+    def _validate_noise(self, noise_model: NoiseModel) -> None:
+        """Raise IncompatibleNoiseError if this backend cannot realize noise_model."""
+        ...
+
+    @abstractmethod
+    def _validate_state(self, state: State) -> None:
+        """Reject state types unsupported by this backend."""
+        ...

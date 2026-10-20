@@ -39,6 +39,9 @@ from qaravan.core.gates import (
     iSWAP,
 )
 
+# === Import ===
+
+
 _ONE_QUBIT_FIXED = {
     "id": I,
     "h": H,
@@ -197,9 +200,7 @@ def from_unitary_qasm(qasm_text: str, num_sites: int) -> Circuit:
     return Circuit(gates, num_sites=num_sites)
 
 
-# ---------------------------------------------------------------------------
-# Export
-# ---------------------------------------------------------------------------
+# === Export ===
 
 _QELIB1 = frozenset(
     {

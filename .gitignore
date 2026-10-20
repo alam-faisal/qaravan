@@ -26,6 +26,23 @@ TODO.md
 FEATURES.md
 DAY.md
 CLAUDE.md
+AGENTS.md
 STYLE.md
 proposals/
 reports/
+
+# Hidden directories in project root (keep CI config)
+/.*/
+!/.github/
+
+# Local docs, notebooks and working directories
+docs/compact_encoding.md
+docs/hybrid_compact_encoding.md
+docs/jw_fermi_hubbard_1d.md
+examples/compact_encoding.ipynb
+examples/research/
+examples/devbooks/
+plans/
+scratch/
+scripts/
+tmp/

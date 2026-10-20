@@ -28,11 +28,7 @@ class Circuit:
             self.num_sites = 0
 
     def construct_layers(self) -> None:
-        """Greedy layer packing: assigns each gate to the earliest layer it fits.
-
-        Respects sequential ordering: a gate cannot be placed in a layer earlier
-        than the layer of any prior gate that touched the same sites.
-        """
+        """Greedily pack gates without reordering operations that share a site."""
         layers: list[list[Gate]] = []
         layer_of_site: dict[int, int] = {}
 
@@ -71,7 +67,7 @@ class Circuit:
         )
 
     def to_matrix(self) -> np.ndarray:
-        """Full unitary matrix of the circuit. For debugging; real backends never build this."""
+        """Full circuit matrix for debugging."""
         dim = self.local_dim**self.num_sites
         result = np.eye(dim, dtype=complex)
         for gate in self.gates:
@@ -85,10 +81,7 @@ class Circuit:
         return sum(g.num_params for g in self.gates if isinstance(g, ParametricGate))
 
     def bind(self, params: np.ndarray | list[float]) -> Circuit:
-        """Return a new Circuit with ParametricGate parameters replaced by params.
-
-        Parameters are consumed sequentially in gate order.
-        """
+        """Bind ParametricGate parameters sequentially in gate order."""
         assert len(params) == self.num_params, (
             f"Expected {self.num_params} params, got {len(params)}"
         )
@@ -149,10 +142,7 @@ class Circuit:
 
 
 def _embed_gate(gate: Gate, num_sites: int, local_dim: int) -> np.ndarray:
-    """Embed gate matrix into the full num_sites-site Hilbert space.
-
-    For debugging and to_matrix(); real backends apply gates without building full matrices.
-    """
+    """Embed a gate matrix into the full Hilbert space for Circuit.to_matrix()."""
     k = gate.num_sites
     indices = list(gate.indices)
 

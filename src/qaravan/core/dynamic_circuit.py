@@ -7,17 +7,16 @@ import numpy as np
 from qaravan.core.base import NoiseModel, State
 from qaravan.core.circuit import Circuit
 
+Decoder = Callable[[str], Circuit]
+"""Maps a measured bitstring (sorted meas_sites order) to the circuit applied next."""
+
 
 @dataclass
 class DynamicRound:
-    """One round of a DQC: measure meas_sites, then apply decoder(outcome).
-
-    meas_sites=[] means no measurement; decoder receives "" and must return
-    the circuit unconditionally (use lambda _: circuit for constant rounds).
-    """
+    """Measure meas_sites, then apply decoder(outcome); an empty list passes "" without measuring."""
 
     meas_sites: list[int] = field(default_factory=list)
-    decoder: Callable[[str], Circuit] = field(
+    decoder: Decoder = field(
         default_factory=lambda: lambda _: Circuit([])
     )
 
@@ -44,25 +43,22 @@ class DynamicCircuit:
 
         state = initial_state
         outcomes: list[str] = []
-        for round_index, rnd in enumerate(self.rounds):
-            if rnd.meas_sites:
+        for round_index, dynamic_round in enumerate(self.rounds):
+            if dynamic_round.meas_sites:
                 state, outcome = state.measure_and_collapse(
-                    rnd.meas_sites, measurement_generator
+                    dynamic_round.meas_sites, measurement_generator
                 )
                 outcomes.append(outcome)
             else:
                 outcome = ""
-            circuit = rnd.decoder(outcome)
+            circuit = dynamic_round.decoder(outcome)
             if circuit.gates:
-                if noise_model is None:
-                    state = state.apply(circuit, **simulator_kwargs)
-                else:
-                    state = state.apply(
-                        circuit,
-                        noise_model=noise_model,
-                        rng=noise_generator,
-                        **simulator_kwargs,
-                    )
+                state = state.apply(
+                    circuit,
+                    noise_model=noise_model,
+                    noise_rng=noise_generator,
+                    **simulator_kwargs,
+                )
             if observer is not None:
                 observer(round_index, state)
         return state, outcomes

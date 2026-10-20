@@ -20,19 +20,12 @@ from qaravan.core.observables import (
     restrict_pauli_sum,
 )
 
-# ---------------------------------------------------------------------------
-# Fermionic algebra (ladder operators, term builders, FermionicSum)
-# ---------------------------------------------------------------------------
+# === Fermionic algebra ===
 
 
 @dataclass
 class FermionicTerm:
-    """coeff * product of ladder operators in the given order, e.g. c-dagger_a c_b ->
-    ops=[(a, True), (b, False)].
-
-    No implicit normal-ordering.
-    A single FermionicTerm need not be individually Hermitian
-    """
+    """Ordered ladder-operator product with no implicit normal ordering or Hermiticity."""
 
     coeff: complex
     ops: list[tuple[int, bool]]
@@ -49,7 +42,7 @@ class FermionicTerm:
         return _strictly_ascending(creations) and _strictly_ascending(annihilations)
 
     def normal_order(self) -> list[FermionicTerm]:
-        """Canonical form of this term: creations left, modes ascending in each block"""
+        """Expand into canonical terms with creations left and each block ascending."""
         pending = [(self.coeff, list(self.ops))]
         segregated = []
         while pending:
@@ -80,7 +73,7 @@ class FermionicTerm:
         )
 
     def compose(self, other: FermionicTerm) -> FermionicTerm:
-        """Concatenate ops, multiply coeffs. Order preserved: self's ops come first."""
+        """Concatenate operators in left-to-right product order and multiply coefficients."""
         return FermionicTerm(self.coeff * other.coeff, self.ops + other.ops)
 
     def __matmul__(self, other: FermionicTerm) -> FermionicTerm:
@@ -93,15 +86,7 @@ class FermionicTerm:
         return self.__mul__(scalar)
 
     def to_majorana(self, num_fermionic_modes: int | None = None) -> MajoranaSum:
-        """Rewrite in the Majorana basis (c_k = (gamma_2k + i*gamma_2k+1)/2,
-        c-dagger_k = (gamma_2k - i*gamma_2k+1)/2), substituted and distributed over the
-        product. Expands to up to 2**len(self.ops) MajoranaTerms.
-
-        The Majorana basis is defined relative to a register, so num_fermionic_modes is part
-        of the transform. It defaults to the smallest register this term fits in, which is
-        only the right answer when the term touches the top mode -- pass it explicitly to
-        place the term in a larger register, e.g. before adding MajoranaSums together.
-        """
+        """Expand into up to 2**len(ops) Majorana terms on the requested register size."""
         highest_mode = max((mode for mode, _ in self.ops), default=-1)
         if num_fermionic_modes is None:
             num_modes = highest_mode + 1
@@ -137,35 +122,33 @@ class FermionicTerm:
 
 
 def c(mode: int) -> FermionicTerm:
-    """Annihilation operator on mode, as a length-1 FermionicTerm."""
+    """Annihilation operator on mode."""
     return FermionicTerm(1.0, [(mode, False)])
 
 
 def cdag(mode: int) -> FermionicTerm:
-    """Creation operator on mode, as a length-1 FermionicTerm."""
+    """Creation operator on mode."""
     return FermionicTerm(1.0, [(mode, True)])
 
 
 def number(mode: int) -> FermionicTerm:
-    """n_mode = c-dagger_mode c_mode -- Hermitian on its own, no partner needed at encode time."""
+    """Number operator c†_mode c_mode."""
     return cdag(mode) @ c(mode)
 
 
 def hopping(mode_a: int, mode_b: int, coeff: complex) -> list[FermionicTerm]:
-    """coeff * (c-dagger_a c_b + c-dagger_b c_a) -- two FermionicTerms, neither individually
-    Hermitian; jordan_wigner_hamiltonian re-pairs them automatically at encode time."""
+    """Hermitian hopping pair coeff·(c†_a c_b + c†_b c_a)."""
     return [coeff * (cdag(mode_a) @ c(mode_b)), coeff * (cdag(mode_b) @ c(mode_a))]
 
 
 def density_density(mode_a: int, mode_b: int, coeff: complex) -> list[FermionicTerm]:
-    """coeff * n_a n_b -- Hermitian on its own (product of commuting self-adjoint operators).
-    Single-entry list, kept as a list for uniform +='ing into a flat term list."""
+    """Single-term list containing coeff·n_a n_b."""
     return [coeff * (number(mode_a) @ number(mode_b))]
 
 
 @dataclass
 class FermionicSum:
-    """Sum of FermionicTerm"""
+    """Sum of FermionicTerms on a fixed fermionic register."""
 
     terms: list[FermionicTerm]
     num_fermionic_modes: int
@@ -192,12 +175,7 @@ class FermionicSum:
         )
 
     def normal_order(self, atol: float = 1e-12) -> FermionicSum:
-        """Canonical equivalent: every term normal_ordered, equal monomials merged, coefficients
-        below atol dropped, terms sorted -- so equal operators give equal term lists.
-
-        Returns a plain FermionicSum even from a subclass: the canonical form is a different
-        term decomposition, so a FermionicHamiltonian's trotter_groups would not apply to it.
-        """
+        """Return a plain canonical FermionicSum with ordered, merged terms above atol."""
         merged: dict[tuple[tuple[int, bool], ...], complex] = {}
         for term in self.terms:
             for ordered in term.normal_order():
@@ -211,7 +189,7 @@ class FermionicSum:
         return FermionicSum(terms, self.num_fermionic_modes)
 
     def is_hermitian(self, atol: float = 1e-9) -> bool:
-        """H is Hermitian iff H and H.dagger() share a normal-ordered form."""
+        """Compare normal-ordered forms of the operator and its adjoint."""
         canonical = {tuple(t.ops): t.coeff for t in self.normal_order().terms}
         adjoint = {tuple(t.ops): t.coeff for t in self.dagger().normal_order().terms}
         return all(
@@ -220,9 +198,7 @@ class FermionicSum:
         )
 
     def encode(self, encoding: FermionicEncoding) -> PauliSum:
-        """Apply a fermion-to-qubit encoding, converting the abstract fermionic algebra into
-        concrete qubit operators. No Hermiticity requirement -- that belongs to
-        FermionicHamiltonian.encode(), whose terms get exponentiated."""
+        """Encode as a full-register PauliSum without requiring Hermiticity."""
         if encoding.num_modes != self.num_fermionic_modes:
             raise ValueError(
                 f"Encoding is for {encoding.num_modes} modes; operator has "
@@ -238,9 +214,7 @@ class FermionicSum:
         return as_math(join_terms(elide(parts, marker=math_more)))
 
 
-# ---------------------------------------------------------------------------
-# Normal ordering (internals behind FermionicTerm.normal_ordered / FermionicSum.normal_order)
-# ---------------------------------------------------------------------------
+# === Normal ordering ===
 
 
 def _strictly_ascending(modes: list[int]) -> bool:
@@ -258,8 +232,7 @@ def _sort_sign(modes: list[int]) -> int:
 
 
 def _sort_blocks(ops: list[tuple[int, bool]]) -> tuple[list[tuple[int, bool]], int]:
-    """Sort each block of an already dagger-segregated ops list; sign 0 if a mode repeats,
-    since c†_i c†_i = c_i c_i = 0."""
+    """Sort creation and annihilation blocks, returning sign zero for repeated modes."""
     split = sum(1 for _, is_dagger in ops if is_dagger)
     creations = [mode for mode, _ in ops[:split]]
     annihilations = [mode for mode, _ in ops[split:]]
@@ -280,15 +253,12 @@ def _first_annihilation_before_creation(ops: list[tuple[int, bool]]) -> int | No
     return None
 
 
-# ---------------------------------------------------------------------------
-# Majorana algebra
-# ---------------------------------------------------------------------------
+# === Majorana algebra ===
 
 
 @dataclass
 class MajoranaTerm:
-    """coeff * product of Majorana operators. ops are plain indices in [0, 2*num_modes) --
-    no dagger flag, since every gamma is self-adjoint. Order preserved (gammas anticommute)."""
+    """Ordered product of self-adjoint Majoranas indexed in [0, 2*num_modes)."""
 
     coeff: complex
     ops: list[int]
@@ -324,8 +294,7 @@ class MajoranaTerm:
 
 @dataclass
 class MajoranaSum:
-    """Sum of MajoranaTerm over 2*num_fermionic_modes Majorana operators. Mirrors
-    FermionicSum."""
+    """Sum of MajoranaTerms on 2*num_fermionic_modes Majorana operators."""
 
     terms: list[MajoranaTerm]
     num_fermionic_modes: int
@@ -347,9 +316,7 @@ class MajoranaSum:
         return self.__mul__(scalar)
 
     def encode(self, encoding: FermionicEncoding) -> PauliSum:
-        """Apply a fermion-to-qubit encoding. Returns a full-register PauliSum ready for
-        state.expectation(), with no site restriction -- unlike FermionicSum.encode(), whose
-        HamiltonianTerms stay site-restricted so Trotter groupings survive."""
+        """Encode as a full-register PauliSum."""
         if encoding.num_modes != self.num_fermionic_modes:
             raise ValueError(
                 f"Encoding is for {encoding.num_modes} modes; operator has "
@@ -366,18 +333,18 @@ class MajoranaSum:
 
 
 def gamma(index: int) -> MajoranaTerm:
-    """Single Majorana operator gamma_index, as a length-1 MajoranaTerm."""
+    """Single Majorana operator γ_index."""
     return MajoranaTerm(1.0, [index])
 
 
 def majorana_bilinear(index_a: int, index_b: int, coeff: complex = 1j) -> MajoranaTerm:
-    """coeff * gamma_a * gamma_b -- default coeff=1j makes i*gamma_a*gamma_b Hermitian for a != b."""
+    """Return coeff·γ_aγ_b; the default iγ_aγ_b is Hermitian for distinct indices."""
     return coeff * (gamma(index_a) @ gamma(index_b))
 
 
-# ---------------------------------------------------------------------------
-# Jordan-Wigner transform (_majorana_pauli_string backs both paths below)
-# ---------------------------------------------------------------------------
+# === Jordan-Wigner transform ===
+
+# _majorana_pauli_string backs both the Majorana and the ladder-operator paths.
 
 
 def _qubit_of(num_modes: int, mode_order: tuple[int, ...] | None) -> list[int]:
@@ -390,14 +357,13 @@ def _qubit_of(num_modes: int, mode_order: tuple[int, ...] | None) -> list[int]:
 
 
 def _majorana_pauli_string(qubit: int, is_odd: bool, num_modes: int) -> PauliString:
-    """gamma_2k -> Z_{<q} X_q ; gamma_2k+1 -> Z_{<q} Y_q (q = qubit_of[mode]). Single string,
-    coeff 1 -- no PauliSum needed for one Majorana operator."""
+    """Map γ_2k to Z_<q X_q or γ_2k+1 to Z_<q Y_q."""
     chars = ["Z"] * qubit + ["Y" if is_odd else "X"] + ["I"] * (num_modes - qubit - 1)
     return PauliString("".join(chars), 1.0)
 
 
 def _ladder_pauli_sum(qubit: int, is_dagger: bool, num_modes: int) -> PauliSum:
-    """c_k = (gamma_2k + i*gamma_2k+1)/2 ; c-dagger_k = (gamma_2k - i*gamma_2k+1)/2."""
+    """Map c_k=(γ_2k+iγ_2k+1)/2 or its adjoint to a PauliSum."""
     x_term = _majorana_pauli_string(
         qubit, is_odd=False, num_modes=num_modes
     )  # gamma_2k
@@ -409,7 +375,7 @@ def _ladder_pauli_sum(qubit: int, is_dagger: bool, num_modes: int) -> PauliSum:
 
 
 def _map_term(term: FermionicTerm, qubit_of: list[int], num_modes: int) -> PauliSum:
-    """JW-map a single FermionicTerm to a PauliSum (not necessarily Hermitian on its own)."""
+    """Jordan–Wigner-map one potentially non-Hermitian FermionicTerm."""
     result = PauliSum([PauliString("I" * num_modes, 1.0)])
     for mode, is_dagger in term.ops:
         result = result.compose(_ladder_pauli_sum(qubit_of[mode], is_dagger, num_modes))
@@ -425,12 +391,7 @@ def jordan_wigner(
     num_modes: int,
     mode_order: tuple[int, ...] | None = None,
 ) -> PauliSum:
-    """Map a flat list of FermionicTerms to one full-register PauliSum via Jordan-Wigner.
-
-    No Hermiticity requirement: each term maps on its own, so a bare c_0 encodes to
-    0.5 X + 0.5j Y. Use jordan_wigner_hamiltonian when the result must be exponentiated,
-    which needs every term individually Hermitian.
-    """
+    """Map terms independently to a full-register PauliSum without requiring Hermiticity."""
     qubit_of = _qubit_of(num_modes, mode_order)
     mapped = []
     for term in terms:
@@ -443,13 +404,7 @@ def jordan_wigner_hamiltonian(
     num_modes: int,
     mode_order: tuple[int, ...] | None = None,
 ) -> list[HamiltonianTerm]:
-    """Map a flat list of FermionicTerms to HamiltonianTerms via Jordan-Wigner
-
-    mode_order[qubit] = fermionic mode occupying that qubit; defaults to the identity
-    (mode i -> qubit i). Non-self-adjoint terms (e.g. one half of a hopping bond) are
-    automatically paired with whichever remaining term makes their sum real; raises
-    ValueError if no such partner exists.
-    """
+    """Jordan–Wigner-map terms, pairing adjoints into site-restricted Hermitian terms."""
     qubit_of = _qubit_of(num_modes, mode_order)
 
     images = [_map_term(term, qubit_of, num_modes) for term in terms]
@@ -487,8 +442,7 @@ def jordan_wigner_majorana(
     num_modes: int,
     mode_order: tuple[int, ...] | None = None,
 ) -> PauliSum:
-    """Flat list of MajoranaTerms -> one full-register PauliSum. Each term maps to exactly
-    one PauliString, with no fan-out."""
+    """Map MajoranaTerms one-to-one onto full-register PauliStrings."""
     qubit_of = _qubit_of(num_modes, mode_order)
 
     mapped = []
@@ -505,9 +459,7 @@ def jordan_wigner_majorana(
 
 @dataclass(frozen=True)
 class FermionicEncoding:
-    """Encoding of num_modes fermionic modes into qubits. Pass the same instance to both
-    Hamiltonian and observable construction so qubit assignments stay consistent.
-    mode_order[qubit] = mode occupying that qubit; None = identity."""
+    """Fermion-to-qubit encoding with mode_order[qubit] giving the resident mode."""
 
     name: str
     num_modes: int
@@ -524,8 +476,7 @@ class FermionicEncoding:
         return self.mode_order.index(mode)
 
     def spin_qubits(self) -> tuple[list[int], list[int]]:
-        """Qubits holding the up and the down modes, under the spinful mode labelling
-        [0, M) up and [M, 2M) down. Meaningless for a spinless operator."""
+        """Qubits holding spin-up [0,M) and spin-down [M,2M) modes."""
         if self.num_modes % 2:
             raise ValueError(
                 f"Spinful mode labelling needs an even mode count; got {self.num_modes}."
@@ -538,13 +489,13 @@ class FermionicEncoding:
     def encode_hamiltonian_terms(
         self, terms: list[FermionicTerm]
     ) -> list[HamiltonianTerm]:
-        """Currently always applies Jordan-Wigner, regardless of self.name."""
+        """Encode Hamiltonian terms with Jordan–Wigner."""
         return jordan_wigner_hamiltonian(terms, self.num_modes, self.mode_order)
 
     def encode_fermionic_terms(self, terms: list[FermionicTerm]) -> PauliSum:
-        """Currently always applies Jordan-Wigner, regardless of self.name."""
+        """Encode fermionic terms with Jordan–Wigner."""
         return jordan_wigner(terms, self.num_modes, self.mode_order)
 
     def encode_majorana_terms(self, terms: list[MajoranaTerm]) -> PauliSum:
-        """Currently always applies Jordan-Wigner, regardless of self.name."""
+        """Encode Majorana terms with Jordan–Wigner."""
         return jordan_wigner_majorana(terms, self.num_modes, self.mode_order)

@@ -1,19 +1,16 @@
 """Builders for DynamicCircuit instances for concrete DQC protocols."""
 
 from __future__ import annotations
-from typing import Callable
 from qaravan.applications.circuit_library import (
     bell_basis_circuit,
     ghz_cluster_prep_circuit,
 )
 from qaravan.core.base import Gate
 from qaravan.core.circuit import Circuit
-from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
+from qaravan.core.dynamic_circuit import Decoder, DynamicCircuit, DynamicRound
 from qaravan.core.gates import CRX, RX, RZZ, XY, X, Z
 
-# ---------------------------------------------------------------------------
-# GHZ preparation by cluster fusion
-# ---------------------------------------------------------------------------
+# === GHZ preparation by cluster fusion ===
 
 
 def _kept_sites(cluster_idx: int, cluster_size: int, num_clusters: int) -> list[int]:
@@ -34,7 +31,7 @@ def build_ghz_decoder(
     num_clusters: int,
     total_qubits: int,
     use_cancellations: bool = False,
-) -> Callable[[str], Circuit]:
+) -> Decoder:
     """Decoder for the GHZ fusion measurement.
 
     Returns decoder(outcome) -> Circuit.
@@ -126,12 +123,10 @@ def ghz_fusion_dqc(
     return DynamicCircuit(rounds=[round_0, round_1])
 
 
-# ---------------------------------------------------------------------------
-# 1D collisional models
-#
+# === 1D collisional models ===
+
 # M cycles of U = e^{-i H_SA} e^{-i H_S}, then measure every ancilla and reset it to |0>.
 # H_SA = (1/2) sum_{(i,I) in B} (X_i X_I + Y_i Y_I) couples each system qubit to its ancilla.
-# ---------------------------------------------------------------------------
 
 
 def interleaved_collisional_layout(
@@ -184,7 +179,7 @@ def qcp_layer(system_sites: list[int], omega: float, dt: float = 1.0) -> list[Ga
     return gates
 
 
-def reset_decoder(qubits: list[int], num_sites: int) -> Callable[[str], Circuit]:
+def reset_decoder(qubits: list[int], num_sites: int) -> Decoder:
     """Decoder returning X on each of qubits that measured 1, so all of them end in |0>.
 
     Returns decoder(outcome) -> Circuit.

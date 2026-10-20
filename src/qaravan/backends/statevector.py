@@ -15,6 +15,7 @@ from qaravan.core._repr import (
 )
 from qaravan.core.base import (
     Gate,
+    IncompatibleNoiseError,
     IncompatibleStateError,
     NoiseModel,
     Simulator,
@@ -26,9 +27,7 @@ from qaravan.core.observables import PAULI_MATRICES, LocalOp, PauliString, Pauli
 if TYPE_CHECKING:
     from qaravan.core.circuit import Circuit
 
-# ---------------------------------------------------------------------------
-# ncon primitives (ported from legacy/statevector_sim.py, no semantic changes)
-# ---------------------------------------------------------------------------
+# === Tensor contraction helpers ===
 
 
 def _locs_to_indices(locs: list[int], n: int) -> tuple[list[int], list[int]]:
@@ -112,14 +111,7 @@ def partial_overlap(
     return contraction.reshape((kept_dim, kept_dim))
 
 
-# ---------------------------------------------------------------------------
-# Repr helper
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Expectation dispatch helpers
-# ---------------------------------------------------------------------------
+# === Expectation helpers ===
 
 
 def _expectation_pauli_string(
@@ -153,11 +145,6 @@ def _expectation_local_op(
     return partial_overlap(right_tensor.reshape(local_dim**n), flat)[0, 0]
 
 
-# ---------------------------------------------------------------------------
-# Matrix-free action of a PauliSum
-# ---------------------------------------------------------------------------
-
-
 def apply_pauli_sum(
     pauli_sum: PauliSum,
     vector: np.ndarray,
@@ -188,9 +175,7 @@ def apply_pauli_sum(
     return out
 
 
-# ---------------------------------------------------------------------------
-# Statevector
-# ---------------------------------------------------------------------------
+# === Statevector ===
 
 
 class Statevector(State):
@@ -396,29 +381,23 @@ class Statevector(State):
         return as_math(join_terms(elide(parts, marker=math_more)))
 
 
-# ---------------------------------------------------------------------------
-# StatevectorSimulator
-# ---------------------------------------------------------------------------
+# === StatevectorSimulator ===
 
 
 class StatevectorSimulator(Simulator):
     """Evolves a Statevector under a Circuit using op_action."""
 
-    def __init__(
-        self,
-        circuit: Circuit,
-        initial_state: Statevector,
-        noise_model: NoiseModel | None = None,
-        rng: np.random.Generator | int | None = None,
-        decompose: bool = False,
-    ):
-        super().__init__(circuit, initial_state, noise_model, decompose)
-        self._rng = np.random.default_rng(rng)
-
     def _validate_state(self, state: State) -> None:
         if not isinstance(state, Statevector):
             raise IncompatibleStateError(
                 f"StatevectorSimulator requires a Statevector; got {type(state).__name__}"
+            )
+
+    def _validate_noise(self, noise_model: NoiseModel) -> None:
+        if not noise_model.implements("sample_error"):
+            raise IncompatibleNoiseError(
+                f"StatevectorSimulator needs sampled Pauli errors; "
+                f"{type(noise_model).__name__} does not implement sample_error"
             )
 
     def translate_gate(self, gate: Gate) -> tuple[np.ndarray, list[int]]:
@@ -441,18 +420,21 @@ class StatevectorSimulator(Simulator):
 
         realized = circuit.copy()
         assert circuit.layers is not None
-        placement = getattr(noise_model, "placement", "layer")
-        if placement == "circuit":
+        if noise_model.placement == "circuit":
             realized.layers = list(circuit.layers)
-            noise_gates = pauli_string_to_gates(noise_model.sample_error(self._rng))
+            noise_gates = pauli_string_to_gates(noise_model.sample_error(self.noise_rng))
             if noise_gates:
                 realized.layers.append(noise_gates)
             return realized
+        if noise_model.placement != "layer":
+            raise ValueError(
+                f"unknown noise placement {noise_model.placement!r}; use 'layer' or 'circuit'"
+            )
 
         realized.layers = []
         for layer in circuit.layers:
             realized.layers.append(layer)
-            noise_gates = pauli_string_to_gates(noise_model.sample_error(self._rng))
+            noise_gates = pauli_string_to_gates(noise_model.sample_error(self.noise_rng))
             if noise_gates:
                 realized.layers.append(noise_gates)
         return realized

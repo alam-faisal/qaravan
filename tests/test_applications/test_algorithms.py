@@ -1,14 +1,17 @@
-"""Eigensolvers in applications/algorithms.py, plus the spin-register derivation they use."""
+"""Numerical algorithms and the independent references used to verify them."""
 
 from math import comb
 import numpy as np
 import pytest
+from scipy.linalg import expm
 from qaravan.applications.algorithms import (
     fermionic_ground_state,
     fermionic_spectrum,
     ground_state,
+    krylov_evolve,
     spectrum,
 )
+from qaravan.backends.statevector import Statevector
 from qaravan.core.fermions import (
     FermionicEncoding,
     number,
@@ -22,7 +25,7 @@ from qaravan.core.hamiltonians import (
     bath_interleaved_mode_order,
     interleaved_mode_order,
 )
-from qaravan.core.observables import HamiltonianTerm, PauliString
+from qaravan.core.observables import HamiltonianTerm, PauliString, PauliSum
 
 # stacked and interleaved up/down qubit registers, written out by hand rather than
 # taken from spin_qubits(), so the sector tests below stay independent of it
@@ -67,6 +70,81 @@ def _projected_ground_energy(encoded, spin_numbers, up_qubits, down_qubits) -> f
         if _spin_counts(index, num_sites, up_qubits, down_qubits) == spin_numbers
     ]
     return float(np.linalg.eigvalsh(encoded.to_matrix()[np.ix_(keep, keep)])[0])
+
+
+def _krylov_generator() -> PauliSum:
+    return PauliSum(
+        [
+            PauliString("III", 0.25),
+            PauliString("XII", 0.7),
+            PauliString("IYI", -0.4),
+            PauliString("IZZ", 1.1),
+        ]
+    )
+
+
+# ---------------------------------------------------------------------------
+# Krylov time evolution
+# ---------------------------------------------------------------------------
+
+
+def test_krylov_evolve_matches_dense_exponential():
+    generator = _krylov_generator()
+    initial_state = Statevector(3, random_seed=7)
+    time = 0.43
+
+    expected = expm(-1j * time * generator.to_matrix()) @ initial_state.to_array()
+    actual = krylov_evolve(generator, initial_state, time)
+
+    np.testing.assert_allclose(actual.to_array(), expected, atol=1e-12)
+
+
+def test_krylov_evolve_never_constructs_the_generator_matrix(monkeypatch):
+    generator = _krylov_generator()
+    initial_state = Statevector(3, random_seed=11)
+    time = -0.37
+    expected = expm(-1j * time * generator.to_matrix()) @ initial_state.to_array()
+
+    def fail_dense_path():
+        raise AssertionError("krylov_evolve constructed a dense operator")
+
+    monkeypatch.setattr(generator, "to_matrix", fail_dense_path)
+    actual = krylov_evolve(generator, initial_state, time)
+
+    np.testing.assert_allclose(actual.to_array(), expected, atol=1e-12)
+
+
+def test_krylov_evolve_forward_then_backward_recovers_the_state():
+    generator = _krylov_generator()
+    initial_state = Statevector(3, random_seed=5)
+
+    forward = krylov_evolve(generator, initial_state, 0.91)
+    recovered = krylov_evolve(generator, forward, -0.91)
+
+    assert recovered.overlap(initial_state) == pytest.approx(1.0, abs=1e-12)
+    assert recovered.norm() == pytest.approx(1.0, abs=1e-12)
+
+
+def test_krylov_evolve_identity_is_global_phase():
+    coefficient = -0.73
+    time = 1.27
+    generator = PauliSum([PauliString("III", coefficient)])
+    initial_state = Statevector(3, random_seed=3)
+
+    evolved = krylov_evolve(generator, initial_state, time)
+
+    expected = np.exp(-1j * time * coefficient) * initial_state.to_array()
+    np.testing.assert_allclose(evolved.to_array(), expected, atol=1e-12)
+
+
+def test_krylov_evolve_does_not_mutate_initial_state():
+    generator = _krylov_generator()
+    initial_state = Statevector(3, random_seed=13)
+    original = initial_state.to_array().copy()
+
+    krylov_evolve(generator, initial_state, 0.2)
+
+    np.testing.assert_array_equal(initial_state.to_array(), original)
 
 
 # ---------------------------------------------------------------------------

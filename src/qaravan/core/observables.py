@@ -1,4 +1,4 @@
-"""Concrete Observable subclasses"""
+"""Concrete Observable subclasses."""
 
 from __future__ import annotations
 from dataclasses import dataclass
@@ -14,6 +14,8 @@ from qaravan.core._repr import (
     math_more,
 )
 from qaravan.core.base import Observable
+
+# === Pauli algebra ===
 
 PAULI_MATRICES: dict[str, np.ndarray] = {
     "I": np.eye(2, dtype=complex),
@@ -43,7 +45,7 @@ _PAULI_MULT: dict[tuple[str, str], tuple[complex, str]] = {
 
 
 def _compose_strings(s1: str, s2: str) -> tuple[complex, str]:
-    """Site-by-site operator product (matrix multiplication) of two equal-length Pauli strings."""
+    """Multiply equal-length Pauli strings sitewise."""
     phase: complex = 1
     chars = []
     for a, b in zip(s1, s2):
@@ -54,9 +56,7 @@ def _compose_strings(s1: str, s2: str) -> tuple[complex, str]:
 
 
 class PauliString(Observable):
-    """Weighted tensor product of single-qubit Paulis, e.g. PauliString("XZI", coeff=0.5).
-    Indices are [0, ..., len(string)-1]. Accepts upper or lower case.
-    """
+    """Weighted full-register Pauli tensor product with case-insensitive input."""
 
     def __init__(self, string: str, coeff: complex = 1.0):
         self.string = string.upper()
@@ -72,10 +72,7 @@ class PauliString(Observable):
         return self.coeff * reduce(np.kron, mats)
 
     def bitmasks(self) -> tuple[int, int, int]:
-        """(x_mask, z_mask, n_Y): P|j⟩ = coeff · i^n_Y · (-1)^popcount(j & z_mask) |j ^ x_mask⟩.
-
-        Qubit q is bit num_sites-1-q of the basis index, matching to_matrix's kron order.
-        """
+        """Return masks for P|j⟩ = coeff·i^n_Y·(-1)^popcount(j&z)|j^x⟩ in big-endian qubit order."""
         n = self.num_sites
         x_mask = sum(1 << (n - 1 - q) for q, c in enumerate(self.string) if c in "XY")
         z_mask = sum(1 << (n - 1 - q) for q, c in enumerate(self.string) if c in "YZ")
@@ -85,7 +82,7 @@ class PauliString(Observable):
         return PauliSum([self])
 
     def compose(self, other: PauliString) -> PauliString:
-        """Operator product self @ other (matrix multiplication, NOT tensor product). Same length required."""
+        """Matrix-multiply equal-length strings without taking a tensor product."""
         if len(self.string) != len(other.string):
             raise ValueError(
                 f"compose requires equal-length strings; got {len(self.string)} and {len(other.string)}."
@@ -122,7 +119,7 @@ class PauliString(Observable):
 
 
 class PauliSum(Observable):
-    """Linear combination of PauliStrings. All terms must have the same length."""
+    """Linear combination of equal-length PauliStrings."""
 
     def __init__(self, terms: list[PauliString] | list[str]):
         if not terms:
@@ -142,12 +139,7 @@ class PauliSum(Observable):
         return sum(t.to_matrix() for t in self.terms)  # type: ignore[return-value]
 
     def to_sector_matrix(self, sector: np.ndarray) -> np.ndarray:
-        """This operator restricted to the basis indices in sector, which must be ascending.
-
-        Contributions landing outside the sector are dropped, so the result is exact only for
-        an operator that commutes with the symmetry defining it and quietly wrong otherwise;
-        np.allclose(out, out.conj().T) catches most such cases.
-        """
+        """Restrict to ascending basis indices; exact only when the operator preserves the sector."""
         dim = len(sector)
         out = np.zeros((dim, dim), dtype=complex)
         cols = np.arange(dim)
@@ -168,7 +160,7 @@ class PauliSum(Observable):
         return self
 
     def compose(self, other: PauliString | PauliSum) -> PauliSum:
-        """Operator product self @ other (matrix multiplication). Distributes over both operands' terms."""
+        """Distribute the matrix product over both operands' terms."""
         other_terms = other.terms if isinstance(other, PauliSum) else [other]
         composed_terms = []
         for term in self.terms:
@@ -180,11 +172,11 @@ class PauliSum(Observable):
         return self.compose(other)
 
     def __rmatmul__(self, other: PauliString) -> PauliSum:
-        """Supports ps @ pauli_sum (a bare PauliString on the left)."""
+        """Multiply by a PauliString on the left."""
         return PauliSum([other]).compose(self)
 
     def simplify(self, atol: float = 1e-12) -> PauliSum:
-        """Merge terms with identical strings (sum coefficients); drop near-zero terms."""
+        """Merge identical strings and drop coefficients within atol of zero."""
         merged: dict[str, complex] = {}
         for term in self.terms:
             merged[term.string] = merged.get(term.string, 0) + term.coeff
@@ -225,14 +217,12 @@ class PauliSum(Observable):
         return as_math(join_terms(elide(parts, marker=math_more)))
 
 
+# === Local Hamiltonian terms ===
+
+
 @dataclass
 class HamiltonianTerm:
-    """A local Observable pinned to sites, kept separate from PauliString/PauliSum (which are
-    full-register, length == num_sites) so Hamiltonian construction can work with a small
-    local operator instead of a full n-qubit one until as_observable() embeds it.
-
-    local_obs must be a PauliString or PauliSum for as_observable() to work.
-    """
+    """Local PauliString or PauliSum pinned to sites for deferred full-register embedding."""
 
     sites: list[int]
     local_obs: Observable
@@ -241,11 +231,7 @@ class HamiltonianTerm:
 def _embed_local_obs(
     obs: Observable, sites: list[int], num_sites: int
 ) -> list[PauliString]:
-    """Embed a local PauliString or PauliSum into the num_sites-qubit space by I-padding.
-
-    sites must match the number of qubits in obs. E.g. PauliString("ZZ"), sites=[1,2],
-    num_sites=4 -> ["IZZI"].
-    """
+    """I-pad a local PauliString or PauliSum onto sites in a num_sites register."""
     if isinstance(obs, PauliSum):
         embedded = []
         for term in obs.terms:
@@ -262,8 +248,7 @@ def _embed_local_obs(
 
 
 def embed_hamiltonian_terms(terms: list[HamiltonianTerm], num_sites: int) -> PauliSum:
-    """Embed all local HamiltonianTerms into the full num_sites-qubit space and simplify
-    (merge duplicate strings) -- doesn't change the matrix, just avoids redundant terms."""
+    """Embed local terms and merge duplicate full-register Pauli strings."""
     embedded: list[PauliString] = []
     for term in terms:
         embedded.extend(_embed_local_obs(term.local_obs, term.sites, num_sites))
@@ -273,8 +258,7 @@ def embed_hamiltonian_terms(terms: list[HamiltonianTerm], num_sites: int) -> Pau
 
 
 def restrict_pauli_sum(pauli_sum: PauliSum) -> HamiltonianTerm:
-    """Inverse of embed_hamiltonian_terms: restrict a full-register PauliSum down to a
-    HamiltonianTerm covering just the sites it touches."""
+    """Restrict a full-register PauliSum to its nontrivial sites."""
     touched_sites = set()
     for term in pauli_sum.terms:
         touched_sites.update(i for i, ch in enumerate(term.string) if ch != "I")
@@ -286,12 +270,11 @@ def restrict_pauli_sum(pauli_sum: PauliSum) -> HamiltonianTerm:
     return HamiltonianTerm(sites, PauliSum(local_terms))
 
 
-class LocalOp(Observable):
-    """Generic local Hermitian operator on specified sites.
+# === Local and aggregate observables ===
 
-    matrix is returned as-is (no embedding). Backends use obs.indices to
-    figure out how to contract
-    """
+
+class LocalOp(Observable):
+    """Dense local operator returned without full-register embedding."""
 
     def __init__(self, mat: np.ndarray, indices: int | list[int]):
         self._matrix = np.asarray(mat, dtype=complex)
@@ -302,10 +285,7 @@ class LocalOp(Observable):
 
 
 class Magnetization(PauliSum):
-    """(1/n) * sum_{i=0}^{n-1} sigma_i^axis. Subclass of PauliSum.
-
-    axis: 'X', 'Y', or 'Z' (case-insensitive).
-    """
+    """Mean single-site Pauli (1/n) Σ_i σ_i^axis."""
 
     def __init__(self, n: int, axis: str = "Z"):
         axis = axis.upper()
@@ -322,10 +302,7 @@ class Magnetization(PauliSum):
 
 
 class NumberOperator(PauliSum):
-    """
-    n_q = (I - Z_q)/2, eigenvalue 1 on |1> and 0 on |0>. Unnormalized -- it counts particles.
-    if qubits is passed, it counts only those qubits; otherwise it counts all n qubits.
-    """
+    """Particle count Σ_q (I-Z_q)/2 over all or selected qubits."""
 
     def __init__(self, n: int, qubits: list[int] | None = None):
         self.n = n

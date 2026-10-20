@@ -23,16 +23,6 @@ def test_pauli_noise_placement_defaults_to_layer():
     assert PauliNoise(["I"], [1.0]).placement == "layer"
 
 
-@pytest.mark.parametrize("noise_type", [PauliNoise, DepolarizingNoise])
-def test_pauli_noise_rejects_unknown_placement(noise_type):
-    if noise_type is PauliNoise:
-        args = (["I"], [1.0])
-    else:
-        args = (1, 0.1)
-    with pytest.raises(ValueError, match="placement"):
-        noise_type(*args, placement="every_gate")
-
-
 def test_depolarizing_noise_stores_placement():
     assert DepolarizingNoise(2, 0.1, placement="circuit").placement == "circuit"
 

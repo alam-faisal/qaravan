@@ -2,6 +2,7 @@ from qaravan.applications.algorithms import (
     fermionic_ground_state,
     fermionic_spectrum,
     ground_state,
+    krylov_evolve,
     spectrum,
     trotter_circuit,
 )
@@ -36,6 +37,7 @@ from qaravan.applications.quantum_info import (
     entanglement_depth,
     entanglement_entropy,
     entanglement_profile,
+    phase_free_distance,
 )
 from qaravan.applications.run_context import RunContext
 
@@ -43,6 +45,7 @@ __all__ = [
     "fermionic_ground_state",
     "fermionic_spectrum",
     "ground_state",
+    "krylov_evolve",
     "spectrum",
     "trotter_circuit",
     "bell_basis_circuit",

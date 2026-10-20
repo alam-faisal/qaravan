@@ -7,7 +7,7 @@ from qaravan.backends.statevector import (
     StatevectorSimulator,
     apply_pauli_sum,
 )
-from qaravan.core.base import IncompatibleStateError, NoiseModel
+from qaravan.core.base import IncompatibleNoiseError, IncompatibleStateError, NoiseModel
 from qaravan.core.circuit import Circuit
 from qaravan.core.gates import CNOT, H
 from qaravan.core.noise import PauliNoise
@@ -144,12 +144,17 @@ def test_statevector_sim_ghz_3qubit():
 
 
 def test_statevector_sim_rejects_noise_without_a_sampler():
+    """Kraus-only noise fails at construction, before any evolution."""
     circ = Circuit([H(0)], num_sites=1)
-    sv0 = Statevector(1)
-    nm = _MinimalNoise()
-    sim = StatevectorSimulator(circ, sv0, noise_model=nm)
-    with pytest.raises(NotImplementedError, match="sample_error"):
-        sim.run()
+    with pytest.raises(IncompatibleNoiseError, match="sample_error"):
+        StatevectorSimulator(circ, Statevector(1), noise_model=_MinimalNoise())
+
+
+def test_statevector_sim_rejects_unknown_noise_placement():
+    """A typo'd placement must raise, not silently fall back to per-layer noise."""
+    noise = PauliNoise(["I"], [1.0], placement="circiut")
+    with pytest.raises(ValueError, match="circiut"):
+        Statevector(1).apply(Circuit([H(0)], num_sites=1), noise_model=noise)
 
 
 def test_statevector_apply_supports_one_seeded_noisy_path():
@@ -159,7 +164,7 @@ def test_statevector_apply_supports_one_seeded_noisy_path():
     final = Statevector(bitstring="0").apply(
         circuit,
         noise_model=noise,
-        rng=np.random.default_rng(3),
+        noise_rng=np.random.default_rng(3),
     )
 
     np.testing.assert_allclose(final.to_array(), np.array([1, -1]) / np.sqrt(2))
@@ -172,9 +177,9 @@ def test_statevector_noise_insertion_does_not_mutate_prepared_circuit():
         circuit,
         Statevector(bitstring="00"),
         noise_model=noise,
-        rng=np.random.default_rng(0),
+        noise_rng=np.random.default_rng(0),
     )
-    prepared = simulator.prepare_circuit()
+    prepared = simulator._prepare_circuit()
     original_layers = [list(layer) for layer in prepared.layers]
 
     first = simulator._insert_noise(prepared, noise)

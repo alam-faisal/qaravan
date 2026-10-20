@@ -3,7 +3,12 @@
 import numpy as np
 import pytest
 from scipy.linalg import expm
-from qaravan.core.base import IncompatibleStateError, Simulator, State
+from qaravan.core.base import (
+    IncompatibleNoiseError,
+    IncompatibleStateError,
+    Simulator,
+    State,
+)
 from qaravan.core.circuit import Circuit
 from qaravan.core.gates import (
     CNOT,
@@ -337,6 +342,12 @@ class _MinSim(Simulator):
     def _validate_state(self, state):
         if not isinstance(state, _MinState):
             raise IncompatibleStateError
+
+    def _validate_noise(self, noise_model):
+        raise IncompatibleNoiseError
+
+    def _insert_noise(self, circuit, noise_model):
+        return circuit
 
     def translate_gate(self, gate):
         return gate.matrix

@@ -13,6 +13,8 @@ from qaravan.core.base import (
 )
 from qaravan.core.circuit import Circuit
 
+# === Walkers ===
+
 
 class Walkers(State):
     """Equal-weight statistical ensemble of states."""
@@ -127,6 +129,9 @@ class Walkers(State):
         return f"Walkers(num_walkers={self.num_walkers}, num_sites={self.num_sites})"
 
 
+# === MonteCarloSimulator ===
+
+
 class MonteCarloSimulator(Simulator):
     """Evolve each walker through independent noise using its member backend."""
 
@@ -135,19 +140,22 @@ class MonteCarloSimulator(Simulator):
         circuit: Circuit,
         initial_state: Walkers,
         noise_model: NoiseModel | None = None,
-        rng: np.random.Generator | int | None = None,
         decompose: bool = False,
+        *,
+        noise_rng: np.random.Generator | int | None = None,
         **member_simulator_kwargs,
     ):
-        super().__init__(circuit, initial_state, noise_model, decompose)
+        super().__init__(
+            circuit, initial_state, noise_model, decompose, noise_rng=noise_rng
+        )
         representative = initial_state[0]
-        member_simulator_type = representative.default_simulator
+        member_simulator_type = initial_state.default_simulator
         self.member_simulator = member_simulator_type(
             circuit,
             representative,
             noise_model=noise_model,
-            rng=rng,
             decompose=decompose,
+            noise_rng=self.noise_rng,
             **member_simulator_kwargs,
         )
 
@@ -157,14 +165,17 @@ class MonteCarloSimulator(Simulator):
                 f"MonteCarloSimulator requires Walkers; got {type(state).__name__}"
             )
 
+    def _validate_noise(self, noise_model: NoiseModel) -> None:
+        """Defer to the member simulator, which validates on construction."""
+
     def run(self) -> Walkers:
-        prepared_circuit = self.member_simulator.prepare_circuit()
+        prepared_circuit = self.member_simulator._prepare_circuit()
         final_walkers = []
         for walker in self.initial_state:
             realized_circuit = self._insert_noise(
                 prepared_circuit, self.noise_model
             )
-            final_walkers.append(self.evolve(walker, realized_circuit))
+            final_walkers.append(self._evolve(walker, realized_circuit))
         return Walkers(final_walkers)
 
     def _insert_noise(

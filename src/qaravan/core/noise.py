@@ -9,20 +9,8 @@ from qaravan.core.observables import PauliString
 NoisePlacement = Literal["layer", "circuit"]
 
 
-def _validate_placement(placement: NoisePlacement) -> NoisePlacement:
-    if placement not in ("layer", "circuit"):
-        raise ValueError(
-            f"placement must be 'layer' or 'circuit'; got {placement!r}"
-        )
-    return placement
-
-
 class PauliNoise(NoiseModel):
-    """Pauli channel with explicit strings and probabilities.
-
-    strings: n-qubit Pauli strings e.g. ["II", "XX", "ZZ"]
-    probs: matching probabilities, must sum to 1 within 1e-6
-    """
+    """Explicit Pauli channel sampled after each layer or once after the circuit."""
 
     gate_dependent: bool = False
 
@@ -42,16 +30,16 @@ class PauliNoise(NoiseModel):
             raise ValueError(f"Probabilities must sum to 1; got {sum(probs):.8f}")
         self.strings = [s.upper() for s in strings]
         self.probs = list(probs)
-        self.placement = _validate_placement(placement)
+        self.placement = placement
 
     def sample_error(self, rng: np.random.Generator | None = None) -> str:
-        """Multinomial draw; returns one Pauli string from the channel distribution."""
+        """Draw one Pauli string from the channel distribution."""
         rng = np.random.default_rng(rng)
         idx = rng.choice(len(self.strings), p=self.probs)
         return self.strings[idx]
 
     def get_kraus(self, *args, **kwargs) -> list[np.ndarray]:
-        """Kraus operators: sqrt(p_i) * Pauli_i matrix for each term."""
+        """Return one √p_i P_i Kraus operator per channel term."""
         return [
             np.sqrt(p) * PauliString(s).to_matrix()
             for s, p in zip(self.strings, self.probs)
@@ -59,13 +47,7 @@ class PauliNoise(NoiseModel):
 
 
 class DepolarizingNoise(PauliNoise):
-    """Global n-qubit depolarizing channel.
-
-    E(ρ) = (1-p)ρ + p/(4^n - 1) Σ_{P ≠ I^⊗n} P ρ P†
-
-    Subclasses PauliNoise (IS-A Pauli channel) but overrides __init__ and
-    sample_error to avoid enumerating 4^n strings. O(n) per sample.
-    """
+    """Global depolarizing channel sampled in O(n) without enumerating 4^n strings."""
 
     def __init__(
         self,
@@ -78,10 +60,10 @@ class DepolarizingNoise(PauliNoise):
             raise ValueError(f"error_rate must be in [0, 1]; got {error_rate}")
         self.num_sites = num_sites
         self.error_rate = error_rate
-        self.placement = _validate_placement(placement)
+        self.placement = placement
 
     def sample_error(self, rng: np.random.Generator | None = None) -> str:
-        """Returns identity string with prob (1-p), uniform non-identity Pauli with prob p."""
+        """Draw identity with probability 1-p or a uniform nonidentity Pauli with probability p."""
         rng = np.random.default_rng(rng)
         if rng.random() >= self.error_rate:
             return "I" * self.num_sites

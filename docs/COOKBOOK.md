@@ -22,7 +22,7 @@ One sampled Pauli-noise path is also direct:
 
 ```python
 noise = DepolarizingNoise(num_sites=2, error_rate=0.01, placement="layer")
-noisy_path = sv.apply(circ, noise_model=noise, rng=0)
+noisy_path = sv.apply(circ, noise_model=noise, noise_rng=0)
 ```
 
 This returns a pure `Statevector`, not the channel-averaged mixed state. Use `Walkers` for the
@@ -30,7 +30,7 @@ ensemble:
 
 ```python
 initial_walkers = Walkers(sv, num_walkers=1000)
-final_walkers = initial_walkers.apply(circ, noise_model=noise, rng=0)
+final_walkers = initial_walkers.apply(circ, noise_model=noise, noise_rng=0)
 ```
 
 `MonteCarloSimulator` prepares the member simulator once; only noise realization and evolution

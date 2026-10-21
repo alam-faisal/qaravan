@@ -11,7 +11,7 @@ circ = Circuit([H(0), CNOT([0, 1])])
 obs = PauliString("IX")
 
 thermal_nm = ThermalNoise(t1=100, t2=75, t_q1=5, t_q2=20)
-pauli_nm = PauliNoise([PauliString("II"), PauliString("ZZ")], probs=[0.9, 0.1])
+pauli_nm = PauliNoise(["II", "ZZ"], probs=[0.9, 0.1])
 
 initial_sv = Statevector(bitstring="01")
 final_sv = StatevectorSimulator(circ, initial_sv).run()
@@ -42,7 +42,7 @@ final_ps = PauliPropagationSimulator(circ, initial_ps).run()
 exp = final_ps.expectation(PauliSum(bitstring="01"))
 
 initial_walkers = Walkers(initial_sv, num_walkers=1000)
-final_walkers = initial_walkers.apply(circ, noise_model=pauli_nm, rng=0)
+final_walkers = initial_walkers.apply(circ, noise_model=pauli_nm, noise_rng=0)
 exp = final_walkers.expectation(obs)
 ```
 
@@ -56,7 +56,7 @@ no need to name the simulator class up front:
 final_sv = initial_sv.apply(circ)
 exp = final_sv.expectation(obs)
 
-noisy_path = initial_sv.apply(circ, noise_model=pauli_nm, rng=0)
+noisy_path = initial_sv.apply(circ, noise_model=pauli_nm, noise_rng=0)
 
 final_dm = initial_dm.apply(circ, noise_model=thermal_nm)
 exp = final_dm.expectation(obs)
@@ -99,8 +99,8 @@ exp = final_dm.expectation(obs)
 
 ```python
 
-ham = TFI(n, jz=1.0, h=0.75)
-nm = QubitNoise(t1=100, t2=75, t_q1=0.04, t_q2=0.5)
+ham = TFI(n, J=1.0, h=0.75)
+nm = ThermalNoise(t1=100, t2=75, t_q1=0.04, t_q2=0.5)
 obs = Magnetization(n)
 exp_list = trotter_dm_sim(ham, step_size=0.1, max_steps=500,
                           nm=nm, obs=obs)
@@ -120,10 +120,12 @@ def trotter_dm_sim(ham, step_size, max_steps, nm, obs) -> np.ndarray:
 
 ```python
 
+n = 4
 target_sv = Statevector(n, random_seed=42)
-skeleton = brickwall_skeleton(n=4, depth=2)
+init_sv = Statevector(bitstring="0" * n)
+skeleton = brickwall_skeleton(Lx=n) * 2      # depth-2 brickwall
 context = RunContext(max_iter=10000, stop_ratio=1e-8, stop_absolute=1e-7)
-circ, cost_list = environment_state_prep(target_sv, skeleton=skeleton,
+circ, cost_list = environment_state_prep(target_sv, init_sv, skeleton=skeleton,
                                          context=context)
 ```
 

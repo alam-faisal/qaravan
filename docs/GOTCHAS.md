@@ -89,7 +89,7 @@ outcome can select a different decoder circuit.
 ## A noisy statevector run is one trajectory, not a mixed state
 
 ```python
-final = initial.apply(circuit, noise_model=pauli_noise, rng=rng)
+final = initial.apply(circuit, noise_model=pauli_noise, noise_rng=rng)
 ```
 
 This samples one Pauli-error realization and returns one pure state. The channel average
@@ -102,7 +102,7 @@ is generally mixed and is represented statistically by independently evolved wal
 
 ```python
 final_walkers = Walkers(initial, num_walkers=1000).apply(
-    circuit, noise_model=pauli_noise, rng=rng
+    circuit, noise_model=pauli_noise, noise_rng=rng
 )
 ```
 

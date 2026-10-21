@@ -109,3 +109,22 @@ final_walkers = Walkers(initial, num_walkers=1000).apply(
 For dynamic circuits, `DynamicCircuit.execute(Walkers(...))` produces one shared measurement
 record and a posterior mixed state. `execute_dynamic_circuit_ensemble(...)` runs the complete
 dynamic circuit independently for each trajectory and returns one record per final walker.
+
+## Qubit ordering is big-endian: qubit 0 is the most significant bit
+
+Applying `H(0)` to a 2-qubit system embeds as $H\otimes I$, not $I\otimes H$. In general, gate
+$G$ on qubit $k$ of an $n$-qubit system embeds as
+
+$$
+I^{\otimes k}\otimes G\otimes I^{\otimes(n-k-1)}.
+$$
+
+Basis state index $i$ corresponds to bitstring $q_0q_1\dots q_{n-1}$ with
+$i=q_0 2^{n-1}+q_1 2^{n-2}+\dots+q_{n-1}2^0$, so qubit 0 is the leftmost qubit in ket notation.
+This is the opposite of Qiskit's little-endian convention, where qubit 0 is the least
+significant bit and `H(0)` embeds as $I\otimes H$.
+
+## `Circuit.copy()` is shallow and resets layers
+
+`copy()` returns a new circuit with the same gate list (the `Gate` objects themselves are shared)
+but `layers = None`. Call `construct_layers()` again on the copy before iterating over layers.

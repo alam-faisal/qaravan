@@ -93,11 +93,11 @@ for _ in range(50):
 
 | Backend | State type | Notes |
 |---|---|---|
-| `StatevectorSimulator` | `Statevector` | Complete |
-| `DensityMatrixSimulator` | `DensityMatrix` | In legacy |
-| `MPSSimulator` | `MPS` | In legacy |
-| `MPDOSimulator` | `MPDO` | In legacy |
-| `MonteCarloSimulator` | `Walkers` | In development |
-| `CliffordSimulator` | `StabilizerTableau` | In development |
-| `MatchgateSimulator` | `GaussianState` | In legacy |
-| `PauliPropagationSimulator` | `PauliSum` | In development |
+| `StatevectorSimulator` | `Statevector` | ![Complete](https://img.shields.io/badge/Complete-brightgreen) |
+| `DensityMatrixSimulator` | `DensityMatrix` | ![In legacy](https://img.shields.io/badge/In_legacy-blue) |
+| `MPSSimulator` | `MPS` | ![In legacy](https://img.shields.io/badge/In_legacy-blue) |
+| `MPDOSimulator` | `MPDO` | ![In legacy](https://img.shields.io/badge/In_legacy-blue) |
+| `MonteCarloSimulator` | `Walkers` | ![In development](https://img.shields.io/badge/In_development-orange) |
+| `CliffordSimulator` | `StabilizerTableau` | ![In development](https://img.shields.io/badge/In_development-orange) |
+| `MatchgateSimulator` | `GaussianState` | ![In legacy](https://img.shields.io/badge/In_legacy-blue) |
+| `PauliPropagationSimulator` | `PauliSum` | ![In development](https://img.shields.io/badge/In_development-orange) |

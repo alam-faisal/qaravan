@@ -98,6 +98,6 @@ for _ in range(50):
 | `MPSSimulator` | `MPS` | In legacy |
 | `MPDOSimulator` | `MPDO` | In legacy |
 | `MonteCarloSimulator` | `Walkers` | In development |
-| `CliffordSimulator` | `StabilizerTableau` | In legacy |
+| `CliffordSimulator` | `StabilizerTableau` | In development |
 | `MatchgateSimulator` | `GaussianState` | In legacy |
 | `PauliPropagationSimulator` | `PauliSum` | In development |

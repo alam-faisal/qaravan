@@ -1,0 +1,301 @@
+"""Tests for HamiltonianTerm, Hamiltonian, TFI, Heisenberg1D."""
+
+import numpy as np
+import pytest
+from scipy.linalg import expm
+from qaravan.applications.algorithms import ground_state, trotter_circuit
+from qaravan.core.hamiltonians import (
+    TFI,
+    FermiHubbard1D,
+    Hamiltonian,
+    HamiltonianTerm,
+    Heisenberg1D,
+)
+from qaravan.core.observables import PauliString
+
+# ---------------------------------------------------------------------------
+# Generic Hamiltonian — hermiticity
+# ---------------------------------------------------------------------------
+
+
+def test_tfi_to_matrix_is_hermitian():
+    rng = np.random.default_rng(42)
+    J, h = float(rng.uniform(0.5, 2.0)), float(rng.uniform(0.1, 1.0))
+    tfi = TFI(4, J=J, h=h)
+    mat = tfi.to_matrix()
+    assert np.allclose(mat, mat.conj().T, atol=1e-12)
+
+
+def test_heisenberg_to_matrix_is_hermitian():
+    heis = Heisenberg1D(4, J=1.0, h=0.3)
+    mat = heis.to_matrix()
+    assert np.allclose(mat, mat.conj().T, atol=1e-12)
+
+
+def test_hamiltonian_repr_headers_the_model_then_shows_the_algebra():
+    tfi = TFI(3, J=1.0, h=0.5)
+    header, algebra = repr(tfi).split("\n", 1)
+    assert header == "TFI(num_sites=3)"
+    assert algebra == repr(tfi.as_observable())
+    # __str__ falls back to __repr__; neither is defined twice
+    assert str(tfi) == repr(tfi)
+
+
+def test_as_observable_merges_duplicate_strings_without_changing_matrix():
+    from qaravan.core.fermions import FermionicEncoding
+    from qaravan.core.hamiltonians import FermiHubbard1D
+    from qaravan.core.observables import PauliSum, _embed_local_obs
+
+    fh = FermiHubbard1D(num_fermionic_sites=4, t=1.0, U=2.0, mu=0.3)
+    ham = fh.encode(
+        FermionicEncoding("jordan_wigner", num_modes=fh.num_fermionic_modes)
+    )
+
+    unsimplified = []
+    for term in ham.terms:
+        unsimplified.extend(_embed_local_obs(term.local_obs, term.sites, ham.num_sites))
+
+    simplified = ham.as_observable()
+    assert len(simplified.terms) < len(unsimplified), (
+        "onsite terms should collapse shared identity strings"
+    )
+    assert np.allclose(simplified.to_matrix(), PauliSum(unsimplified).to_matrix())
+
+
+# ---------------------------------------------------------------------------
+# TFI ground state
+# ---------------------------------------------------------------------------
+
+
+def test_tfi_ground_state_energy_h0():
+    # h=0, J=1, open BC: ferromagnet ground state, E = -(n-1)*J
+    for n in [2, 3, 4]:
+        tfi = TFI(n, J=1.0, h=0.0, periodic=False)
+        sv = ground_state(tfi)
+        energy = sv.expectation(tfi.as_observable()).real
+        expected = -(n - 1)
+        assert abs(energy - expected) < 1e-9, (
+            f"n={n}: got {energy}, expected {expected}"
+        )
+
+
+def test_tfi_ground_state_against_exact_diag():
+    # |⟨computed | exact⟩|² = 1 up to global phase
+    for n in range(3, 6):
+        tfi = TFI(n, J=1.0, h=0.5, periodic=False)
+        sv = ground_state(tfi)
+        evals, evecs = np.linalg.eigh(tfi.to_matrix())
+        exact_gs = evecs[:, 0]
+        fidelity = abs(np.dot(sv.to_array().conj(), exact_gs)) ** 2
+        assert fidelity > 1 - 1e-10, f"n={n}: fidelity={fidelity}"
+
+
+# ---------------------------------------------------------------------------
+# ground_state(method="naive_lanczos") -- opt-in scipy.sparse.linalg.eigsh path
+# ---------------------------------------------------------------------------
+
+
+def test_ground_state_naive_lanczos_matches_naive_energy():
+    for n in [3, 4, 5]:
+        tfi = TFI(n, J=1.0, h=0.5, periodic=False)
+        e_exact = (
+            ground_state(tfi, method="naive").expectation(tfi.as_observable()).real
+        )
+        e_lanczos = (
+            ground_state(tfi, method="naive_lanczos")
+            .expectation(tfi.as_observable())
+            .real
+        )
+        assert abs(e_exact - e_lanczos) < 1e-9, (
+            f"n={n}: exact={e_exact}, lanczos={e_lanczos}"
+        )
+
+
+def test_ground_state_naive_lanczos_matches_naive_in_sector():
+    from qaravan.core.fermions import FermionicEncoding
+    from qaravan.core.hamiltonians import FermiHubbard1D
+
+    fh = FermiHubbard1D(num_fermionic_sites=3, t=1.0, U=2.0, mu=0.0)
+    ham = fh.encode(
+        FermionicEncoding("jordan_wigner", num_modes=fh.num_fermionic_modes)
+    )
+    e_exact = (
+        ground_state(ham, method="naive", fixed_particle_number=3)
+        .expectation(ham.as_observable())
+        .real
+    )
+    e_lanczos = (
+        ground_state(ham, method="naive_lanczos", fixed_particle_number=3)
+        .expectation(ham.as_observable())
+        .real
+    )
+    assert abs(e_exact - e_lanczos) < 1e-9
+
+
+def test_ground_state_naive_lanczos_raises_for_tiny_matrix():
+    ham = Hamiltonian([HamiltonianTerm([0], PauliString("Z"))], 1)  # 2x2
+    with pytest.raises(ValueError, match="lanczos"):
+        ground_state(ham, method="naive_lanczos")
+
+
+def test_ground_state_unknown_method_raises():
+    tfi = TFI(3)
+    with pytest.raises(ValueError, match="Unknown method"):
+        ground_state(tfi, method="bogus")
+
+
+# ---------------------------------------------------------------------------
+# TFI Trotter
+# ---------------------------------------------------------------------------
+
+
+def test_tfi_trotter_raises_for_n2():
+    tfi = TFI(2, J=1.0, h=0.5)
+    with pytest.raises(ValueError):
+        trotter_circuit(tfi, 0.1)
+
+
+def test_tfi_trotter_circuit_order2_vs_propagator():
+    # Order-2 error per step ~ O(dt^3); dt=0.005 gives error ~ 1e-7
+    n, J, h, dt = 4, 1.0, 0.5, 0.005
+    tfi = TFI(n, J=J, h=h, periodic=False)
+    circ = trotter_circuit(tfi, dt, order=2)
+    trotter_mat = circ.to_matrix()
+    exact_mat = expm(-1j * dt * tfi.to_matrix())
+    frob_err = np.linalg.norm(trotter_mat - exact_mat, ord="fro")
+    assert frob_err < 1e-5, f"Frobenius error {frob_err:.2e}"
+
+
+def test_tfi_trotter_error_scaling_order1():
+    # log-log slope of Frobenius error vs dt should be ~2 for order-1
+    n, J, h = 4, 1.0, 0.5
+    tfi = TFI(n, J=J, h=h, periodic=False)
+    dt_values = [0.1, 0.05, 0.02, 0.01]
+    errors = []
+    for dt in dt_values:
+        circ = trotter_circuit(tfi, dt, order=1)
+        errors.append(
+            np.linalg.norm(
+                circ.to_matrix() - expm(-1j * dt * tfi.to_matrix()), ord="fro"
+            )
+        )
+    slope = np.polyfit(np.log(dt_values), np.log(errors), 1)[0]
+    assert 1.8 < slope < 2.2, f"Order-1 slope={slope:.3f} (expected ~2)"
+
+
+def test_tfi_trotter_error_scaling_order2():
+    # log-log slope should be ~3 for order-2
+    n, J, h = 4, 1.0, 0.5
+    tfi = TFI(n, J=J, h=h, periodic=False)
+    dt_values = [0.1, 0.05, 0.02, 0.01]
+    errors = []
+    for dt in dt_values:
+        circ = trotter_circuit(tfi, dt, order=2)
+        errors.append(
+            np.linalg.norm(
+                circ.to_matrix() - expm(-1j * dt * tfi.to_matrix()), ord="fro"
+            )
+        )
+    slope = np.polyfit(np.log(dt_values), np.log(errors), 1)[0]
+    assert 2.7 < slope < 3.3, f"Order-2 slope={slope:.3f} (expected ~3)"
+
+
+# ---------------------------------------------------------------------------
+# Heisenberg1D ground state
+# ---------------------------------------------------------------------------
+
+
+def test_heisenberg_ground_state_energy_j0():
+    # J=0, h=1: H = -h Σ Z_i; |0...0⟩ is ground state with E = -h*n
+    for n in [2, 3, 4]:
+        heis = Heisenberg1D(n, J=0.0, h=1.0)
+        sv = ground_state(heis)
+        energy = sv.expectation(heis.as_observable()).real
+        expected = -float(n)
+        assert abs(energy - expected) < 1e-9, (
+            f"n={n}: got {energy}, expected {expected}"
+        )
+
+
+def test_heisenberg_ground_state_against_exact_diag():
+    for n in range(3, 6):
+        heis = Heisenberg1D(n, J=1.0, h=0.5)
+        sv = ground_state(heis)
+        evals, evecs = np.linalg.eigh(heis.to_matrix())
+        exact_gs = evecs[:, 0]
+        fidelity = abs(np.dot(sv.to_array().conj(), exact_gs)) ** 2
+        assert fidelity > 1 - 1e-10, f"n={n}: fidelity={fidelity}"
+
+
+# ---------------------------------------------------------------------------
+# Heisenberg1D Trotter
+# ---------------------------------------------------------------------------
+
+
+def test_heisenberg_trotter_raises_for_n2():
+    heis = Heisenberg1D(2, J=1.0)
+    with pytest.raises(ValueError):
+        trotter_circuit(heis, 0.1)
+
+
+def test_heisenberg_trotter_vs_propagator():
+    n, J, h, dt = 4, 1.0, 0.3, 0.005
+    heis = Heisenberg1D(n, J=J, h=h, periodic=False)
+    circ = trotter_circuit(heis, dt, order=2)
+    trotter_mat = circ.to_matrix()
+    exact_mat = expm(-1j * dt * heis.to_matrix())
+    frob_err = np.linalg.norm(trotter_mat - exact_mat, ord="fro")
+    assert frob_err < 1e-5, f"Frobenius error {frob_err:.2e}"
+
+
+def test_heisenberg_xx_model_ground_energy():
+    # J=1, h=0, PBC: ground energy from ground_state() matches eigh minimum
+    for n in [4, 6]:
+        heis = Heisenberg1D(n, J=1.0, h=0.0, periodic=True)
+        evals = np.linalg.eigvalsh(heis.to_matrix())
+        sv = ground_state(heis)
+        energy = sv.expectation(heis.as_observable()).real
+        assert abs(energy - evals[0]) < 1e-9, (
+            f"n={n}: got {energy}, expected {evals[0]}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Zero couplings emit no terms
+# ---------------------------------------------------------------------------
+
+
+def test_zero_coupling_emits_no_terms():
+    """mu=0 used to leave 4 zero-coefficient terms on FermiHubbard1D, visible in its repr."""
+    fh = FermiHubbard1D(2, t=1.0, U=2.0, mu=0.0)
+    assert all(term.coeff != 0 for term in fh.terms)
+    assert len(fh.terms) == 4 + 2  # hopping bonds, both spins, plus two U terms
+    assert not any(term.coeff == 0 for term in FermiHubbard1D(2, t=1.0, U=0.0).terms)
+    assert len(TFI(3, J=1.0, h=0.0).terms) == 2  # two bonds, no field terms
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: FermiHubbard1D(2, t=1.0, U=2.0, mu=0.0),
+        lambda: TFI(3, J=1.0, h=0.5),
+        lambda: Heisenberg1D(3, J=1.0, h=0.3),
+    ],
+)
+def test_dropping_zero_terms_leaves_the_matrix_unchanged(build):
+    """Only zero-coefficient terms went; the operator itself must be identical."""
+    ham = build()
+    if hasattr(ham, "encode"):
+        from qaravan.core.fermions import FermionicEncoding
+
+        encoding = FermionicEncoding("jordan_wigner", num_modes=ham.num_fermionic_modes)
+        matrix = ham.encode(encoding).to_matrix()
+    else:
+        matrix = ham.to_matrix()
+    assert np.allclose(matrix, matrix.conj().T)
+
+
+@pytest.mark.parametrize("ham", [TFI(3, J=0.0, h=0.0), Heisenberg1D(3, J=0.0, h=0.0)])
+def test_all_couplings_zero_gives_the_zero_operator(ham):
+    """An empty term list must not blow up PauliSum's 'at least one term' rule."""
+    np.testing.assert_allclose(ham.to_matrix(), 0.0, atol=1e-12)

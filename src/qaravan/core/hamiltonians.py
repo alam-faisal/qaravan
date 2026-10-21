@@ -1,340 +1,445 @@
-from .gates import *
-from .circuits import Circuit
-from .lattices import LinearLattice, KagomeLattice, ToricLattice
-from .paulis import pauli_mapping
-from scipy.linalg import expm
+"""Hamiltonian base class and concrete models."""
 
-def terms_to_matrix(terms, num_sites, dense=True, spin_half=False):
-    """ builds full 2**n by 2**n matrix from a list of terms, where each term is a tuple (coefficient, active_sites, local_ops) 
-    spin_half: if True, uses spin-1/2 operators (Pauli/2), if False uses full Pauli matrices (default)
-    """
-    H = sp.csr_matrix((2**num_sites, 2**num_sites), dtype=complex)
-    for coeff, active_sites, local_ops in terms:
-        H += coeff * embed_operator(num_sites, active_sites, [pauli_mapping[op] for op in local_ops], factor=spin_half)
-    if dense: 
-        return H.toarray()
-    return H
+from typing import Self
+import numpy as np
+from qaravan.core.fermions import (
+    FermionicEncoding,
+    FermionicSum,
+    density_density,
+    hopping,
+    number,
+)
+from qaravan.core.lattices import LinearLattice
+from qaravan.core.observables import (
+    HamiltonianTerm,
+    PauliString,
+    PauliSum,
+    embed_hamiltonian_terms,
+)
+
+# === Hamiltonian ===
+
 
 class Hamiltonian:
-    def __init__(self, coupling_types, coupling_strengths, field_types, field_strengths, lattice=None, num_x=None, locality='nn', periodic_x=False, spin_half=False):
-        """ 
-        coupling_types is a list like ['xx', 'yx', 'zz'] 
-        coupling_strengths is same or double the length of coupling_types
-        field_types is a subset of ['x', 'y', 'z']
-        field_strengths is same length as field_types each element can be either:
-        - a scalar (uniform field across all sites)
-        - an array of length num_sites (non-uniform field)
-        locality is one of ['nn', 'nnn', 'a2a', 'long-range']
-        spin_half: if True, uses spin-1/2 operators (Pauli/2), if False uses full Pauli matrices (default)
-        """
-        if lattice is not None:
-            self.lattice = lattice
-        elif num_x is not None:
-            self.lattice = LinearLattice(num_x, periodic_x)
-        else:
-            raise ValueError("Either 'lattice' or 'num_x' must be provided.")
+    """Local terms with optional commuting, disjoint-site Trotter groups."""
 
-        self.num_sites = self.lattice.num_sites
-        self.op_grouping = None
-        self.coupling_types = coupling_types
-        self.coupling_strengths = coupling_strengths
-        self.field_types = field_types
-        self.field_strengths = field_strengths
-        self.locality = locality
-        self.spin_half = spin_half
-        self.terms = []  # stores (coefficient, active_sites, local_ops)
-        
-        if locality == 'nn':
-            for ops, strength in zip(coupling_types, coupling_strengths):
-                for pairs in self.lattice.get_connections("nn"):
-                    self.terms.append((strength, pairs, [ops[0], ops[1]]))
+    def __init__(
+        self,
+        terms: list[HamiltonianTerm],
+        num_sites: int,
+        trotter_groups: list[list[HamiltonianTerm]] | None = None,
+    ):
+        self.terms = terms
+        self.num_sites = num_sites
+        self.trotter_groups = trotter_groups
 
-        elif locality == 'nnn':
-            mid = len(coupling_strengths) // 2
-            nn_strengths = coupling_strengths[:mid]
-            nnn_strengths = coupling_strengths[mid:]
-            nn_pairs = self.lattice.get_connections("nn")
-            nnn_pairs = self.lattice.get_connections("nnn")
+    def as_observable(self) -> PauliSum:
+        """Embed local terms and merge duplicate full-register Pauli strings."""
+        return embed_hamiltonian_terms(self.terms, self.num_sites)
 
-            for ops, nn_strength, nnn_strength in zip(coupling_types, nn_strengths, nnn_strengths):
-                for pairs in nn_pairs:
-                    self.terms.append((nn_strength, pairs, [ops[0], ops[1]]))
-                for pairs in nnn_pairs:
-                    self.terms.append((nnn_strength, pairs, [ops[0], ops[1]]))
+    def to_matrix(self) -> np.ndarray:
+        """Full 2^n × 2^n Hamiltonian matrix."""
+        return self.as_observable().to_matrix()
 
-        elif locality == 'a2a': 
-            for ops, strength in zip(coupling_types, coupling_strengths):
-                for pairs in self.lattice.get_connections("a2a"):
-                    self.terms.append((strength, pairs, [ops[0], ops[1]]))
+    def to_sector_matrix(self, sector: np.ndarray) -> np.ndarray:
+        """This Hamiltonian restricted to the ascending basis indices in sector."""
+        return self.as_observable().to_sector_matrix(sector)
 
-        elif locality == 'long-range': 
-            for ops, strength in zip(coupling_types, coupling_strengths):
-                for pairs in self.lattice.get_connections("a2a"):
-                    self.terms.append((strength/np.abs(pairs[0]-pairs[1]), pairs, [ops[0], ops[1]]))
+    def __repr__(self) -> str:
+        """Header naming the model, then the algebra it embeds to."""
+        return f"{type(self).__name__}(num_sites={self.num_sites})\n{self.as_observable()!r}"
 
-        for op, strength in zip(field_types, field_strengths):
-            if np.isscalar(strength):     # uniform field
-                if np.abs(strength) > 1e-10:
-                    for i in range(self.num_sites):
-                        self.terms.append((strength, [i], [op]))
-            else:
-                # Non-uniform field case - strength should be an array
-                strength_array = np.asarray(strength)
-                if len(strength_array) != self.num_sites:
-                    raise ValueError(f"Field strength array length {len(strength_array)} must match "
-                                     f"number of sites {self.num_sites}")
-                for i, site_strength in enumerate(strength_array):
-                    if np.abs(site_strength) > 1e-10:
-                        self.terms.append((site_strength, [i], [op]))
+    def _repr_latex_(self) -> str:
+        """Model name, then the algebra it embeds to."""
+        body = self.as_observable()._repr_latex_().strip("$")
+        return f"$\\text{{{type(self).__name__}}}_{{{self.num_sites}}} = {body}$"
 
-    def matrix(self, dense=False):
-        return terms_to_matrix(self.terms, self.num_sites, dense=dense, spin_half=self.spin_half)
 
-    def evals(self):
-        return np.linalg.eigvalsh(self.matrix(dense=True)) 
+# === Spin models ===
 
-    def ground(self): 
-        H = self.matrix()
-        return sp.linalg.eigsh(H, k=1, which='SA')       
-
-    def propagator(self, time, dense=False):
-        H = self.matrix()
-        if dense:
-            return sp.linalg.expm(-1j * time * H).toarray()
-        return sp.linalg.expm(-1j * time * H)
-    
-    def evolve(self, time, init_state, dense=False):
-        final_state = sp.linalg.expm_multiply(-1j * time * self.matrix(), init_state)
-        if dense:
-            return final_state.toarray()[:,0]
-        return final_state
-
-    def trotter_circ(self, step_size, num_steps, order=1):
-        """ 
-        returns Circuit object for Trotter decomposition of propagator
-        currently only works if locality is nn and Hamiltonian terms can be divided into two mutually commuting groups saved in op_grouping
-        so XY or Heisenberg with NNN and/or with field terms will not work
-        """
-        assert self.op_grouping is not None, "op_grouping is not defined or is invalid"
-        gate_list = []
-        if order == 1: 
-            layer_list = [self.layer_from_group(group, step_size, self.num_sites) for group in self.op_grouping]
-            for i in range(num_steps):
-                for layer in layer_list:
-                    gate_list += layer
-
-        elif order == 2:
-            l0h = self.layer_from_group(self.op_grouping[0], step_size/2, self.num_sites)
-            l0 = self.layer_from_group(self.op_grouping[0], step_size, self.num_sites)
-            l1 = self.layer_from_group(self.op_grouping[1], step_size, self.num_sites)
-            
-            gate_list += l0h
-            for i in range(num_steps-1):
-                gate_list += l1
-                gate_list += l0
-
-            gate_list += l1
-            gate_list += l0h
-
-        else: 
-            raise NotImplementedError("Only first and second order Trotter decomposition is supported")
-        
-        return Circuit(gate_list, self.num_sites)
-
-    def layer_from_group(self, group, time, num_sites):
-        """ group is something like 'xx' or 'z' or 'xy' or 'even' or 'odd' """
-        gate_list = []
-        
-        # patch to handle non-uniform field terms TODO: refactor this function
-        if len(group) == 1 and group in self.field_types:
-            field_idx = self.field_types.index(group)
-            field_strength = self.field_strengths[field_idx]
-            
-            if not np.isscalar(field_strength):
-                field_array = np.asarray(field_strength)
-                pauli_op = pauli_mapping[group]
-                for i, site_strength in enumerate(field_array):
-                    if np.abs(site_strength) > 1e-10:
-                        site_generator = site_strength * pauli_op
-                        site_gate_mat = expm(-1j * time * site_generator)
-                        gate = Gate('R1', [i], site_gate_mat)
-                        gate_list.append(gate)
-                return gate_list
-
-        if group in ['even', 'odd']:
-            generator_mat = sum([c*embed_operator(2, [0, 1], [pauli_mapping[t[0]], pauli_mapping[t[1]]], factor=self.spin_half) for c,t in zip(self.coupling_strengths, self.coupling_types)])
-        else: 
-            c = self.coupling_strengths[self.coupling_types.index(group)] if len(group) == 2 else self.field_strengths[self.field_types.index(group)]
-            generator_mat = c*embed_operator(len(group), [i for i in range(len(group))], [pauli_mapping[op] for op in group], factor=self.spin_half)
-
-        gate_mat = expm(-1j * time * generator_mat.toarray())
-
-        if len(group) == 1: 
-            for i in range(num_sites): 
-                gate = Gate('R1', [i], gate_mat)
-                gate_list.append(gate)
-        
-        elif len(group) == 2: 
-            for i in range(0, num_sites, 2):
-                gate = Gate('R2', [i, i + 1], gate_mat)
-                gate_list.append(gate)
-            for i in range(1, num_sites-1, 2):
-                gate = Gate('R2', [i, i + 1], gate_mat)
-                gate_list.append(gate)
-
-        elif group == 'even':
-            for i in range(0, num_sites, 2):
-                gate = Gate('R2', [i, i + 1], gate_mat)
-                gate_list.append(gate)
-
-        elif group == 'odd':
-            for i in range(1, num_sites-1, 2):
-                gate = Gate('R2', [i, i + 1], gate_mat)
-                gate_list.append(gate)
-
-        else: 
-            raise NotImplementedError("Only field and nearest-neighbor couplings are supported")
-
-        return gate_list
-    
-    def __str__(self): 
-        return f"Hamiltonian with {self.num_sites} sites and {self.locality} {self.coupling_types} coupling(s) and {self.field_types} field"
-
-class Heisenberg(Hamiltonian):
-    def __init__(self, num_x, jx=1, jy=1, jz=1, h=0):
-        super().__init__(
-            coupling_types=['xx', 'yy', 'zz'],
-            coupling_strengths=[jx, jy, jz],
-            field_types=['z'],
-            field_strengths=[h],
-            num_x=num_x,
-            locality='nn'
-        )
-        self.op_grouping = ['even', 'odd', 'z']
-
-class HeisenbergNNN(Hamiltonian):
-    def __init__(self, num_x, jx=1, jy=1, jz=1, jx2=1e-2, jy2=1e-2, jz2=1e-2, h=0):
-        super().__init__(
-            coupling_types=['xx', 'yy', 'zz'],
-            coupling_strengths=[jx, jy, jz, jx2, jy2, jz2],
-            field_types=['z'],
-            field_strengths=[h],
-            num_x=num_x,
-            locality='nnn'
-        )
-
-class XY(Hamiltonian):
-    def __init__(self, num_x, j=1, h=0):
-        super().__init__(
-            coupling_types=['xx', 'yy'],
-            coupling_strengths=[j, j],
-            field_types=['z'],
-            field_strengths=[h],
-            num_x=num_x,
-            locality='nn'
-        )
-        self.op_grouping = ['even', 'odd']
-
-class XYNNN(Hamiltonian):
-    def __init__(self, num_x, j=1, j2=0.01, h=0):
-        super().__init__(
-            coupling_types=['xx', 'yy'],
-            coupling_strengths=[j, j, j2, j2],
-            field_types=['z'],
-            field_strengths=[h],
-            num_x=num_x,
-            locality='nnn'
-        )
-
-    def layer_from_group(self, group, time, num_sites):
-        if group in ['even', 'odd']:
-            generator_mat = sum(
-                c * embed_operator(2, [0, 1], [pauli_mapping[t[0]], pauli_mapping[t[1]]])
-                for c, t in zip(self.coupling_strengths, self.coupling_types)
-            )
-        else:
-            generator_mat = sum(
-                c * embed_operator(3, [0, 1, 2], [pauli_mapping[t[0]], pauli_mapping[t[1]], pauli_mapping[t[2]]])
-                for c, t in zip(self.coupling_strengths, self.coupling_types)
-            )
 
 class TFI(Hamiltonian):
-    def __init__(self, num_x, jz=1, h=0, periodic_x=False):
-        super().__init__(
-            coupling_types=['zz'],
-            coupling_strengths=[jz],
-            field_types=['x'],
-            field_strengths=[h],
-            num_x=num_x,
-            locality='nn', 
-            periodic_x=periodic_x
+    """Transverse-field Ising model: H = -J Σ_{<ij>} Z_i Z_j - h Σ_i X_i."""
+
+    def __init__(
+        self,
+        n: int,
+        J: float = 1.0,
+        h: float = 0.0,
+        periodic: bool = False,
+    ):
+        self.n = n
+        self.J = J
+        self.h = h
+        self.periodic = periodic
+
+        lattice = LinearLattice(n, periodic=periodic)
+        bond_terms = (
+            [
+                HamiltonianTerm([i, j], PauliString("ZZ", -J))
+                for i, j in lattice.nn_pairs()
+            ]
+            if J
+            else []
         )
-        self.op_grouping = ['x', 'zz']
-
-class LMG(Hamiltonian):
-    def __init__(self, num_x, jx=1, h=0):
-        super().__init__(
-            coupling_types=['xx'],
-            coupling_strengths=[jx],
-            field_types=['z'],
-            field_strengths=[h],
-            num_x=num_x,
-            locality='a2a'
+        field_terms = (
+            [HamiltonianTerm([i], PauliString("X", -h)) for i in range(n)] if h else []
         )
 
-class ChiralHeisenberg(Hamiltonian):
-    def __init__(self, row_layout, jx=1, jy=1, jz=1, chiral_strength=0.01, h=0, sp=None):
-        lattice = KagomeLattice(row_layout)
-        if sp is not None:
-            lattice.spruce(sp)
-        super().__init__(coupling_types=['xx', 'yy', 'zz'],
-                         coupling_strengths=[jx, jy, jz],
-                         field_types=['z'],
-                         field_strengths=[h],
-                         lattice=lattice,
-                         locality='nn')
-        
-        self.chiral_strength = chiral_strength
-        if np.abs(chiral_strength) > 1e-10:
-            for triplet in self.lattice.triangle_terms:
-                self.terms.extend(self.chiral_terms(triplet))
-       
-    def pairwise_terms(self, pairs):
-        return [(j, p, op) for p in pairs for (j,op) in zip(self.coupling_strengths, self.coupling_types)]
+        even_bonds = bond_terms[::2]
+        odd_bonds = bond_terms[1::2]
+        trotter_groups = [even_bonds, odd_bonds, field_terms]
 
-    def chiral_terms(self, triplet):
-        ops = ['xyz', 'yzx', 'zxy', 'xzy', 'zyx', 'yxz']
-        return [(self.chiral_strength if op in ['xyz', 'yzx', 'zxy'] else -self.chiral_strength, triplet, op) for op in ops]
+        super().__init__(bond_terms + field_terms, n, trotter_groups)
 
-    def primitive_matrices(self):
-        """ returns small 8 by 8 matrix for triangle primitives and 4 by 4 matrix for edge primitives """
-        triangle_terms = self.pairwise_terms([(0,1), (1,2), (0,2)]) + self.chiral_terms((0,1,2))
-        tmat = sum([coeff * embed_operator(3, sites, [pauli_mapping[op] for op in local_ops], factor=self.spin_half) for coeff, sites, local_ops in triangle_terms])
 
-        edge_terms = self.pairwise_terms([(0,1),])
-        emat = sum([coeff * embed_operator(2, sites, [pauli_mapping[op] for op in local_ops], factor=self.spin_half) for coeff, sites, local_ops in edge_terms])
-        return tmat.toarray(), emat.toarray()
+class Heisenberg1D(Hamiltonian):
+    """H = JΣ_<ij>(X_iX_j+Y_iY_j+Z_iZ_j)-hΣ_iZ_i with each bond kept as one term."""
 
-    def grouped_terms(self): 
-        """ returns a list of (indices, mat) where mat acts on qubits at indices, not mat is either 4 by 4 or 8 by 8 and each index triplet or pair only appears once 
-        used by ham_action function; output cannot be used to compute the full Hamiltonian matrix since indices are possibly non-contiguous """
-        tmat, emat = self.primitive_matrices()
-        triangle_edges = [set(pair) for t in self.lattice.triangle_terms for pair in [(t[0], t[1]), (t[1], t[2]), (t[0], t[2])]]
-        edge_terms = [pair for pair in self.lattice.nn_pairs if set(pair) not in triangle_edges]
-        return [(indices, tmat) for indices in self.lattice.triangle_terms] + [(indices, emat) for indices in edge_terms]
-            
-class ToricCode(Hamiltonian):
-    def __init__(self, Lx, Ly, hx=1.0, hz=1.0):
-        self.lattice = ToricLattice(Lx, Ly)
-        self.num_sites = self.lattice.num_sites
-        self.terms = []
+    def __init__(
+        self,
+        n: int,
+        J: float = 1.0,
+        h: float = 0.0,
+        periodic: bool = False,
+    ):
+        self.n = n
+        self.J = J
+        self.h = h
+        self.periodic = periodic
 
-        for v_edges in self.lattice.vertex_terms:
-            self.terms.append((-hx, v_edges, ['x'] * 4))
+        lattice = LinearLattice(n, periodic=periodic)
+        bond_terms = (
+            [
+                HamiltonianTerm(
+                    [i, j],
+                    PauliSum(
+                        [
+                            PauliString("XX", J),
+                            PauliString("YY", J),
+                            PauliString("ZZ", J),
+                        ]
+                    ),
+                )
+                for i, j in lattice.nn_pairs()
+            ]
+            if J
+            else []
+        )
+        field_terms = (
+            [HamiltonianTerm([i], PauliString("Z", -h)) for i in range(n)] if h else []
+        )
 
-        for p_edges in self.lattice.plaquette_terms:
-            self.terms.append((-hz, p_edges, ['z'] * 4))
+        even_bonds = bond_terms[::2]
+        odd_bonds = bond_terms[1::2]
+        trotter_groups = [even_bonds, odd_bonds, field_terms]
 
-    def __str__(self):
-        return (f"Toric Code Hamiltonian on {self.lattice.Lx}×{self.lattice.Ly} "
-                f"lattice with {self.num_sites} qubits")
+        super().__init__(bond_terms + field_terms, n, trotter_groups)
+
+
+# === Fermionic models ===
+
+
+class FermionicHamiltonian(FermionicSum):
+    """Hermitian FermionicSum partitioned into optional commuting Trotter groups."""
+
+    def __init__(
+        self,
+        terms: list,
+        num_fermionic_modes: int,
+        trotter_groups: list[list] | None = None,
+    ):
+        super().__init__(terms, num_fermionic_modes)
+        self.trotter_groups = trotter_groups
+        if not self.is_hermitian():
+            raise ValueError(
+                f"{type(self).__name__} is not Hermitian -- check the terms passed in."
+            )
+
+    def encode(self, encoding: FermionicEncoding) -> Hamiltonian:
+        """Encode each Trotter group independently; each must contain complete adjoint pairs."""
+        if encoding.num_modes != self.num_fermionic_modes:
+            raise ValueError(
+                f"Encoding is for {encoding.num_modes} modes; operator has "
+                f"{self.num_fermionic_modes}."
+            )
+        if self.trotter_groups is None:
+            terms = encoding.encode_hamiltonian_terms(self.terms)
+            return Hamiltonian(terms, encoding.num_qubits, None)
+        encoded_groups = [
+            encoding.encode_hamiltonian_terms(group) for group in self.trotter_groups
+        ]
+        terms = [term for group in encoded_groups for term in group]
+        return Hamiltonian(terms, encoding.num_qubits, encoded_groups)
+
+
+def interleaved_mode_order(
+    num_fermionic_sites: int, annotate: bool = False
+) -> tuple[int, ...] | tuple[tuple[int, ...], str]:
+    """Map spin-blocked modes to q_2j=up_j, q_2j+1=down_j, optionally with a layout label."""
+    order = [0] * (2 * num_fermionic_sites)
+    for j in range(num_fermionic_sites):
+        order[2 * j], order[2 * j + 1] = j, num_fermionic_sites + j
+    order = tuple(order)
+    if not annotate:
+        return order
+
+    def label(mode: int) -> str:
+        return (
+            f"↑{mode}"
+            if mode < num_fermionic_sites
+            else f"↓{mode - num_fermionic_sites}"
+        )
+
+    annotation = " ".join(f"q{q}={label(mode)}" for q, mode in enumerate(order))
+    return order, annotation
+
+
+class FermiHubbard1D(FermionicHamiltonian):
+    """1D Fermi-Hubbard model: H = -t Σ_{j,σ}(c†c + h.c.) + U Σ_j n↑n↓ + μ Σ_{j,σ} n_{j,σ}."""
+
+    def __init__(
+        self,
+        num_fermionic_sites: int,
+        t: float = 1.0,
+        U: float = 1.0,
+        mu: float = 0.0,
+        periodic: bool = False,
+    ):
+        if periodic and num_fermionic_sites < 2:
+            raise ValueError("periodic=True requires num_fermionic_sites >= 2.")
+        self.num_fermionic_sites = num_fermionic_sites
+        self.t = t
+        self.U = U
+        self.mu = mu
+        self.periodic = periodic
+        groups = self._groups(num_fermionic_sites, t, U, mu, periodic)
+        terms = [term for group in groups for term in group]
+        super().__init__(terms, 2 * num_fermionic_sites, groups)
+
+    @staticmethod
+    def _groups(
+        num_fermionic_sites: int, t: float, U: float, mu: float, periodic: bool
+    ) -> list[list]:
+        """Group fermionic terms as up-even, up-odd, down-even, down-odd, and onsite layers."""
+        bonds = LinearLattice(num_fermionic_sites, periodic=periodic).nn_pairs()
+        even_bonds, odd_bonds = bonds[::2], bonds[1::2]
+
+        up_even = [term for a, b in even_bonds for term in hopping(a, b, -t)]
+        up_odd = [term for a, b in odd_bonds for term in hopping(a, b, -t)]
+        down_even = [
+            term
+            for a, b in even_bonds
+            for term in hopping(num_fermionic_sites + a, num_fermionic_sites + b, -t)
+        ]
+        down_odd = [
+            term
+            for a, b in odd_bonds
+            for term in hopping(num_fermionic_sites + a, num_fermionic_sites + b, -t)
+        ]
+        onsite = []
+        for j in range(num_fermionic_sites):
+            if mu:
+                onsite += [mu * number(j), mu * number(num_fermionic_sites + j)]
+            if U:
+                onsite += density_density(j, num_fermionic_sites + j, U)
+        return [up_even, up_odd, down_even, down_odd, onsite]
+
+
+def bath_interleaved_mode_order(
+    num_bath: int, annotate: bool = False
+) -> tuple[int, ...] | tuple[tuple[int, ...], str]:
+    """Place spin-interleaved bath modes first and impurity modes last, optionally with labels."""
+    order = []
+    for k in range(1, num_bath + 1):
+        order.append(k)
+        order.append(num_bath + 1 + k)
+    order.append(0)
+    order.append(num_bath + 1)
+    order = tuple(order)
+    if not annotate:
+        return order
+
+    def label(mode: int) -> str:
+        spin_symbol = "↑" if mode < num_bath + 1 else "↓"
+        site = mode % (num_bath + 1)
+        return f"i{spin_symbol}" if site == 0 else f"b{site}{spin_symbol}"
+
+    annotation = " ".join(f"q{q}={label(mode)}" for q, mode in enumerate(order))
+    return order, annotation
+
+
+class AndersonImpurity(FermionicHamiltonian):
+    """Star or chain AIM with positive ε lowering levels and mode=spin·(num_bath+1)+site."""
+
+    def __init__(
+        self,
+        num_bath: int,
+        onsite_impurity_energy: float,
+        onsite_impurity_repulsion: float,
+        topology: str,
+        terms: list,
+        groups: list[list],
+    ):
+        self.num_bath = num_bath
+        self.onsite_impurity_energy = onsite_impurity_energy
+        self.onsite_impurity_repulsion = onsite_impurity_repulsion
+        self.topology = topology
+        super().__init__(terms, 2 * (num_bath + 1), groups)
+
+    @classmethod
+    def star(
+        cls,
+        onsite_impurity_energy: float,
+        onsite_impurity_repulsion: float,
+        onsite_bath_energy: list[float],
+        impurity_bath_hopping: list[float],
+    ) -> Self:
+        """Construct a star AIM with every bath mode coupled directly to the impurity."""
+        groups = cls._star_groups(
+            onsite_impurity_energy,
+            onsite_impurity_repulsion,
+            onsite_bath_energy,
+            impurity_bath_hopping,
+        )
+        terms = [term for group in groups for term in group]
+        return cls(
+            len(onsite_bath_energy),
+            onsite_impurity_energy,
+            onsite_impurity_repulsion,
+            "star",
+            terms,
+            groups,
+        )
+
+    @classmethod
+    def chain(
+        cls,
+        onsite_impurity_energy: float,
+        onsite_impurity_repulsion: float,
+        onsite_bath_energy: list[float],
+        bath_bath_hopping: list[float],
+        impurity_bath_hopping: float,
+    ) -> Self:
+        """Construct a chain AIM with the impurity coupled only to the first bath site."""
+        groups = cls._chain_groups(
+            onsite_impurity_energy,
+            onsite_impurity_repulsion,
+            onsite_bath_energy,
+            bath_bath_hopping,
+            impurity_bath_hopping,
+        )
+        terms = [term for group in groups for term in group]
+        return cls(
+            len(onsite_bath_energy),
+            onsite_impurity_energy,
+            onsite_impurity_repulsion,
+            "chain",
+            terms,
+            groups,
+        )
+
+    @staticmethod
+    def _onsite_terms(
+        onsite_impurity_energy: float,
+        onsite_impurity_repulsion: float,
+        onsite_bath_energy: list[float],
+        num_bath: int,
+        mode,
+    ) -> list:
+        """Build impurity energy, repulsion, and bath-level onsite terms."""
+        onsite = []
+        if onsite_impurity_energy:
+            onsite += [
+                -onsite_impurity_energy * number(mode(0, 0)),
+                -onsite_impurity_energy * number(mode(0, 1)),
+            ]
+        if onsite_impurity_repulsion:
+            onsite += density_density(mode(0, 0), mode(0, 1), onsite_impurity_repulsion)
+        for k in range(1, num_bath + 1):
+            level = onsite_bath_energy[k - 1]
+            if level:
+                onsite += [-level * number(mode(k, 0)), -level * number(mode(k, 1))]
+        return onsite
+
+    @staticmethod
+    def _star_groups(
+        onsite_impurity_energy: float,
+        onsite_impurity_repulsion: float,
+        onsite_bath_energy: list[float],
+        impurity_bath_hopping: list[float],
+    ) -> list[list]:
+        """Group each impurity–bath bond separately, followed by one onsite layer."""
+        if len(onsite_bath_energy) != len(impurity_bath_hopping):
+            raise ValueError(
+                f"onsite_bath_energy and impurity_bath_hopping must have the same length; got {len(onsite_bath_energy)} and {len(impurity_bath_hopping)}."
+            )
+        num_bath = len(onsite_bath_energy)
+
+        def mode(site: int, spin: int) -> int:
+            return spin * (num_bath + 1) + site
+
+        hyb_layers = []
+        for k in range(1, num_bath + 1):
+            layer = hopping(
+                mode(0, 0), mode(k, 0), -impurity_bath_hopping[k - 1]
+            ) + hopping(mode(0, 1), mode(k, 1), -impurity_bath_hopping[k - 1])
+            hyb_layers.append(layer)
+
+        onsite = AndersonImpurity._onsite_terms(
+            onsite_impurity_energy,
+            onsite_impurity_repulsion,
+            onsite_bath_energy,
+            num_bath,
+            mode,
+        )
+        return hyb_layers + [onsite]
+
+    @staticmethod
+    def _chain_groups(
+        onsite_impurity_energy: float,
+        onsite_impurity_repulsion: float,
+        onsite_bath_energy: list[float],
+        bath_bath_hopping: list[float],
+        impurity_bath_hopping: float,
+    ) -> list[list]:
+        """Group chain hopping into spin-resolved even/odd layers plus one onsite layer."""
+        num_bath = len(onsite_bath_energy)
+        expected_t_len = max(num_bath - 1, 0)
+        if len(bath_bath_hopping) != expected_t_len:
+            raise ValueError(
+                f"bath_bath_hopping must have length num_bath-1={expected_t_len}; got {len(bath_bath_hopping)}."
+            )
+
+        def mode(site: int, spin: int) -> int:
+            return spin * (num_bath + 1) + site
+
+        bonds = (
+            LinearLattice(num_bath + 1, periodic=False).nn_pairs()
+            if num_bath >= 1
+            else []
+        )
+        couplings = [-impurity_bath_hopping, *(-t for t in bath_bath_hopping)]
+        even_bonds, even_couplings = bonds[::2], couplings[::2]
+        odd_bonds, odd_couplings = bonds[1::2], couplings[1::2]
+
+        def hop_layer(bond_list, coupling_list, spin):
+            return [
+                term
+                for (a, b), coeff in zip(bond_list, coupling_list)
+                for term in hopping(mode(a, spin), mode(b, spin), coeff)
+            ]
+
+        up_even = hop_layer(even_bonds, even_couplings, 0)
+        up_odd = hop_layer(odd_bonds, odd_couplings, 0)
+        down_even = hop_layer(even_bonds, even_couplings, 1)
+        down_odd = hop_layer(odd_bonds, odd_couplings, 1)
+
+        onsite = AndersonImpurity._onsite_terms(
+            onsite_impurity_energy,
+            onsite_impurity_repulsion,
+            onsite_bath_energy,
+            num_bath,
+            mode,
+        )
+        return [up_even, up_odd, down_even, down_odd, onsite]

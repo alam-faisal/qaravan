@@ -1,0 +1,303 @@
+"""Tests for DynamicRound and DynamicCircuit in core/dynamic_circuit.py."""
+
+import numpy as np
+from qaravan.backends.statevector import Statevector
+from qaravan.core.circuit import Circuit
+from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
+from qaravan.core.gates import H, X
+
+# ---------------------------------------------------------------------------
+# DynamicRound — decoder calling convention
+# ---------------------------------------------------------------------------
+
+
+def test_dynamic_round_no_measurement_passes_empty_string():
+    """meas_sites=[] calls decoder with '' and applies the returned circuit.
+
+    Catches: decoder invoked with wrong argument on unmeasured rounds, or skipped.
+    """
+    received: list[str] = []
+
+    def tracking_decoder(outcome: str) -> Circuit:
+        received.append(outcome)
+        return Circuit([X(0)], num_sites=1)
+
+    rnd = DynamicRound(meas_sites=[], decoder=tracking_decoder)
+    dqc = DynamicCircuit(rounds=[rnd])
+    sv = Statevector(bitstring="0")
+    sv_out, outcomes = dqc.execute(sv)
+
+    assert received == [""], f"decoder received {received!r}, expected ['']"
+    assert outcomes == []
+    # X applied to |0⟩ → |1⟩
+    np.testing.assert_allclose(sv_out.to_array(), [0.0, 1.0], atol=1e-12)
+
+
+def test_dynamic_round_measurement_calls_decoder_with_outcome():
+    """meas_sites non-empty: decoder receives the actual outcome string.
+
+    Catches: decoder called with wrong string (e.g. always '').
+    """
+    received: list[str] = []
+
+    def tracking_decoder(outcome: str) -> Circuit:
+        received.append(outcome)
+        return Circuit([], num_sites=1)
+
+    # |0⟩ measured on site 0 → deterministic outcome "0"
+    rnd = DynamicRound(meas_sites=[0], decoder=tracking_decoder)
+    dqc = DynamicCircuit(rounds=[rnd])
+    sv = Statevector(bitstring="0")
+    _, outcomes = dqc.execute(sv)
+
+    assert received == ["0"]
+    assert outcomes == ["0"]
+
+
+# ---------------------------------------------------------------------------
+# DynamicCircuit.run — round ordering and state evolution
+# ---------------------------------------------------------------------------
+
+
+def test_dynamic_circuit_run_applies_rounds_in_order():
+    """Two no-measurement rounds: X then H gives |−⟩.
+
+    Catches: rounds applied in wrong order.
+    """
+    round_0 = DynamicRound(
+        meas_sites=[], decoder=lambda _: Circuit([X(0)], num_sites=1)
+    )
+    round_1 = DynamicRound(
+        meas_sites=[], decoder=lambda _: Circuit([H(0)], num_sites=1)
+    )
+    dqc = DynamicCircuit(rounds=[round_0, round_1])
+
+    sv_out, outcomes = dqc.execute(Statevector(bitstring="0"))
+
+    INV_SQRT2 = 1.0 / np.sqrt(2)
+    np.testing.assert_allclose(sv_out.to_array(), [INV_SQRT2, -INV_SQRT2], atol=1e-12)
+    assert outcomes == []
+
+
+def test_dynamic_circuit_run_does_not_mutate_init_state():
+    """init_state array is unchanged after run().
+
+    Catches: shared-reference bug where run() modifies the input tensor in place.
+    """
+    sv = Statevector(bitstring="0")
+    original = sv.to_array().copy()
+    rnd = DynamicRound(meas_sites=[], decoder=lambda _: Circuit([X(0)], num_sites=1))
+    DynamicCircuit(rounds=[rnd]).execute(sv)
+    np.testing.assert_array_equal(sv.to_array(), original)
+
+
+# ---------------------------------------------------------------------------
+# DynamicCircuit.run — output structure
+# ---------------------------------------------------------------------------
+
+
+def test_dynamic_circuit_run_returns_only_measurement_outcomes():
+    """outcomes list has one entry per round with non-empty meas_sites.
+
+    Catches: outcomes list includes entries for no-measurement rounds.
+    """
+    no_meas = DynamicRound(meas_sites=[], decoder=lambda _: Circuit([], num_sites=2))
+    meas = DynamicRound(meas_sites=[0], decoder=lambda _: Circuit([], num_sites=2))
+    dqc = DynamicCircuit(rounds=[no_meas, meas, no_meas])
+    _, outcomes = dqc.execute(Statevector(bitstring="00"))
+    assert len(outcomes) == 1
+
+
+def test_dynamic_circuit_outcome_string_lengths():
+    """Each outcome string has length == len(meas_sites) for that round.
+
+    Catches: off-by-one in meas_sites construction.
+    """
+    rnd = DynamicRound(meas_sites=[0, 1], decoder=lambda _: Circuit([], num_sites=2))
+    dqc = DynamicCircuit(rounds=[rnd])
+    _, outcomes = dqc.execute(Statevector(bitstring="00"))
+    assert len(outcomes) == 1
+    assert len(outcomes[0]) == 2
+
+
+def test_dynamic_circuit_empty_correction_is_no_op():
+    """Decoder returning Circuit([], num_sites=N) leaves state unchanged.
+
+    Catches: crash or state corruption when correction has no gates.
+    """
+    sv = Statevector(bitstring="0")
+    original = sv.to_array().copy()
+    rnd = DynamicRound(meas_sites=[0], decoder=lambda _: Circuit([], num_sites=1))
+    sv_out, _ = DynamicCircuit(rounds=[rnd]).execute(sv)
+    np.testing.assert_allclose(sv_out.to_array(), original, atol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# Multi-round correctness
+# ---------------------------------------------------------------------------
+
+
+def test_dynamic_circuit_two_measurement_rounds():
+    """Two measurement rounds each produce an outcome entry.
+
+    Catches: outcomes list not updated on second measured round.
+    """
+    rnd = DynamicRound(meas_sites=[0], decoder=lambda _: Circuit([], num_sites=1))
+    dqc = DynamicCircuit(rounds=[rnd, rnd])
+    _, outcomes = dqc.execute(Statevector(bitstring="0"))
+    assert len(outcomes) == 2
+    for o in outcomes:
+        assert o in ("0", "1")
+
+
+# ---------------------------------------------------------------------------
+# run(observer=...)
+# ---------------------------------------------------------------------------
+
+
+def test_observer_sees_every_round_after_its_decoder():
+    """X on qubit 0 in round 0, X on qubit 1 in round 1: the observer must see |10> then |11>."""
+    flip_0 = DynamicRound(decoder=lambda _: Circuit([X(0)], num_sites=2))
+    flip_1 = DynamicRound(decoder=lambda _: Circuit([X(1)], num_sites=2))
+    seen = []
+    DynamicCircuit([flip_0, flip_1]).execute(
+        Statevector(bitstring="00"),
+        observer=lambda index, state: seen.append((index, state.to_array().copy())),
+    )
+    assert [index for index, _ in seen] == [0, 1]
+    ket_10 = np.zeros(4, dtype=complex)
+    ket_10[2] = 1.0
+    ket_11 = np.zeros(4, dtype=complex)
+    ket_11[3] = 1.0
+    assert np.allclose(seen[0][1], ket_10)
+    assert np.allclose(seen[1][1], ket_11)
+
+
+def test_observer_is_optional():
+    circuit = DynamicCircuit(
+        [DynamicRound(decoder=lambda _: Circuit([X(0)], num_sites=1))]
+    )
+    state, outcomes = circuit.execute(Statevector(bitstring="0"))
+    assert outcomes == []
+    assert np.allclose(state.to_array(), np.array([0, 1], dtype=complex))
+
+
+# ---------------------------------------------------------------------------
+# run(rng=...) reproducibility
+# ---------------------------------------------------------------------------
+
+
+def _resampling_dqc(num_rounds: int) -> DynamicCircuit:
+    """Each round re-Hadamards qubit 0, so every round's measurement is a fresh coin flip."""
+    reset_to_plus = Circuit([X(0), H(0)], num_sites=1)
+    rounds = [DynamicRound(decoder=lambda _: Circuit([H(0)], num_sites=1))]
+    rounds.extend(
+        DynamicRound(meas_sites=[0], decoder=lambda outcome: reset_to_plus)
+        for _ in range(num_rounds)
+    )
+    return DynamicCircuit(rounds)
+
+
+def test_run_with_a_seed_is_reproducible():
+    dqc = _resampling_dqc(12)
+    initial = Statevector(bitstring="0")
+    first = dqc.execute(initial, measurement_rng=np.random.default_rng(11))[1]
+    second = dqc.execute(initial, measurement_rng=np.random.default_rng(11))[1]
+    assert first == second
+
+
+def test_run_advances_the_generator_across_rounds():
+    """A generator rebuilt per round would give the same bit every time."""
+    dqc = _resampling_dqc(24)
+    _, outcomes = dqc.execute(
+        Statevector(bitstring="0"), measurement_rng=np.random.default_rng(11)
+    )
+    assert set(outcomes) == {"0", "1"}
+
+
+def test_run_with_different_seeds_differs():
+    dqc = _resampling_dqc(24)
+    initial = Statevector(bitstring="0")
+    assert (
+        dqc.execute(initial, measurement_rng=np.random.default_rng(1))[1]
+        != dqc.execute(initial, measurement_rng=np.random.default_rng(2))[1]
+    )
+
+
+def test_measure_and_collapse_accepts_a_seed():
+    plus = Statevector(bitstring="000").apply(Circuit([H(0), H(1), H(2)], num_sites=3))
+    _, first = plus.measure_and_collapse([0, 1, 2], np.random.default_rng(7))
+    _, second = plus.measure_and_collapse([0, 1, 2], np.random.default_rng(7))
+    assert first == second
+
+
+def test_sample_accepts_a_seed():
+    plus = Statevector(bitstring="00").apply(Circuit([H(0), H(1)], num_sites=2))
+    first = plus.sample(50, rng=np.random.default_rng(4))
+    second = plus.sample(50, rng=np.random.default_rng(4))
+    assert np.array_equal(first, second)
+
+
+def test_execute_walkers_uses_one_shared_measurement_record():
+    from qaravan.backends.monte_carlo import Walkers
+
+    plus = Statevector(bitstring="0").apply(Circuit([H(0)], num_sites=1))
+    dqc = DynamicCircuit(
+        [DynamicRound(meas_sites=[0], decoder=lambda _: Circuit([], num_sites=1))]
+    )
+    final, outcomes = dqc.execute(
+        Walkers([plus] * 4), measurement_rng=np.random.default_rng(2)
+    )
+
+    assert len(outcomes) == 1
+    assert final.num_walkers == 4
+    expected = np.diag([1.0, 0.0]) if outcomes == ["0"] else np.diag([0.0, 1.0])
+    np.testing.assert_allclose(final.rdm([0]), expected, atol=1e-12)
+
+
+def test_execute_on_a_noisy_backend_is_noiseless_at_zero_error_rate():
+    """Noise is only a backend choice, so a zero-rate model must change nothing.
+
+    Exact, not statistical: measurement and noise draw from separate streams, and
+    DepolarizingNoise.sample_error draws even when it returns identity, so a shared stream
+    would desynchronise the outcomes.
+    """
+    from qaravan.core.noise import DepolarizingNoise
+
+    dqc = _resampling_dqc(10)
+    initial = Statevector(bitstring="0")
+    clean_state, clean_outcomes = dqc.execute(
+        initial, measurement_rng=np.random.default_rng(4)
+    )
+    noisy_state, noisy_outcomes = dqc.execute(
+        initial,
+        noise_model=DepolarizingNoise(1, 0.0),
+        noise_rng=np.random.default_rng(99),
+        measurement_rng=np.random.default_rng(4),
+    )
+    assert noisy_outcomes == clean_outcomes
+    assert np.allclose(noisy_state.to_array(), clean_state.to_array())
+
+
+def test_execute_on_a_noisy_backend_perturbs_the_state():
+    """Noise must reach the state, checked across seeds: on one qubit |+> is an X eigenstate,
+    so an individual realisation can leave the final state untouched."""
+    from qaravan.core.noise import DepolarizingNoise
+
+    dqc = _resampling_dqc(10)
+    initial = Statevector(bitstring="0")
+    clean, clean_outcomes = dqc.execute(
+        initial, measurement_rng=np.random.default_rng(4)
+    )
+
+    perturbed = 0
+    for seed in range(6):
+        noisy, outcomes = dqc.execute(
+            initial,
+            noise_model=DepolarizingNoise(1, 0.5),
+            noise_rng=np.random.default_rng(seed),
+            measurement_rng=np.random.default_rng(4),
+        )
+        assert outcomes == clean_outcomes  # same measurement stream, same branch
+        perturbed += not np.allclose(noisy.to_array(), clean.to_array())
+    assert perturbed > 0

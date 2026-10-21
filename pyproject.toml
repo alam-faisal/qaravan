@@ -1,3 +1,57 @@
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "qaravan"
+version = "0.2.3"
+description = "Unified classical simulation of noiseless and noisy quantum circuits"
+authors = [{ name = "Faisal Alam", email = "faisal@phasecraft.io" }]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0,<3.0",
+    "scipy>=1.10,<2.0",
+    "matplotlib>=3.7,<4.0",
+    "ncon>=2.0",
+    "gatefold>=1.0,<2.0",
+]
+
+[project.optional-dependencies]
+torch = ["ncon_torch>=0.3", "torch>=2.1"]
+legacy = ["sympy>=1.10", "tqdm>=4.67.1", "stim>=1.14.0"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0",
+    "scienceplots",
+    "ipykernel",
+    "ipywidgets",
+    "ruff>=0.15.14",
+    "nbconvert>=7.17.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "--cov=src/qaravan --cov-report=term-missing"
+
+[tool.coverage.run]
+omit = ["src/qaravan/legacy/*"]
+
+[tool.coverage.report]
+exclude_lines = ["if TYPE_CHECKING:"]
+
+[tool.ruff]
+exclude = [
+    "src/qaravan/legacy",
+    "tests/test_legacy",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501", "E742"]
+
+[tool.ruff.lint.isort]
+no-lines-before = ["standard-library", "third-party", "first-party", "local-folder"]

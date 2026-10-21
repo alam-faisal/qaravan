@@ -149,7 +149,7 @@ class MonteCarloSimulator(Simulator):
             circuit, initial_state, noise_model, decompose, noise_rng=noise_rng
         )
         representative = initial_state[0]
-        member_simulator_type = initial_state.default_simulator
+        member_simulator_type = representative.default_simulator
         self.member_simulator = member_simulator_type(
             circuit,
             representative,

@@ -14,11 +14,12 @@ dependencies = [
     "matplotlib>=3.7,<4.0",
     "ncon>=2.0",
     "gatefold>=1.0,<2.0",
+    "stim>=1.14.0",
 ]
 
 [project.optional-dependencies]
 torch = ["ncon_torch>=0.3", "torch>=2.1"]
-legacy = ["sympy>=1.10", "tqdm>=4.67.1", "stim>=1.14.0"]
+legacy = ["sympy>=1.10", "tqdm>=4.67.1"]
 
 [dependency-groups]
 dev = [

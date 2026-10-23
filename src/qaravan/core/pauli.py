@@ -1,9 +1,9 @@
-"""Concrete Observable subclasses."""
+"""Pauli strings, Pauli sums and commuting Pauli groups."""
 
 from __future__ import annotations
-from dataclasses import dataclass
 from functools import reduce
 import numpy as np
+import stim
 from qaravan.core._repr import (
     as_math,
     elide,
@@ -217,104 +217,69 @@ class PauliSum(Observable):
         return as_math(join_terms(elide(parts, marker=math_more)))
 
 
-# === Local Hamiltonian terms ===
+# === Commuting Pauli groups ===
 
 
-@dataclass
-class HamiltonianTerm:
-    """Local PauliString or PauliSum pinned to sites for deferred full-register embedding."""
-
-    sites: list[int]
-    local_obs: Observable
-
-
-def _embed_local_obs(
-    obs: Observable, sites: list[int], num_sites: int
-) -> list[PauliString]:
-    """I-pad a local PauliString or PauliSum onto sites in a num_sites register."""
-    if isinstance(obs, PauliSum):
-        embedded = []
-        for term in obs.terms:
-            embedded.extend(_embed_local_obs(term, sites, num_sites))
-        return embedded
-    if isinstance(obs, PauliString):
-        chars = ["I"] * num_sites
-        for site, op in zip(sites, obs.string):
-            chars[site] = op
-        return [PauliString("".join(chars), obs.coeff)]
-    raise TypeError(
-        f"local_obs must be PauliString or PauliSum; got {type(obs).__name__}"
-    )
+def clifford_to_single_z(paulis: list[PauliString]) -> stim.Tableau:
+    """Clifford U with U p_i U^dagger = Z_i; paulis independent, commuting, +-1-signed, possibly fewer than qubits."""
+    stabilizers = [_to_stim(p) for p in paulis]
+    try:
+        tableau = stim.Tableau.from_stabilizers(
+            stabilizers, allow_underconstrained=True
+        )
+    except ValueError as error:
+        raise ValueError(f"paulis must commute and be independent: {error}") from error
+    return tableau.inverse()
 
 
-def embed_hamiltonian_terms(terms: list[HamiltonianTerm], num_sites: int) -> PauliSum:
-    """Embed local terms and merge duplicate full-register Pauli strings."""
-    embedded: list[PauliString] = []
-    for term in terms:
-        embedded.extend(_embed_local_obs(term.local_obs, term.sites, num_sites))
-    if not embedded:  # every coupling was zero
-        return PauliSum([PauliString("I" * num_sites, 0.0)])
-    return PauliSum(embedded).simplify()
-
-
-def restrict_pauli_sum(pauli_sum: PauliSum) -> HamiltonianTerm:
-    """Restrict a full-register PauliSum to its nontrivial sites."""
-    touched_sites = set()
+def clifford_conjugate(pauli_sum: PauliSum, clifford: stim.Tableau) -> PauliSum:
+    """U P U^dagger term by term, for the Clifford U that the stim tableau represents."""
+    terms = []
     for term in pauli_sum.terms:
-        touched_sites.update(i for i, ch in enumerate(term.string) if ch != "I")
-    sites = sorted(touched_sites)
-    local_terms = [
-        PauliString("".join(term.string[i] for i in sites), term.coeff)
-        for term in pauli_sum.terms
-    ]
-    return HamiltonianTerm(sites, PauliSum(local_terms))
+        image = clifford(_to_stim(PauliString(term.string)))
+        terms.append(PauliString(_letters(image), term.coeff * image.sign))
+    return PauliSum(terms)
 
 
-# === Local and aggregate observables ===
+def pauli_relations(
+    paulis: list[PauliString],
+) -> tuple[list[int], dict[int, tuple[list[int], int]]]:
+    """Independent subset of commuting +-1-signed paulis, and relations for the rest.
+
+    relations[j] = (subset, sign): paulis[j] = sign * prod(paulis[i] for i in subset).
+    """
+    independent: list[int] = []
+    relations: dict[int, tuple[list[int], int]] = {}
+    if not paulis:
+        return independent, relations
+    to_single_z = stim.Tableau(paulis[0].num_sites)
+    for j, pauli in enumerate(paulis):
+        image = to_single_z(_to_stim(pauli))
+        subset = _single_z_subset(image, len(independent))
+        if subset is not None:
+            relations[j] = ([independent[q] for q in subset], int(image.sign.real))
+            continue
+        independent.append(j)
+        to_single_z = clifford_to_single_z([paulis[i] for i in independent])
+    return independent, relations
 
 
-class LocalOp(Observable):
-    """Dense local operator returned without full-register embedding."""
-
-    def __init__(self, mat: np.ndarray, indices: int | list[int]):
-        self._matrix = np.asarray(mat, dtype=complex)
-        super().__init__("LocalOp", indices)
-
-    def to_matrix(self) -> np.ndarray:
-        return self._matrix
+def _single_z_subset(image: stim.PauliString, num_generators: int) -> list[int] | None:
+    """Qubits of a Z-only image supported on the first num_generators qubits; None for any other image."""
+    x_bits, z_bits = image.to_numpy()
+    if x_bits.any() or z_bits[num_generators:].any():
+        return None
+    return [int(q) for q in np.flatnonzero(z_bits)]
 
 
-class Magnetization(PauliSum):
-    """Mean single-site Pauli (1/n) Σ_i σ_i^axis."""
-
-    def __init__(self, n: int, axis: str = "Z"):
-        axis = axis.upper()
-        if axis not in ("X", "Y", "Z"):
-            raise ValueError(f"axis must be X, Y, or Z; got '{axis}'.")
-        self.n = n
-        self.axis = axis
-        terms = [
-            PauliString("I" * i + axis + "I" * (n - i - 1), coeff=1.0 / n)
-            for i in range(n)
-        ]
-        super().__init__(terms)
-        self.name = f"Magnetization{axis}"
+def _to_stim(pauli: PauliString) -> stim.PauliString:
+    if pauli.coeff not in (1, -1):
+        raise ValueError(
+            f"expected a +-1-signed Pauli string, got coefficient {pauli.coeff} on {pauli.string}"
+        )
+    sign = "+" if pauli.coeff == 1 else "-"
+    return stim.PauliString(sign + pauli.string.replace("I", "_"))
 
 
-class NumberOperator(PauliSum):
-    """Particle count Σ_q (I-Z_q)/2 over all or selected qubits."""
-
-    def __init__(self, n: int, qubits: list[int] | None = None):
-        self.n = n
-        self.qubits = list(range(n)) if qubits is None else list(qubits)
-        if len(set(self.qubits)) != len(self.qubits):
-            raise ValueError(f"qubits must not repeat; got {self.qubits}.")
-        if not all(0 <= qubit < n for qubit in self.qubits):
-            raise ValueError(f"qubits must lie in [0, {n}); got {self.qubits}.")
-        identity = PauliString("I" * n, 0.5 * len(self.qubits))
-        z_terms = [
-            PauliString("I" * qubit + "Z" + "I" * (n - qubit - 1), -0.5)
-            for qubit in self.qubits
-        ]
-        super().__init__([identity, *z_terms])
-        self.name = "NumberOperator"
+def _letters(pauli: stim.PauliString) -> str:
+    return "".join("IXYZ"[k] for k in pauli)

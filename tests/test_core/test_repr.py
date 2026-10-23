@@ -16,7 +16,8 @@ from qaravan.core.fermions import (
 )
 from qaravan.core.gates import RX, H
 from qaravan.core.hamiltonians import TFI, Heisenberg1D
-from qaravan.core.observables import LocalOp, PauliString, PauliSum
+from qaravan.core.observable import LocalOp
+from qaravan.core.pauli import PauliString, PauliSum
 
 
 def _concrete(base):

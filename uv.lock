@@ -1762,11 +1762,11 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "scipy" },
+    { name = "stim" },
 ]
 
 [package.optional-dependencies]
 legacy = [
-    { name = "stim" },
     { name = "sympy" },
     { name = "tqdm" },
 ]
@@ -1794,7 +1794,7 @@ requires-dist = [
     { name = "ncon-torch", marker = "extra == 'torch'", specifier = ">=0.3" },
     { name = "numpy", specifier = ">=2.0,<3.0" },
     { name = "scipy", specifier = ">=1.10,<2.0" },
-    { name = "stim", marker = "extra == 'legacy'", specifier = ">=1.14.0" },
+    { name = "stim", specifier = ">=1.14.0" },
     { name = "sympy", marker = "extra == 'legacy'", specifier = ">=1.10" },
     { name = "torch", marker = "extra == 'torch'", specifier = ">=2.1" },
     { name = "tqdm", marker = "extra == 'legacy'", specifier = ">=4.67.1" },

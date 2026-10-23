@@ -11,7 +11,7 @@ from qaravan.core.hamiltonians import (
     HamiltonianTerm,
     Heisenberg1D,
 )
-from qaravan.core.observables import PauliString
+from qaravan.core.pauli import PauliString
 
 # ---------------------------------------------------------------------------
 # Generic Hamiltonian — hermiticity
@@ -44,7 +44,8 @@ def test_hamiltonian_repr_headers_the_model_then_shows_the_algebra():
 def test_as_observable_merges_duplicate_strings_without_changing_matrix():
     from qaravan.core.fermions import FermionicEncoding
     from qaravan.core.hamiltonians import FermiHubbard1D
-    from qaravan.core.observables import PauliSum, _embed_local_obs
+    from qaravan.core.observable import _embed_local_obs
+    from qaravan.core.pauli import PauliSum
 
     fh = FermiHubbard1D(num_fermionic_sites=4, t=1.0, U=2.0, mu=0.3)
     ham = fh.encode(

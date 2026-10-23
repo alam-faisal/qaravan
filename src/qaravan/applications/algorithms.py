@@ -1,6 +1,7 @@
 """Numerical algorithms applied to a Hamiltonian, kept off the Hamiltonian class itself."""
 
 from __future__ import annotations
+from itertools import combinations
 import numpy as np
 from scipy.linalg import expm
 from scipy.sparse.linalg import LinearOperator, eigsh, expm_multiply
@@ -13,7 +14,13 @@ from qaravan.core.hamiltonians import (
     Hamiltonian,
     HamiltonianTerm,
 )
-from qaravan.core.observables import PauliSum
+from qaravan.core.pauli import (
+    PauliString,
+    PauliSum,
+    clifford_conjugate,
+    clifford_to_single_z,
+    pauli_relations,
+)
 
 # === Eigensolvers ===
 
@@ -113,6 +120,48 @@ def fermionic_spectrum(
     return spectrum(encoded, method, num_eigenvalues, sector=sector)
 
 
+def constrained_spectrum(
+    hamiltonian: PauliSum | Hamiltonian,
+    stabilizers: list[PauliString],
+    occupation_operators: list[PauliString],
+    num_particles: int,
+    method: str = "naive",
+    num_eigenvalues: int | None = None,
+) -> np.ndarray:
+    """Ascending eigenvalues where every stabilizer is +1 and exactly num_particles occupation operators are -1.
+
+    occupation_operators: (-1)^n_j. All operators commute and are +-1-signed; dependent ones are allowed.
+    Unconstrained qubits multiply every eigenvalue. Cost: dense C(m, k) * 2^r eigenproblem.
+    """
+    pauli_sum = (
+        hamiltonian
+        if isinstance(hamiltonian, PauliSum)
+        else hamiltonian.as_observable()
+    )
+    generators = [*stabilizers, *occupation_operators]
+    independent, relations = pauli_relations(generators)
+    _check_consistent(relations, len(stabilizers))
+
+    to_single_z = clifford_to_single_z([generators[i] for i in independent])
+    num_tapered = sum(i < len(stabilizers) for i in independent)
+    reduced = _taper(clifford_conjugate(pauli_sum.simplify(), to_single_z), num_tapered)
+
+    sector = _occupation_sector(
+        independent,
+        relations,
+        len(stabilizers),
+        len(occupation_operators),
+        num_particles,
+        reduced.num_sites,
+    )
+    if not sector:
+        return np.array([])
+    evals, _ = _lowest_eigenpairs(
+        _sector_matrix(reduced, sector), method, num_eigenvalues, False
+    )
+    return evals
+
+
 # === Sectors ===
 
 
@@ -150,6 +199,90 @@ def _fermionic_sector(
         np.bitwise_count(indices & down_mask) == num_down
     )
     return np.flatnonzero(in_sector)
+
+
+def _check_consistent(
+    relations: dict[int, tuple[list[int], int]], num_stabilizers: int
+) -> None:
+    for j, (_, sign) in relations.items():
+        if j < num_stabilizers and sign != 1:
+            raise ValueError(
+                f"stabilizer {j} is -1 times a product of the others: no state satisfies them all."
+            )
+
+
+def _taper(pauli_sum: PauliSum, num_tapered: int) -> PauliSum:
+    """Drop the first num_tapered qubits, on which every term is I or Z and every Z reads +1."""
+    terms = []
+    for term in pauli_sum.terms:
+        head, tail = term.string[:num_tapered], term.string[num_tapered:]
+        if any(letter in "XY" for letter in head):
+            raise ValueError(
+                f"hamiltonian term {term!r} does not commute with the stabilizers."
+            )
+        terms.append(PauliString(tail, term.coeff))
+    return PauliSum(terms)
+
+
+def _occupation_sector(
+    independent: list[int],
+    relations: dict[int, tuple[list[int], int]],
+    num_stabilizers: int,
+    num_occupations: int,
+    num_particles: int,
+    num_sites: int,
+) -> list[int]:
+    """Ascending basis indices of the tapered register: every allowed pattern of num_particles occupied
+    modes, times every value of the free qubits (the trailing ones)."""
+    counted = [i - num_stabilizers for i in independent if i >= num_stabilizers]
+    dependent = {
+        j - num_stabilizers: (
+            [i - num_stabilizers for i in subset if i >= num_stabilizers],
+            sign,
+        )
+        for j, (subset, sign) in relations.items()
+        if j >= num_stabilizers
+    }
+    num_free = num_sites - len(counted)
+    indices = []
+    for occupied in combinations(range(num_occupations), num_particles):
+        occupied = set(occupied)
+        if not all(
+            _allowed(j in occupied, subset, sign, occupied)
+            for j, (subset, sign) in dependent.items()
+        ):
+            continue
+        base = sum(
+            1 << (num_sites - 1 - q)
+            for q, mode in enumerate(counted)
+            if mode in occupied
+        )
+        indices += [base | free for free in range(2**num_free)]
+    return sorted(indices)
+
+
+def _allowed(
+    is_occupied: bool, subset: list[int], sign: int, occupied: set[int]
+) -> bool:
+    """A dependent occupation must equal the parity its relation predicts from the independent ones."""
+    predicted = (sign == -1) ^ (sum(mode in occupied for mode in subset) % 2 == 1)
+    return is_occupied == predicted
+
+
+def _sector_matrix(pauli_sum: PauliSum, sector: list[int]) -> np.ndarray:
+    """to_sector_matrix, with a Python-int path for registers beyond int64 basis indices."""
+    if pauli_sum.num_sites <= 62:
+        return pauli_sum.to_sector_matrix(np.array(sector, dtype=np.int64))
+    position = {index: row for row, index in enumerate(sector)}
+    out = np.zeros((len(sector), len(sector)), dtype=complex)
+    for term in pauli_sum.terms:
+        x_mask, z_mask, n_y = term.bitmasks()
+        prefactor = term.coeff * 1j**n_y
+        for col, index in enumerate(sector):
+            row = position.get(index ^ x_mask)
+            if row is not None:
+                out[row, col] += prefactor * (-1) ** (index & z_mask).bit_count()
+    return out
 
 
 # === Diagonalization ===

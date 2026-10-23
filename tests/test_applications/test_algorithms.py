@@ -1,10 +1,13 @@
 """Numerical algorithms and the independent references used to verify them."""
 
+from itertools import combinations
 from math import comb
 import numpy as np
 import pytest
+import stim
 from scipy.linalg import expm
 from qaravan.applications.algorithms import (
+    constrained_spectrum,
     fermionic_ground_state,
     fermionic_spectrum,
     ground_state,
@@ -25,7 +28,8 @@ from qaravan.core.hamiltonians import (
     bath_interleaved_mode_order,
     interleaved_mode_order,
 )
-from qaravan.core.observables import HamiltonianTerm, PauliString, PauliSum
+from qaravan.core.observable import HamiltonianTerm
+from qaravan.core.pauli import PauliString, PauliSum, clifford_conjugate
 
 # stacked and interleaved up/down qubit registers, written out by hand rather than
 # taken from spin_qubits(), so the sector tests below stay independent of it
@@ -395,3 +399,184 @@ def test_matrix_free_lanczos_in_a_spin_sector(mode_order_name):
         fermionic_spectrum(fh, encoding, method="naive", **kwargs),
         atol=1e-10,
     )
+
+
+# === constrained_spectrum ===
+#
+# References are independent of the method: the JW popcount-sector spectrum, a dense projection
+# P H P built from the constraint matrices, and the free-fermion two-particle spectrum.
+
+
+def _jw_hubbard(num_fermionic_sites: int = 3) -> PauliSum:
+    return (
+        FermiHubbard1D(num_fermionic_sites=num_fermionic_sites, t=1.0, U=2.0, mu=0.3)
+        .encode(FermionicEncoding("jordan_wigner", num_modes=2 * num_fermionic_sites))
+        .as_observable()
+    )
+
+
+def _z(qubit: int, num_qubits: int, sign: int = 1) -> PauliString:
+    return PauliString("I" * qubit + "Z" + "I" * (num_qubits - qubit - 1), sign)
+
+
+def _pad(pauli_sum: PauliSum, num_extra: int) -> PauliSum:
+    """Append untouched qubits to every term."""
+    return PauliSum(
+        [PauliString(t.string + "I" * num_extra, t.coeff) for t in pauli_sum.terms]
+    )
+
+
+def _disguise(pauli_sum: PauliSum, stabilizers, occupations, clifford):
+    """Conjugate the whole problem by one Clifford: every Pauli becomes a dense mixed string."""
+    conjugate = lambda pauli: clifford_conjugate(PauliSum([pauli]), clifford).terms[0]  # noqa: E731
+    return (
+        clifford_conjugate(pauli_sum, clifford),
+        [conjugate(s) for s in stabilizers],
+        [conjugate(o) for o in occupations],
+    )
+
+
+def _dense_constrained_spectrum(
+    pauli_sum, stabilizers, occupations, num_particles
+) -> np.ndarray:
+    """Eigenvalues of P H P on range(P), all matrices dense: P = prod (1 + S)/2 times the count projector."""
+    dim = 2**pauli_sum.num_sites
+    projector = np.eye(dim, dtype=complex)
+    for stabilizer in stabilizers:
+        projector = projector @ (np.eye(dim) + stabilizer.to_matrix()) / 2
+    occupied = [(np.eye(dim) - o.to_matrix()) / 2 for o in occupations]
+    count = sum(occupied)
+    weights, vectors = np.linalg.eigh(count)
+    number_projector = (
+        vectors[:, np.isclose(weights, num_particles)]
+        @ vectors[:, np.isclose(weights, num_particles)].conj().T
+    )
+    projector = projector @ number_projector
+    weights, vectors = np.linalg.eigh((projector + projector.conj().T) / 2)
+    basis = vectors[:, weights > 0.5]
+    return np.linalg.eigvalsh(basis.conj().T @ pauli_sum.to_matrix() @ basis)
+
+
+@pytest.mark.parametrize("num_particles", range(7))
+def test_constrained_spectrum_without_stabilizers_is_the_popcount_spectrum(
+    num_particles,
+):
+    """Catches a wrong bit order or sector listing on the plain JW case."""
+    hamiltonian = _jw_hubbard()
+    occupations = [_z(q, 6) for q in range(6)]
+    np.testing.assert_allclose(
+        constrained_spectrum(hamiltonian, [], occupations, num_particles),
+        spectrum(hamiltonian, fixed_particle_number=num_particles),
+        atol=1e-10,
+    )
+
+
+@pytest.mark.parametrize("num_particles", [1, 2, 3])
+def test_disguised_jordan_wigner_with_ancillas_recovers_the_jw_spectrum(num_particles):
+    """JW Hubbard plus 2 ancillas pinned by Z stabilizers, all scrambled by a random Clifford. Catches sign or
+    phase errors in rotating and tapering, which the scramble spreads over every term."""
+    hamiltonian = _pad(_jw_hubbard(), 2)
+    stabilizers = [_z(6, 8), _z(7, 8, -1)]
+    occupations = [_z(q, 8) for q in range(6)]
+    disguised = _disguise(hamiltonian, stabilizers, occupations, stim.Tableau.random(8))
+    np.testing.assert_allclose(
+        constrained_spectrum(*disguised, num_particles),
+        spectrum(_jw_hubbard(), fixed_particle_number=num_particles),
+        atol=1e-10,
+    )
+
+
+def test_stabilizer_signs_select_different_spectra():
+    """A 0.4 Z_anc term reads +-0.4 depending on the ancilla's stabilizer sign: the two signs must give the
+    dense reference's two spectra, 0.8 apart. Catches a method blind to stabilizer signs."""
+    hamiltonian = _pad(_jw_hubbard(2), 1) + PauliString("IIIIZ", 0.4)
+    occupations = [_z(q, 5) for q in range(4)]
+    clifford = stim.Tableau.random(5)
+    results = []
+    for sign in (1, -1):
+        problem = _disguise(hamiltonian, [_z(4, 5, sign)], occupations, clifford)
+        expected = _dense_constrained_spectrum(*problem, 2)
+        np.testing.assert_allclose(
+            constrained_spectrum(*problem, 2), expected, atol=1e-10
+        )
+        results.append(expected)
+    np.testing.assert_allclose(results[0] - results[1], 0.8, atol=1e-10)
+
+
+def test_even_parity_code_space_keeps_even_particle_numbers_only():
+    """Total parity as a stabilizer makes the occupation operators dependent on it. Even k must give the JW
+    spectrum, odd k nothing. Catches the dependency constraints being ignored or mis-signed."""
+    hamiltonian = _jw_hubbard(2)
+    parity = PauliString("ZZZZ")
+    occupations = [_z(q, 4) for q in range(4)]
+    disguised = _disguise(hamiltonian, [parity], occupations, stim.Tableau.random(4))
+    for k in range(5):
+        got = constrained_spectrum(*disguised, k)
+        expected = (
+            spectrum(hamiltonian, fixed_particle_number=k)
+            if k % 2 == 0
+            else np.array([])
+        )
+        np.testing.assert_allclose(got, expected, atol=1e-10)
+
+
+def test_unconstrained_qubits_multiply_every_eigenvalue():
+    """2 qubits pinned by nothing: each JW sector eigenvalue appears 4 times."""
+    occupations = [_z(q, 6) for q in range(4)]
+    disguised = _disguise(
+        _pad(_jw_hubbard(2), 2), [], occupations, stim.Tableau.random(6)
+    )
+    expected = np.repeat(spectrum(_jw_hubbard(2), fixed_particle_number=2), 4)
+    np.testing.assert_allclose(
+        constrained_spectrum(*disguised, 2), expected, atol=1e-10
+    )
+
+
+def test_dependent_stabilizers_are_ignored_and_inconsistent_ones_raise():
+    hamiltonian = _pad(_jw_hubbard(2), 1)
+    occupations = [_z(q, 5) for q in range(4)]
+    duplicated = constrained_spectrum(hamiltonian, [_z(4, 5), _z(4, 5)], occupations, 2)
+    np.testing.assert_allclose(
+        duplicated, spectrum(_jw_hubbard(2), fixed_particle_number=2), atol=1e-10
+    )
+    with pytest.raises(ValueError, match="no state satisfies"):
+        constrained_spectrum(hamiltonian, [_z(4, 5), _z(4, 5, -1)], occupations, 2)
+
+
+def test_hamiltonian_not_commuting_with_a_stabilizer_raises():
+    hamiltonian = _pad(_jw_hubbard(2), 1) + PauliString("IIIIX", 0.1)
+    with pytest.raises(ValueError, match="does not commute"):
+        constrained_spectrum(hamiltonian, [_z(4, 5)], [_z(q, 5) for q in range(4)], 2)
+
+
+def test_seventy_qubit_free_fermion_chain_at_two_particles():
+    """66-mode hopping chain plus 4 stabilized ancillas, disguised (beyond int64 basis indices after tapering).
+    k = 2 eigenvalues must be the sums of distinct single-particle energies. Catches anything exponential and
+    the Python-int sector path."""
+    num_modes, num_qubits = 66, 70
+    rng = np.random.default_rng(0)
+    potentials = rng.normal(size=num_modes)
+    single_particle = (
+        np.diag(potentials) - np.eye(num_modes, k=1) - np.eye(num_modes, k=-1)
+    )
+    terms = []
+    for j in range(num_modes - 1):
+        for letter in "XY":
+            string = "I" * j + letter * 2 + "I" * (num_qubits - j - 2)
+            terms.append(PauliString(string, -0.5))
+    for j, mu in enumerate(potentials):
+        terms += [
+            PauliString("I" * num_qubits, mu / 2),
+            PauliString(_z(j, num_qubits).string, -mu / 2),
+        ]
+    stabilizers = [_z(q, num_qubits) for q in range(num_modes, num_qubits)]
+    occupations = [_z(q, num_qubits) for q in range(num_modes)]
+    disguised = _disguise(
+        PauliSum(terms), stabilizers, occupations, stim.Tableau.random(num_qubits)
+    )
+
+    energies = np.linalg.eigvalsh(single_particle)
+    expected = np.sort(
+        [energies[a] + energies[b] for a, b in combinations(range(num_modes), 2)]
+    )
+    np.testing.assert_allclose(constrained_spectrum(*disguised, 2), expected, atol=1e-9)

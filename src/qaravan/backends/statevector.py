@@ -22,7 +22,8 @@ from qaravan.core.base import (
     State,
 )
 from qaravan.core.gates import pauli_string_to_gates
-from qaravan.core.observables import PAULI_MATRICES, LocalOp, PauliString, PauliSum
+from qaravan.core.observable import LocalOp
+from qaravan.core.pauli import PAULI_MATRICES, PauliString, PauliSum
 
 if TYPE_CHECKING:
     from qaravan.core.circuit import Circuit
@@ -422,7 +423,9 @@ class StatevectorSimulator(Simulator):
         assert circuit.layers is not None
         if noise_model.placement == "circuit":
             realized.layers = list(circuit.layers)
-            noise_gates = pauli_string_to_gates(noise_model.sample_error(self.noise_rng))
+            noise_gates = pauli_string_to_gates(
+                noise_model.sample_error(self.noise_rng)
+            )
             if noise_gates:
                 realized.layers.append(noise_gates)
             return realized
@@ -434,7 +437,9 @@ class StatevectorSimulator(Simulator):
         realized.layers = []
         for layer in circuit.layers:
             realized.layers.append(layer)
-            noise_gates = pauli_string_to_gates(noise_model.sample_error(self.noise_rng))
+            noise_gates = pauli_string_to_gates(
+                noise_model.sample_error(self.noise_rng)
+            )
             if noise_gates:
                 realized.layers.append(noise_gates)
         return realized

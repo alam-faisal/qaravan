@@ -21,7 +21,7 @@ from qaravan.core.circuit import Circuit
 from qaravan.core.dynamic_circuit import DynamicCircuit, DynamicRound
 from qaravan.core.gates import H, X
 from qaravan.core.noise import DepolarizingNoise
-from qaravan.core.observables import NumberOperator
+from qaravan.core.observable import NumberOperator
 
 INV_SQRT2 = 1.0 / np.sqrt(2)
 
@@ -359,8 +359,7 @@ def _seeded_regression_dqc() -> DynamicCircuit:
     reset_to_plus = Circuit([X(0), H(0)], num_sites=1)
     rounds = [DynamicRound(decoder=lambda _: Circuit([H(0)], num_sites=1))]
     rounds.extend(
-        DynamicRound(meas_sites=[0], decoder=lambda _: reset_to_plus)
-        for _ in range(5)
+        DynamicRound(meas_sites=[0], decoder=lambda _: reset_to_plus) for _ in range(5)
     )
     return DynamicCircuit(rounds)
 

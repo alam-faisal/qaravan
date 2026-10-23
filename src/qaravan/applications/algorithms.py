@@ -128,15 +128,10 @@ def constrained_spectrum(
     method: str = "naive",
     num_eigenvalues: int | None = None,
 ) -> np.ndarray:
-    """Ascending eigenvalues of hamiltonian on the states where every stabilizer is +1 and exactly
-    num_particles occupation operators are -1.
+    """Ascending eigenvalues where every stabilizer is +1 and exactly num_particles occupation operators are -1.
 
-    An occupation operator is (-1)^n_j, so -1 means occupied. All operators are commuting, +-1-signed
-    PauliStrings; dependent ones are allowed and restrict the occupation patterns (e.g. one parity only).
-    Qubits fixed by none of them stay free, so each pattern comes with all 2^r free-bit states and the
-    spectrum carries that multiplicity. hamiltonian must commute with every stabilizer and conserve the
-    count. Cost: one Clifford conjugation per term and a dense C(m, k) * 2^r eigenproblem.
-    Raises if the stabilizers fix -1 (no state satisfies them all).
+    occupation_operators: (-1)^n_j. All operators commute and are +-1-signed; dependent ones are allowed.
+    Unconstrained qubits multiply every eigenvalue. Cost: dense C(m, k) * 2^r eigenproblem.
     """
     pauli_sum = (
         hamiltonian

@@ -221,10 +221,7 @@ class PauliSum(Observable):
 
 
 def clifford_to_single_z(paulis: list[PauliString]) -> stim.Tableau:
-    """Clifford U with U p_i U^dagger = Z_i on qubit i, for independent, commuting, +-1-signed paulis.
-
-    Fewer paulis than qubits is allowed; the remaining qubits are completed arbitrarily.
-    """
+    """Clifford U with U p_i U^dagger = Z_i; paulis independent, commuting, +-1-signed, possibly fewer than qubits."""
     stabilizers = [_to_stim(p) for p in paulis]
     try:
         tableau = stim.Tableau.from_stabilizers(
@@ -247,11 +244,9 @@ def clifford_conjugate(pauli_sum: PauliSum, clifford: stim.Tableau) -> PauliSum:
 def pauli_relations(
     paulis: list[PauliString],
 ) -> tuple[list[int], dict[int, tuple[list[int], int]]]:
-    """Greedy independent subset of commuting, +-1-signed paulis, and every other one as a signed product of it.
+    """Independent subset of commuting +-1-signed paulis, and relations for the rest.
 
-    Returns (independent, relations): relations[j] = (subset, sign) with
-    paulis[j] = sign * prod(paulis[i] for i in subset), subset drawn from earlier independent indices.
-    Raises if two paulis anticommute.
+    relations[j] = (subset, sign): paulis[j] = sign * prod(paulis[i] for i in subset).
     """
     independent: list[int] = []
     relations: dict[int, tuple[list[int], int]] = {}

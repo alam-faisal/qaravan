@@ -15,7 +15,7 @@ from qaravan.core.circuit import Circuit
 from qaravan.core.gates import CNOT, RX, H, X
 from qaravan.core.gates import Z as ZGate
 from qaravan.core.noise import DepolarizingNoise
-from qaravan.core.observables import PauliString
+from qaravan.core.pauli import PauliString
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -440,7 +440,9 @@ def test_noise_placement_circuit_appends_exactly_one_noise_layer():
     circuit = per_circuit.circuit.copy()
     circuit.construct_layers()
     num_layers = len(circuit.layers)
-    assert len(per_circuit._insert_noise(circuit, circuit_noise).layers) == num_layers + 1
+    assert (
+        len(per_circuit._insert_noise(circuit, circuit_noise).layers) == num_layers + 1
+    )
     assert len(circuit.layers) == num_layers
 
     layer_noise = DepolarizingNoise(2, error_rate=1.0, placement="layer")
@@ -471,9 +473,7 @@ def test_noise_placement_circuit_rate_is_layer_count_independent():
         # X applied an even number of times is the identity, so the ideal state is unchanged
         # and any deviation from <Z> = 1 comes purely from the noise.
         circ = Circuit([X(0)] * (2 * depth), num_sites=1)
-        walkers = Walkers(
-            Statevector(bitstring="0"), num_walkers=3000
-        ).apply(
+        walkers = Walkers(Statevector(bitstring="0"), num_walkers=3000).apply(
             circ,
             noise_model=noise,
             noise_rng=np.random.default_rng(5),

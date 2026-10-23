@@ -28,12 +28,8 @@ from qaravan.core.hamiltonians import (
     bath_interleaved_mode_order,
     interleaved_mode_order,
 )
-from qaravan.core.observables import (
-    HamiltonianTerm,
-    PauliString,
-    PauliSum,
-    clifford_conjugate,
-)
+from qaravan.core.observable import HamiltonianTerm
+from qaravan.core.pauli import PauliString, PauliSum, clifford_conjugate
 
 # stacked and interleaved up/down qubit registers, written out by hand rather than
 # taken from spin_qubits(), so the sector tests below stay independent of it

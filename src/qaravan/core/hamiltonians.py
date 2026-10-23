@@ -10,12 +10,8 @@ from qaravan.core.fermions import (
     number,
 )
 from qaravan.core.lattices import LinearLattice
-from qaravan.core.observables import (
-    HamiltonianTerm,
-    PauliString,
-    PauliSum,
-    embed_hamiltonian_terms,
-)
+from qaravan.core.observable import HamiltonianTerm, embed_hamiltonian_terms
+from qaravan.core.pauli import PauliString, PauliSum
 
 # === Hamiltonian ===
 

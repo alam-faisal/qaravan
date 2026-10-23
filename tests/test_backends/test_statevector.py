@@ -11,7 +11,8 @@ from qaravan.core.base import IncompatibleNoiseError, IncompatibleStateError, No
 from qaravan.core.circuit import Circuit
 from qaravan.core.gates import CNOT, H
 from qaravan.core.noise import PauliNoise
-from qaravan.core.observables import LocalOp, Magnetization, PauliString, PauliSum
+from qaravan.core.observable import LocalOp, Magnetization
+from qaravan.core.pauli import PauliString, PauliSum
 
 
 class _MinimalNoise(NoiseModel):

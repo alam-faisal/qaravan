@@ -14,7 +14,7 @@ from qaravan.core.hamiltonians import (
     Hamiltonian,
     HamiltonianTerm,
 )
-from qaravan.core.observables import (
+from qaravan.core.pauli import (
     PauliString,
     PauliSum,
     clifford_conjugate,

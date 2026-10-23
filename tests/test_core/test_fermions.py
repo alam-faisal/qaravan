@@ -25,7 +25,7 @@ from qaravan.core.hamiltonians import (
     bath_interleaved_mode_order,
     interleaved_mode_order,
 )
-from qaravan.core.observables import PauliString, PauliSum
+from qaravan.core.pauli import PauliString, PauliSum
 
 # ---------------------------------------------------------------------------
 # Ladder operators -> Jordan-Wigner (the two building blocks every fermionic

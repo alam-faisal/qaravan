@@ -13,12 +13,8 @@ from qaravan.core._repr import (
     latex_term,
     math_more,
 )
-from qaravan.core.observables import (
-    HamiltonianTerm,
-    PauliString,
-    PauliSum,
-    restrict_pauli_sum,
-)
+from qaravan.core.observable import HamiltonianTerm, restrict_pauli_sum
+from qaravan.core.pauli import PauliString, PauliSum
 
 # === Fermionic algebra ===
 

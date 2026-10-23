@@ -40,14 +40,8 @@ from qaravan.core.hamiltonians import (
     interleaved_mode_order,
 )
 from qaravan.core.lattices import LinearLattice
-from qaravan.core.observables import (
-    PAULI_MATRICES,
-    LocalOp,
-    Magnetization,
-    NumberOperator,
-    PauliString,
-    PauliSum,
-)
+from qaravan.core.observable import LocalOp, Magnetization, NumberOperator
+from qaravan.core.pauli import PAULI_MATRICES, PauliString, PauliSum
 
 __all__ = [
     "display_math",

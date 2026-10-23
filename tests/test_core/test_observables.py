@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+import stim
 from qaravan.backends.statevector import Statevector
 from qaravan.core.observables import (
     HamiltonianTerm,
@@ -11,7 +12,10 @@ from qaravan.core.observables import (
     PauliString,
     PauliSum,
     _embed_local_obs,
+    clifford_conjugate,
+    clifford_to_single_z,
     embed_hamiltonian_terms,
+    pauli_relations,
     restrict_pauli_sum,
 )
 
@@ -479,3 +483,98 @@ def test_magnetization_inherits_to_sector_matrix():
         magnetization.to_matrix()[np.ix_(sector, sector)],
         atol=1e-12,
     )
+
+
+# ---------------------------------------------------------------------------
+# Commuting Pauli groups
+
+
+def _random_generators(num_qubits: int, num_generators: int) -> list[PauliString]:
+    """Independent commuting +-1-signed strings: Z outputs of a random Clifford."""
+    tableau = stim.Tableau.random(num_qubits)
+    return [_from_stim(tableau.z_output(i)) for i in range(num_generators)]
+
+
+def _from_stim(pauli: stim.PauliString) -> PauliString:
+    return PauliString("".join("IXYZ"[k] for k in pauli), pauli.sign)
+
+
+def _product(paulis: list[PauliString], num_qubits: int) -> PauliString:
+    out = PauliString("I" * num_qubits)
+    for pauli in paulis:
+        out = out @ pauli
+    return out
+
+
+@pytest.mark.parametrize("num_generators", [1, 3, 5])
+def test_clifford_to_single_z_sends_each_pauli_to_its_own_z(num_generators):
+    """Catches a reversed tableau (stim's from_stabilizers maps Z_i to p_i, not the other way) and a lost sign:
+    the image of p_i, sign included, is +Z_i."""
+    paulis = _random_generators(5, num_generators)
+    to_single_z = clifford_to_single_z(paulis)
+    for i, pauli in enumerate(paulis):
+        image = clifford_conjugate(PauliSum([pauli]), to_single_z).terms[0]
+        expected = "I" * i + "Z" + "I" * (5 - i - 1)
+        assert (image.string, image.coeff) == (expected, 1)
+
+
+def test_clifford_conjugate_matches_dense_conjugation():
+    """Catches sign or qubit-order mismatches between stim and Qaravan's big-endian matrices."""
+    tableau = stim.Tableau.random(4)
+    unitary = tableau.to_unitary_matrix(endian="big")
+    pauli_sum = PauliSum(
+        [PauliString("XYZI", 0.7), PauliString("ZZIY", -1.3j), PauliString("IIXX", 0.2)]
+    )
+    conjugated = clifford_conjugate(pauli_sum, tableau)
+    np.testing.assert_allclose(
+        conjugated.to_matrix(),
+        unitary @ pauli_sum.to_matrix() @ unitary.conj().T,
+        atol=1e-12,
+    )
+
+
+def test_pauli_relations_recovers_planted_products():
+    """Planted signed products of random generators: each relation must multiply out exactly."""
+    rng = np.random.default_rng(1)
+    generators = _random_generators(6, 4)
+    planted = []
+    for _ in range(5):
+        subset = [i for i in range(4) if rng.random() < 0.5]
+        sign = rng.choice([1, -1])
+        product = _product([generators[i] for i in subset], 6)
+        planted.append(PauliString(product.string, sign * product.coeff))
+    paulis = [
+        generators[0],
+        planted[0],
+        generators[1],
+        generators[2],
+        *planted[1:],
+        generators[3],
+    ]
+    independent, relations = pauli_relations(paulis)
+
+    assert len(independent) == 4
+    assert set(independent) | set(relations) == set(range(len(paulis)))
+    for j, (subset, sign) in relations.items():
+        assert all(i in independent and i < j for i in subset)
+        product = _product([paulis[i] for i in subset], 6)
+        assert (product.string, sign * product.coeff) == (
+            paulis[j].string,
+            paulis[j].coeff,
+        )
+
+
+def test_pauli_relations_reports_minus_identity():
+    independent, relations = pauli_relations([PauliString("ZZ"), PauliString("ZZ", -1)])
+    assert independent == [0]
+    assert relations == {1: ([0], -1)}
+
+
+def test_pauli_relations_rejects_anticommuting_paulis():
+    with pytest.raises(ValueError, match="commute"):
+        pauli_relations([PauliString("XI"), PauliString("ZI")])
+
+
+def test_pauli_relations_rejects_non_unit_coefficients():
+    with pytest.raises(ValueError, match="signed"):
+        pauli_relations([PauliString("XI", 2.0)])

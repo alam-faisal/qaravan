@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import reduce
 import numpy as np
+import stim
 from qaravan.core._repr import (
     as_math,
     elide,
@@ -215,6 +216,79 @@ class PauliSum(Observable):
     def _repr_latex_(self) -> str:
         parts = [latex_term(t.coeff, latex_pauli_string(t.string)) for t in self.terms]
         return as_math(join_terms(elide(parts, marker=math_more)))
+
+
+# === Commuting Pauli groups ===
+
+
+def clifford_to_single_z(paulis: list[PauliString]) -> stim.Tableau:
+    """Clifford U with U p_i U^dagger = Z_i on qubit i, for independent, commuting, +-1-signed paulis.
+
+    Fewer paulis than qubits is allowed; the remaining qubits are completed arbitrarily.
+    """
+    stabilizers = [_to_stim(p) for p in paulis]
+    try:
+        tableau = stim.Tableau.from_stabilizers(
+            stabilizers, allow_underconstrained=True
+        )
+    except ValueError as error:
+        raise ValueError(f"paulis must commute and be independent: {error}") from error
+    return tableau.inverse()
+
+
+def clifford_conjugate(pauli_sum: PauliSum, clifford: stim.Tableau) -> PauliSum:
+    """U P U^dagger term by term, for the Clifford U that the stim tableau represents."""
+    terms = []
+    for term in pauli_sum.terms:
+        image = clifford(_to_stim(PauliString(term.string)))
+        terms.append(PauliString(_letters(image), term.coeff * image.sign))
+    return PauliSum(terms)
+
+
+def pauli_relations(
+    paulis: list[PauliString],
+) -> tuple[list[int], dict[int, tuple[list[int], int]]]:
+    """Greedy independent subset of commuting, +-1-signed paulis, and every other one as a signed product of it.
+
+    Returns (independent, relations): relations[j] = (subset, sign) with
+    paulis[j] = sign * prod(paulis[i] for i in subset), subset drawn from earlier independent indices.
+    Raises if two paulis anticommute.
+    """
+    independent: list[int] = []
+    relations: dict[int, tuple[list[int], int]] = {}
+    if not paulis:
+        return independent, relations
+    to_single_z = stim.Tableau(paulis[0].num_sites)
+    for j, pauli in enumerate(paulis):
+        image = to_single_z(_to_stim(pauli))
+        subset = _single_z_subset(image, len(independent))
+        if subset is not None:
+            relations[j] = ([independent[q] for q in subset], int(image.sign.real))
+            continue
+        independent.append(j)
+        to_single_z = clifford_to_single_z([paulis[i] for i in independent])
+    return independent, relations
+
+
+def _single_z_subset(image: stim.PauliString, num_generators: int) -> list[int] | None:
+    """Qubits of a Z-only image supported on the first num_generators qubits; None for any other image."""
+    x_bits, z_bits = image.to_numpy()
+    if x_bits.any() or z_bits[num_generators:].any():
+        return None
+    return [int(q) for q in np.flatnonzero(z_bits)]
+
+
+def _to_stim(pauli: PauliString) -> stim.PauliString:
+    if pauli.coeff not in (1, -1):
+        raise ValueError(
+            f"expected a +-1-signed Pauli string, got coefficient {pauli.coeff} on {pauli.string}"
+        )
+    sign = "+" if pauli.coeff == 1 else "-"
+    return stim.PauliString(sign + pauli.string.replace("I", "_"))
+
+
+def _letters(pauli: stim.PauliString) -> str:
+    return "".join("IXYZ"[k] for k in pauli)
 
 
 # === Local Hamiltonian terms ===
